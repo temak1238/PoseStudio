@@ -3,7 +3,8 @@ using System.Runtime.CompilerServices;
 
 namespace PoseStudio;
 
-public sealed record AspectFormat(string Key, string Name, double W, double H)
+/// <summary>Bildformat. W/H = Seitenverhältnis; bei Fixed sind W/H feste Pixelmaße (z. B. SDXL-Auflösungen).</summary>
+public sealed record AspectFormat(string Key, string Name, double W, double H, bool Fixed = false)
 {
     public bool IsCustom => Key == "custom";
     public override string ToString() => Name;
@@ -17,14 +18,28 @@ public sealed record AspectFormat(string Key, string Name, double W, double H)
         new("3x4", "3:4 Hochformat", 3, 4),
         new("3x2", "3:2 Querformat", 3, 2),
         new("2x3", "2:3 Hochformat", 2, 3),
+        new("5x4", "5:4 Querformat", 5, 4),
         new("4x5", "4:5 Hochformat", 4, 5),
+        new("2x1", "2:1 Panorama", 2, 1),
+        new("1x2", "1:2 Hochformat", 1, 2),
         new("21x9", "21:9 Kino", 21, 9),
         new("custom", "Benutzerdefiniert", 0, 0),
+        // Typische SDXL-Auflösungen (ca. 1 Megapixel, durch 64 teilbar) – direkt für ComfyUI geeignet
+        new("sdxl1024x1024", "1024×1024", 1024, 1024, true),
+        new("sdxl1152x896", "1152×896", 1152, 896, true),
+        new("sdxl896x1152", "896×1152", 896, 1152, true),
+        new("sdxl1216x832", "1216×832", 1216, 832, true),
+        new("sdxl832x1216", "832×1216", 832, 1216, true),
+        new("sdxl1344x768", "1344×768", 1344, 768, true),
+        new("sdxl768x1344", "768×1344", 768, 1344, true),
+        new("sdxl1536x640", "1536×640", 1536, 640, true),
+        new("sdxl640x1536", "640×1536", 640, 1536, true),
     };
 
     /// <summary>Pixelgröße: lange Seite = longSide, kurze Seite auf gerade Zahl gerundet.</summary>
     public (int W, int H) PixelSize(int longSide, int customW, int customH)
     {
+        if (Fixed) return ((int)W, (int)H);
         if (IsCustom) return (Math.Max(16, customW), Math.Max(16, customH));
         if (W >= H)
             return (longSide, Even(longSide * H / W));
@@ -40,6 +55,7 @@ public sealed class FormatOption : INotifyPropertyChanged
 {
     private bool _isChecked;
     public required AspectFormat Format { get; init; }
+    public bool IsFixed => Format.Fixed;
     public bool IsChecked
     {
         get => _isChecked;

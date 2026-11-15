@@ -21,6 +21,8 @@ public sealed class AppSettings
     public string FilePrefix { get; set; } = "pose";
     public string HairColor { get; set; } = "#3A2A20";
     public bool Guides { get; set; } = true;
+    public bool OutputPng { get; set; } = false;
+    public bool Transparent { get; set; } = false;
     public string? BackgroundImage { get; set; }
     public string BackgroundStretch { get; set; } = "UniformToFill";
     public PoseStudio.Model.FigureData Figure { get; set; } = new();

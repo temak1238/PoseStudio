@@ -16,6 +16,8 @@ public sealed class SceneOptions
     public LightSettings Light { get; set; } = new();
     /// <summary>Auflösung der Schattentextur (Vorschau kleiner, Export größer).</summary>
     public int ShadowResolution { get; set; } = 1024;
+    /// <summary>Farbe, aus der der Boden abgeleitet wird (wichtig bei transparentem Hintergrund).</summary>
+    public Color? FloorBase { get; set; }
     public ImageSource? BackgroundImage { get; set; }
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
 }
@@ -53,9 +55,10 @@ public static class SceneFactory
         if (o.Floor)
         {
             // Helle Hintergründe: Boden etwas dunkler; dunkle Hintergründe: etwas heller.
-            double lum = (0.299 * o.Background.R + 0.587 * o.Background.G + 0.114 * o.Background.B) / 255;
-            var floor = lum > 0.35 ? Shade(o.Background, 0.92) : Lighten(o.Background, 18);
-            var line = lum > 0.35 ? Shade(o.Background, 0.78) : Lighten(o.Background, 45);
+            var bg = o.FloorBase ?? o.Background;
+            double lum = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255;
+            var floor = lum > 0.35 ? Shade(bg, 0.92) : Lighten(bg, 18);
+            var line = lum > 0.35 ? Shade(bg, 0.78) : Lighten(bg, 45);
 
             const double half = 20, tile = 0.5;
             var brush = new DrawingBrush(new GeometryDrawing(new SolidColorBrush(floor), new Pen(new SolidColorBrush(line), 0.025),
@@ -125,6 +128,22 @@ public static class SceneFactory
         small.Render(dv);
         small.Freeze();
         return small;
+    }
+
+    public static void SavePng(BitmapSource bmp, string path)
+    {
+        // In nicht vormultipliziertes BGRA wandeln; fast deckende Pixel (Rundung beim Verkleinern) voll deckend machen
+        var conv = new FormatConvertedBitmap(bmp, PixelFormats.Bgra32, null, 0);
+        int w = conv.PixelWidth, h = conv.PixelHeight, stride = w * 4;
+        var px = new byte[stride * h];
+        conv.CopyPixels(px, stride, 0);
+        for (int i = 3; i < px.Length; i += 4)
+            if (px[i] >= 250) px[i] = 255;
+        var fixedBmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(fixedBmp));
+        using var fs = File.Create(path);
+        enc.Save(fs);
     }
 
     public static void SaveJpeg(BitmapSource bmp, string path, int quality)

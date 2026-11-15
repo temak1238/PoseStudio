@@ -26,9 +26,10 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 
 **Rechts – Darstellung:** Hintergrundfarbe (Farbwähler, Hex oder Schnellfarben inkl. Greenscreen), Figur-/Hautfarbe, Haarfarbe, **Hintergrundbild** (Füllen/Einpassen/Strecken), Boden/Raster und Schatten getrennt für Vorschau und Export.
 
-**Rechts – Ausgabe:** Alle angehakten Formate werden mit einem Klick exportiert (Standard: 16:9 und 9:16). Weitere Formate: 1:1, 4:3, 3:4, 3:2, 2:3, 4:5, 21:9, benutzerdefiniert (Pixel). Lange Seite frei wählbar (Standard 1920 px), JPG-Qualität einstellbar.
+**Rechts – Ausgabe:** Alle angehakten Formate werden mit einem Klick exportiert (Standard: 16:9 und 9:16). Seitenverhältnisse 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 5:4, 4:5, 2:1, 1:2, 21:9 und benutzerdefiniert (lange Seite frei wählbar, Standard 1920 px). Dazu feste **SDXL-Auflösungen** für ComfyUI (1024×1024, 1152×896, 896×1152, 1216×832, 832×1216, 1344×768, 768×1344, 1536×640, 640×1536).
+**Dateiformat** JPG (Qualität einstellbar) oder PNG; PNG optional mit **transparentem Hintergrund**, wenn kein Hintergrundbild gesetzt ist (Vorschau zeigt dann ein Schachbrett, Schatten bleiben halbtransparent).
 Gestrichelte **Hilfslinien** in der Vorschau zeigen den Ausschnitt der anderen angehakten Formate (z. B. 9:16 in der 16:9-Vorschau). Der Export-Button ist unten rechts immer sichtbar.
-Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg`
+Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 
 Einstellungen werden in `%APPDATA%\PoseStudio\settings.json` gespeichert.
 

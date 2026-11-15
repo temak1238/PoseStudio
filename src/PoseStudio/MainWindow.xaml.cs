@@ -79,7 +79,6 @@ public partial class MainWindow : Window
         AxisItems.ItemsSource = _axes;
         PositionItems.ItemsSource = _positionAxes;
         CameraItems.ItemsSource = _cameraAxes;
-        ExportFormatList.ItemsSource = _exportFormats;
         ProportionItems.ItemsSource = _proportionAxes;
         FigureStyleCombo.ItemsSource = Styles.Select(s => s.Name).ToList();
         BgStretchCombo.ItemsSource = StretchModes.Select(s => s.Name).ToList();
@@ -328,6 +327,14 @@ public partial class MainWindow : Window
         PrefixBox.Text = s.FilePrefix;
         SetHairColor(ParseColor(s.HairColor, Color.FromRgb(0x3A, 0x2A, 0x20)));
         GuidesCheck.IsChecked = s.Guides;
+        ExportFormatList.ItemsSource = _exportFormats.Where(o => !o.IsFixed).ToList();
+        FixedFormatList.ItemsSource = _exportFormats.Where(o => o.IsFixed).ToList();
+        _suppressFileType = true;
+        PngRadio.IsChecked = s.OutputPng;
+        JpgRadio.IsChecked = !s.OutputPng;
+        TransparentCheck.IsChecked = s.Transparent;
+        _suppressFileType = false;
+        UpdateFileTypeUi();
         BgStretchCombo.SelectedIndex = Math.Max(0, Array.FindIndex(StretchModes, m => m.Mode.ToString() == s.BackgroundStretch));
         if (!string.IsNullOrEmpty(s.BackgroundImage) && File.Exists(s.BackgroundImage)) LoadBackgroundImage(s.BackgroundImage, quiet: true);
         ShowFigure(s.Figure ?? new FigureData());
@@ -353,6 +360,8 @@ public partial class MainWindow : Window
         s.FilePrefix = PrefixBox.Text;
         s.HairColor = ToHex(_figure.HairColor);
         s.Guides = GuidesCheck.IsChecked == true;
+        s.OutputPng = PngRadio.IsChecked == true;
+        s.Transparent = TransparentCheck.IsChecked == true;
         s.BackgroundImage = _bgImagePath;
         s.BackgroundStretch = StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode.ToString();
         s.Figure = _figure.GetFigure();
@@ -623,7 +632,7 @@ public partial class MainWindow : Window
     private void SetBackground(Color c, bool refresh = true)
     {
         _background = c;
-        Frame.Background = new SolidColorBrush(c);
+        UpdateFrameBackground();
         BgSwatch.Background = new SolidColorBrush(c);
         BgHexBox.Text = ToHex(c);
         if (refresh) { RebuildFloor(); DrawGuides(); }
@@ -669,6 +678,52 @@ public partial class MainWindow : Window
         if (PickColor(_figure.HairColor) is { } c) SetHairColor(c);
     }
 
+    // =================================================================== Dateiformat / Transparenz
+
+    private bool _suppressFileType;
+
+    /// <summary>Transparent nur bei PNG, angehakter Option und ohne Hintergrundbild.</summary>
+    private bool TransparentActive => PngRadio.IsChecked == true && TransparentCheck.IsChecked == true && _bgImage == null;
+
+    private void FileType_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressFileType || !IsInitialized) return; // feuert schon während InitializeComponent
+        UpdateFileTypeUi();
+    }
+
+    private void UpdateFileTypeUi()
+    {
+        bool png = PngRadio.IsChecked == true;
+        TransparentCheck.IsEnabled = png;
+        QualityRow.Visibility = png ? Visibility.Collapsed : Visibility.Visible;
+        ExportButton.Content = png ? "PNG exportieren" : "JPG exportieren";
+        UpdateFrameBackground();
+    }
+
+    /// <summary>Vorschau-Hintergrund: Farbe, oder Schachbrett wenn transparent exportiert wird.</summary>
+    private void UpdateFrameBackground()
+    {
+        if (TransparentActive)
+        {
+            var checker = new DrawingBrush
+            {
+                TileMode = TileMode.Tile,
+                Viewport = new Rect(0, 0, 16, 16),
+                ViewportUnits = BrushMappingMode.Absolute
+            };
+            var g = new DrawingGroup();
+            g.Children.Add(new GeometryDrawing(Brushes.White, null, new RectangleGeometry(new Rect(0, 0, 16, 16))));
+            var dark = new SolidColorBrush(Color.FromRgb(0xD6, 0xD6, 0xD6));
+            g.Children.Add(new GeometryDrawing(dark, null, new RectangleGeometry(new Rect(0, 0, 8, 8))));
+            g.Children.Add(new GeometryDrawing(dark, null, new RectangleGeometry(new Rect(8, 8, 8, 8))));
+            checker.Drawing = g;
+            Frame.Background = checker;
+        }
+        else
+        {
+            Frame.Background = new SolidColorBrush(_background);
+        }
+    }
     // =================================================================== Hintergrundbild
 
     private Stretch CurrentStretch => StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode;
@@ -687,6 +742,7 @@ public partial class MainWindow : Window
             _bgImage = bi;
             _bgImagePath = path;
             BgImage.Source = bi;
+            UpdateFrameBackground();
             BgImage.Stretch = CurrentStretch;
             BgImageText.Text = $"{Path.GetFileName(path)}  ({bi.PixelWidth}×{bi.PixelHeight})";
             BgImageText.ToolTip = path;
@@ -712,6 +768,7 @@ public partial class MainWindow : Window
         _bgImage = null;
         _bgImagePath = null;
         BgImage.Source = null;
+        UpdateFrameBackground();
         BgImageText.Text = "(kein Bild)";
         BgImageText.ToolTip = null;
     }
@@ -1019,9 +1076,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        bool png = PngRadio.IsChecked == true;
+        bool transparent = TransparentActive;
         var opts = new SceneOptions
         {
-            Background = _background,
+            Background = transparent ? Colors.Transparent : _background,
+            FloorBase = _background,
             Floor = FloorExportCheck.IsChecked == true,
             Shadow = ShadowExportCheck.IsChecked == true,
             BackgroundImage = _bgImage,
@@ -1041,9 +1101,10 @@ public partial class MainWindow : Window
             {
                 var (w, h) = f.PixelSize(longSide, cw, ch);
                 var bmp = SceneFactory.Render(_figure, _cam, opts, w, h);
-                string tag = f.IsCustom ? $"{w}x{h}" : f.Key;
-                string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}.jpg");
-                SceneFactory.SaveJpeg(bmp, path, quality);
+                string tag = f.IsCustom || f.Fixed ? $"{w}x{h}" : f.Key;
+                string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}.{(png ? "png" : "jpg")}");
+                if (png) SceneFactory.SavePng(bmp, path);
+                else SceneFactory.SaveJpeg(bmp, path, quality);
                 written.Add(Path.GetFileName(path));
             }
             StatusText.Text = $"{written.Count} Datei(en) gespeichert in {folder}: {string.Join(", ", written)}";

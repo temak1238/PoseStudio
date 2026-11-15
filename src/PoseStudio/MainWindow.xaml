@@ -139,7 +139,7 @@
             <!-- Export-Buttons immer sichtbar, auch auf kleinen Bildschirmen -->
             <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,6">
                 <Button DockPanel.Dock="Right" Content="Ordner öffnen" Click="OpenFolder_Click" Margin="6,0,0,0" />
-                <Button Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
+                <Button x:Name="ExportButton" Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
                         Background="#2B7BD6" Foreground="White" Click="Export_Click" />
             </DockPanel>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -157,6 +157,73 @@
                                 <Button Content="Ganz" Click="CamFull_Click" ToolTip="Ganze Figur einpassen" />
                                 <Button Content="Porträt" Click="CamPortrait_Click" ToolTip="Kopf und Oberkörper" />
                             </UniformGrid>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Ausgabe">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Vorschau-Format" Width="100" VerticalAlignment="Center" />
+                                <ComboBox x:Name="PreviewFormatCombo" SelectionChanged="PreviewFormat_Changed" />
+                            </DockPanel>
+                            <CheckBox x:Name="GuidesCheck" Content="Hilfslinien für die anderen Exportformate" Margin="0,4,0,0"
+                                      IsChecked="True" Checked="Guides_Changed" Unchecked="Guides_Changed" />
+                            <TextBlock Text="Exportieren – Seitenverhältnis (lange Seite unten):" Margin="0,6,0,2" FontWeight="SemiBold" />
+                            <ItemsControl x:Name="ExportFormatList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Format.Name}" IsChecked="{Binding IsChecked}" Margin="0,1" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Exportieren – KI-Auflösungen (SDXL, feste Pixel):" Margin="0,6,0,2" FontWeight="SemiBold" />
+                            <ItemsControl x:Name="FixedFormatList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Format.Name}" IsChecked="{Binding IsChecked}" Margin="0,1" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="Lange Seite (px)" Width="100" VerticalAlignment="Center" />
+                                <ComboBox x:Name="LongSideCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Benutzerdef. (px)" Width="100" VerticalAlignment="Center" />
+                                <TextBox x:Name="CustomWBox" Width="60" />
+                                <TextBlock Text=" × " VerticalAlignment="Center" />
+                                <TextBox x:Name="CustomHBox" Width="60" HorizontalAlignment="Left" LostFocus="CustomSize_LostFocus" />
+                            </DockPanel>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="Dateiformat" Width="100" VerticalAlignment="Center" />
+                                <RadioButton x:Name="JpgRadio" Content="JPG" GroupName="FileType" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center" Checked="FileType_Changed" />
+                                <RadioButton x:Name="PngRadio" Content="PNG" GroupName="FileType" VerticalAlignment="Center" Checked="FileType_Changed" />
+                            </DockPanel>
+                            <CheckBox x:Name="TransparentCheck" Margin="100,2,0,2" Checked="FileType_Changed" Unchecked="FileType_Changed"
+                                      ToolTip="Nur wenn kein Hintergrundbild gesetzt ist. Schatten bleiben halbtransparent erhalten.">
+                                <TextBlock Text="Transparenter Hintergrund (PNG, ohne Hintergrundbild)" TextWrapping="Wrap" />
+                            </CheckBox>
+                            <DockPanel x:Name="QualityRow" Margin="0,2">
+                                <TextBlock Text="JPG-Qualität" Width="100" VerticalAlignment="Center" />
+                                <TextBox DockPanel.Dock="Right" Style="{StaticResource ValueBox}"
+                                         Text="{Binding Value, ElementName=QualitySlider, StringFormat=F0}" />
+                                <Slider x:Name="QualitySlider" Minimum="50" Maximum="100" Value="95" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="Zielordner" Width="100" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="…" Click="BrowseFolder_Click" />
+                                <TextBox x:Name="FolderBox" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Dateiname" Width="100" VerticalAlignment="Center" />
+                                <TextBox x:Name="PrefixBox" VerticalAlignment="Center" />
+                            </DockPanel>
                         </StackPanel>
                     </GroupBox>
 
@@ -222,53 +289,6 @@
                                 <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ShadowPreviewCheck" Checked="Display_Changed" Unchecked="Display_Changed" />
                                 <CheckBox Grid.Row="2" Grid.Column="2" x:Name="ShadowExportCheck" />
                             </Grid>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <GroupBox Header="Ausgabe (JPG)">
-                        <StackPanel>
-                            <DockPanel Margin="0,2">
-                                <TextBlock Text="Vorschau-Format" Width="100" VerticalAlignment="Center" />
-                                <ComboBox x:Name="PreviewFormatCombo" SelectionChanged="PreviewFormat_Changed" />
-                            </DockPanel>
-                            <CheckBox x:Name="GuidesCheck" Content="Hilfslinien für die anderen Exportformate" Margin="0,4,0,0"
-                                      IsChecked="True" Checked="Guides_Changed" Unchecked="Guides_Changed" />
-                            <TextBlock Text="Exportieren in folgenden Formaten:" Margin="0,6,0,2" />
-                            <ItemsControl x:Name="ExportFormatList">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <CheckBox Content="{Binding Format.Name}" IsChecked="{Binding IsChecked}" Margin="0,1" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <DockPanel Margin="0,6,0,2">
-                                <TextBlock Text="Lange Seite (px)" Width="100" VerticalAlignment="Center" />
-                                <ComboBox x:Name="LongSideCombo" IsEditable="True" />
-                            </DockPanel>
-                            <DockPanel Margin="0,2">
-                                <TextBlock Text="Benutzerdef. (px)" Width="100" VerticalAlignment="Center" />
-                                <TextBox x:Name="CustomWBox" Width="60" />
-                                <TextBlock Text=" × " VerticalAlignment="Center" />
-                                <TextBox x:Name="CustomHBox" Width="60" HorizontalAlignment="Left" LostFocus="CustomSize_LostFocus" />
-                            </DockPanel>
-                            <DockPanel Margin="0,2">
-                                <TextBlock Text="JPG-Qualität" Width="100" VerticalAlignment="Center" />
-                                <TextBox DockPanel.Dock="Right" Style="{StaticResource ValueBox}"
-                                         Text="{Binding Value, ElementName=QualitySlider, StringFormat=F0}" />
-                                <Slider x:Name="QualitySlider" Minimum="50" Maximum="100" Value="95" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" />
-                            </DockPanel>
-                            <DockPanel Margin="0,6,0,2">
-                                <TextBlock Text="Zielordner" Width="100" VerticalAlignment="Center" />
-                                <Button DockPanel.Dock="Right" Content="…" Click="BrowseFolder_Click" />
-                                <TextBox x:Name="FolderBox" VerticalAlignment="Center" />
-                            </DockPanel>
-                            <DockPanel Margin="0,2">
-                                <TextBlock Text="Dateiname" Width="100" VerticalAlignment="Center" />
-                                <TextBox x:Name="PrefixBox" VerticalAlignment="Center" />
-                            </DockPanel>
                         </StackPanel>
                     </GroupBox>
                 </StackPanel>
