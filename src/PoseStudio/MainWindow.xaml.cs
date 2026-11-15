@@ -1370,6 +1370,7 @@ public partial class MainWindow : Window
             bi.EndInit();
             bi.Freeze();
             RefImage.Source = bi;
+            RemoveRefOverlayButton.Visibility = Visibility.Visible;
             _refBitmap = bi;
             _lastDetection = null;
             _refImagePath = path;
@@ -1390,6 +1391,7 @@ public partial class MainWindow : Window
     private void RemoveRefImage_Click(object sender, RoutedEventArgs e)
     {
         RefImage.Source = null;
+        RemoveRefOverlayButton.Visibility = Visibility.Collapsed;
         _refBitmap = null;
         _lastDetection = null;
         DrawGuides();

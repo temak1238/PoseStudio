@@ -204,6 +204,9 @@
                 </Border>
                 <TextBlock x:Name="FrameInfo" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
                            Foreground="#BBB" FontSize="11" />
+                <Button x:Name="RemoveRefOverlayButton" Content="Referenzbild entfernen ✕" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="8" Padding="10,4" Visibility="Collapsed" Click="RemoveRefImage_Click"
+                        ToolTip="Referenzbild und erkanntes Skelett ausblenden (das Bild wird nie exportiert)" />
             </Grid>
 
             <!-- ============ Rechts: Kamera & Ausgabe ============ -->
