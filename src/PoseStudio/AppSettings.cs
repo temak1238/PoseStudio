@@ -19,6 +19,11 @@ public sealed class AppSettings
     public int JpegQuality { get; set; } = 95;
     public string OutputFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "PoseStudio");
     public string FilePrefix { get; set; } = "pose";
+    public string HairColor { get; set; } = "#3A2A20";
+    public bool Guides { get; set; } = true;
+    public string? BackgroundImage { get; set; }
+    public string BackgroundStretch { get; set; } = "UniformToFill";
+    public PoseStudio.Model.FigureData Figure { get; set; } = new();
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

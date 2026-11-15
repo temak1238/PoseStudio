@@ -34,35 +34,51 @@ public partial class App : Application
     {
         Directory.CreateDirectory(folder);
         var m = new Mannequin();
-        var opts = new SceneOptions { Floor = true, Shadow = true };
-        const int cell = 300;
-        var views = new[] { 30.0, 90.0, 0.0 };
-        using var sheet = new System.Drawing.Bitmap(cell * views.Length * 2, cell * ((Presets.All.Count + 1) / 2));
-        using (var g = System.Drawing.Graphics.FromImage(sheet))
+        var opts = new SceneOptions { Floor = false, Shadow = true };
+        int[] presets = { 0, 2, 4, 6, 8, 3 };
+        var styles = new[] { FigureStyle.Mannequin, FigureStyle.Male, FigureStyle.Female };
+        const int cw = 240, ch = 360;
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
         {
-            g.Clear(System.Drawing.Color.White);
-            for (int i = 0; i < Presets.All.Count; i++)
+            dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, cw * presets.Length * 2, ch * styles.Length + 320));
+            for (int si = 0; si < styles.Length; si++)
             {
-                var p = Presets.All[i];
-                m.SetPose(p.ToPose());
-                m.GroundToFloor();
-                for (int v = 0; v < views.Length; v++)
+                m.SetFigure(styles[si], true, new Proportions { HeightCm = styles[si] == FigureStyle.Female ? 168 : 180 });
+                for (int pi = 0; pi < presets.Length; pi++)
                 {
-                    var cam = new OrbitCamera { Yaw = views[v], Target = new System.Windows.Media.Media3D.Point3D(0, 0.9, 0), Distance = 4.2 };
-                    using var bmp = DebugRasterizer.Render(m, cam, cell, cell);
-                    int x = ((i % 2) * views.Length + v) * cell, y = (i / 2) * cell;
-                    g.DrawImage(bmp, x, y);
-                    g.DrawRectangle(System.Drawing.Pens.Silver, x, y, cell - 1, cell - 1);
-                    if (v == 0) g.DrawString($"{i}: {p.Name}", new System.Drawing.Font("Segoe UI", 9), System.Drawing.Brushes.Black, x + 4, y + 4);
+                    m.SetPose(Presets.All[presets[pi]].ToPose());
+                    m.GroundToFloor();
+                    for (int v = 0; v < 2; v++)
+                    {
+                        var cam = new OrbitCamera { Yaw = v == 0 ? 25 : 100, Target = new System.Windows.Media.Media3D.Point3D(0, 0.9, 0), Distance = 4.6 };
+                        var bmp = SceneFactory.Render(m, cam, opts, cw, ch);
+                        dc.DrawImage(bmp, new Rect((pi * 2 + v) * cw, si * ch, cw, ch));
+                    }
                 }
             }
+            // Gesichter in Nahaufnahme
+            int x = 0;
+            foreach (var st in new[] { FigureStyle.Male, FigureStyle.Female })
+            {
+                m.SetFigure(st, true, new Proportions());
+                m.SetPose(Presets.All[0].ToPose()); m.GroundToFloor();
+                foreach (var yaw in new[] { 0.0, 35.0, 90.0 })
+                {
+                    var head = m["head"].World.Transform(new System.Windows.Media.Media3D.Point3D(0, 0.1, 0));
+                    var cam = new OrbitCamera { Yaw = yaw, Pitch = 0, Target = head, Distance = 1.1 };
+                    dc.DrawImage(SceneFactory.Render(m, cam, opts, 320, 320), new Rect(x, styles.Length * ch, 320, 320));
+                    x += 320;
+                }
+            }
+            // Proportionen-Test: lange Beine, kurze Arme, großer Kopf
+            m.SetFigure(FigureStyle.Male, false, new Proportions { HeightCm = 150, Leg = 125, Arm = 80, Head = 130, Build = 140 });
+            m.SetPose(Presets.All[1].ToPose()); m.GroundToFloor();
+            dc.DrawImage(SceneFactory.Render(m, new OrbitCamera(), opts, 320, 320), new Rect(x, styles.Length * ch, 320, 320));
         }
-        sheet.Save(Path.Combine(folder, "presets_sheet.jpg"), System.Drawing.Imaging.ImageFormat.Jpeg);
-
-        // WPF-Export (benötigt eine Sitzung mit Grafikausgabe)
-        var c2 = new OrbitCamera();
-        m.SetPose(Presets.All[0].ToPose()); m.GroundToFloor();
-        SceneFactory.SaveJpeg(SceneFactory.Render(m, c2, opts, 1920, 1080), Path.Combine(folder, "fmt_16x9.jpg"), 95);
-        SceneFactory.SaveJpeg(SceneFactory.Render(m, c2, opts, 1080, 1920), Path.Combine(folder, "fmt_9x16.jpg"), 95);
+        int W = cw * presets.Length * 2, Hh = ch * styles.Length + 320;
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W, Hh, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "styles_sheet.jpg"), 90);
     }
 }

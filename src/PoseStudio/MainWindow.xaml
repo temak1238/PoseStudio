@@ -44,6 +44,22 @@
             <!-- ============ Links: Pose ============ -->
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
+                    <GroupBox Header="Figur">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <CheckBox x:Name="HairCheck" DockPanel.Dock="Right" Content="Haare" VerticalAlignment="Center" Margin="8,0,0,0"
+                                          Checked="Figure_Changed" Unchecked="Figure_Changed" />
+                                <ComboBox x:Name="FigureStyleCombo" SelectionChanged="FigureStyle_Changed" />
+                            </DockPanel>
+                            <Expander x:Name="ProportionExpander" Header="Proportionen" Margin="0,4,0,0">
+                                <StackPanel>
+                                    <ItemsControl x:Name="ProportionItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                                    <Button Content="Proportionen zurücksetzen" HorizontalAlignment="Left" Click="ResetProportions_Click" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Pose-Vorlagen">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="Anwenden" Click="ApplyPreset_Click" />
@@ -102,19 +118,30 @@
                         MouseLeftButtonDown="Frame_MouseLeftButtonDown" MouseLeftButtonUp="Frame_MouseLeftButtonUp"
                         MouseRightButtonDown="Frame_MouseRightButtonDown" MouseRightButtonUp="Frame_MouseRightButtonUp"
                         MouseMove="Frame_MouseMove" MouseWheel="Frame_MouseWheel">
-                    <Viewport3D x:Name="View" ClipToBounds="True">
-                        <Viewport3D.Camera>
-                            <PerspectiveCamera x:Name="ViewCamera" />
-                        </Viewport3D.Camera>
-                        <ModelVisual3D x:Name="SceneVisual" />
-                    </Viewport3D>
+                    <Grid ClipToBounds="True">
+                        <Image x:Name="BgImage" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Viewport3D x:Name="View" ClipToBounds="True">
+                            <Viewport3D.Camera>
+                                <PerspectiveCamera x:Name="ViewCamera" />
+                            </Viewport3D.Camera>
+                            <ModelVisual3D x:Name="SceneVisual" />
+                        </Viewport3D>
+                        <Canvas x:Name="GuideCanvas" IsHitTestVisible="False" />
+                    </Grid>
                 </Border>
                 <TextBlock x:Name="FrameInfo" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
                            Foreground="#BBB" FontSize="11" />
             </Grid>
 
             <!-- ============ Rechts: Kamera & Ausgabe ============ -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+            <DockPanel Grid.Column="2">
+            <!-- Export-Buttons immer sichtbar, auch auf kleinen Bildschirmen -->
+            <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,6">
+                <Button DockPanel.Dock="Right" Content="Ordner öffnen" Click="OpenFolder_Click" Margin="6,0,0,0" />
+                <Button Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
+                        Background="#2B7BD6" Foreground="White" Click="Export_Click" />
+            </DockPanel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <GroupBox Header="Kamera">
                         <StackPanel>
@@ -148,6 +175,20 @@
                                 <TextBox x:Name="BodyHexBox" VerticalAlignment="Center" LostFocus="BodyHexBox_LostFocus" KeyDown="HexBox_KeyDown" />
                             </DockPanel>
                             <WrapPanel x:Name="BodyPresetPanel" Margin="90,2,0,4" />
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Haarfarbe" Width="90" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="Wählen…" Click="PickHair_Click" />
+                                <Border x:Name="HairSwatch" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" DockPanel.Dock="Right" Margin="4,0" />
+                                <TextBlock />
+                            </DockPanel>
+                            <WrapPanel x:Name="HairPresetPanel" Margin="90,2,0,4" />
+                            <DockPanel Margin="0,8,0,2">
+                                <TextBlock Text="Hintergrundbild" Width="90" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="Entfernen" Click="RemoveBgImage_Click" />
+                                <Button DockPanel.Dock="Right" Content="Bild…" Click="PickBgImage_Click" />
+                                <ComboBox x:Name="BgStretchCombo" SelectionChanged="BgStretch_Changed" />
+                            </DockPanel>
+                            <TextBlock x:Name="BgImageText" Margin="90,0,0,4" Foreground="#666" FontSize="11" TextTrimming="CharacterEllipsis" Text="(kein Bild)" />
                             <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="90" /><ColumnDefinition /><ColumnDefinition />
@@ -171,6 +212,8 @@
                                 <TextBlock Text="Vorschau-Format" Width="100" VerticalAlignment="Center" />
                                 <ComboBox x:Name="PreviewFormatCombo" SelectionChanged="PreviewFormat_Changed" />
                             </DockPanel>
+                            <CheckBox x:Name="GuidesCheck" Content="Hilfslinien für die anderen Exportformate" Margin="0,4,0,0"
+                                      IsChecked="True" Checked="Guides_Changed" Unchecked="Guides_Changed" />
                             <TextBlock Text="Exportieren in folgenden Formaten:" Margin="0,6,0,2" />
                             <ItemsControl x:Name="ExportFormatList">
                                 <ItemsControl.ItemsPanel>
@@ -207,13 +250,11 @@
                                 <TextBlock Text="Dateiname" Width="100" VerticalAlignment="Center" />
                                 <TextBox x:Name="PrefixBox" VerticalAlignment="Center" />
                             </DockPanel>
-                            <Button Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8" Margin="2,10,2,2"
-                                    Background="#2B7BD6" Foreground="White" Click="Export_Click" />
-                            <Button Content="Zielordner öffnen" Click="OpenFolder_Click" />
                         </StackPanel>
                     </GroupBox>
                 </StackPanel>
             </ScrollViewer>
+            </DockPanel>
         </Grid>
     </DockPanel>
 </Window>

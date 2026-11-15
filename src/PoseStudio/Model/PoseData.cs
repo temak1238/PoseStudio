@@ -19,6 +19,7 @@ public sealed class PoseData
     public Dictionary<string, double[]> Joints { get; set; } = new();
     public double[] RootPosition { get; set; } = new double[3];
     public CameraData? Camera { get; set; }
+    public FigureData? Figure { get; set; }
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 

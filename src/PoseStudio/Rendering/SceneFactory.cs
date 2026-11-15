@@ -13,6 +13,8 @@ public sealed class SceneOptions
     public Color Background { get; set; } = Color.FromRgb(0xE6, 0xE6, 0xE6);
     public bool Floor { get; set; } = true;
     public bool Shadow { get; set; } = true;
+    public ImageSource? BackgroundImage { get; set; }
+    public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
 }
 
 public static class SceneFactory
@@ -88,7 +90,10 @@ public static class SceneFactory
 
         var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };
         vp.Children.Add(new ModelVisual3D { Content = scene });
-        var root = new Border { Width = rw, Height = rh, Background = new SolidColorBrush(o.Background), Child = vp };
+        var root = new Grid { Width = rw, Height = rh, Background = new SolidColorBrush(o.Background) };
+        if (o.BackgroundImage != null)
+            root.Children.Add(new Image { Source = o.BackgroundImage, Stretch = o.BackgroundStretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        root.Children.Add(vp);
         root.Measure(new Size(rw, rh));
         root.Arrange(new Rect(0, 0, rw, rh));
         root.UpdateLayout();
@@ -100,10 +105,7 @@ public static class SceneFactory
         var dv = new DrawingVisual();
         RenderOptions.SetBitmapScalingMode(dv, BitmapScalingMode.HighQuality);
         using (var dc = dv.RenderOpen())
-        {
-            dc.DrawRectangle(new SolidColorBrush(o.Background), null, new Rect(0, 0, width, height));
             dc.DrawImage(big, new Rect(0, 0, width, height));
-        }
         var small = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         small.Render(dv);
         small.Freeze();

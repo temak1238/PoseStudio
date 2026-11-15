@@ -21,8 +21,9 @@ internal static class DebugRasterizer
             foreach (var part in j.Parts)
             {
                 bool hl = ReferenceEquals(j, m.Selected);
-                var mesh = (MeshGeometry3D)part.Geometry;
-                var pos = mesh.Positions.Select(p => j.World.Transform(p)).ToArray();
+                var mesh = (MeshGeometry3D)part.Model.Geometry;
+                var mat = ((MatrixTransform3D)part.Model.Transform).Matrix;
+                var pos = mesh.Positions.Select(p => mat.Transform(p)).ToArray();
                 var idx = mesh.TriangleIndices;
                 for (int i = 0; i < idx.Count; i += 3)
                 {

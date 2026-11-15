@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using Microsoft.Win32;
 using PoseStudio.Model;
@@ -26,8 +27,29 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<AxisViewModel> _cameraAxes = new();
     private readonly ObservableCollection<FormatOption> _exportFormats = new();
     private readonly Stack<PoseData> _undo = new();
+    private readonly ObservableCollection<AxisViewModel> _proportionAxes = new();
+    private Proportions _props = new();
     private Color _background;
     private bool _ready;
+    private bool _suppressFigure;
+    private BitmapSource? _bgImage;
+    private string? _bgImagePath;
+
+    private static readonly (FigureStyle Style, string Name)[] Styles =
+    {
+        (FigureStyle.Mannequin, "Gliederpuppe"),
+        (FigureStyle.Male, "Mensch – männlich"),
+        (FigureStyle.Female, "Mensch – weiblich"),
+    };
+    private static readonly (Stretch Mode, string Name)[] StretchModes =
+    {
+        (Stretch.UniformToFill, "Füllen (zuschneiden)"),
+        (Stretch.Uniform, "Einpassen"),
+        (Stretch.Fill, "Strecken"),
+    };
+    private static readonly Color MannequinColor = Color.FromRgb(0xC9, 0xB2, 0x92);
+    private static readonly Color SkinColor = Color.FromRgb(0xE3, 0xBE, 0xA2);
+    private static readonly string[] HairPresets = { "#3A2A20", "#151515", "#7A4A25", "#D9B866", "#A33A1E", "#9C9C9C" };
 
     // Maus
     private Point _mouseStart, _mouseLast;
@@ -54,15 +76,20 @@ public partial class MainWindow : Window
         PositionItems.ItemsSource = _positionAxes;
         CameraItems.ItemsSource = _cameraAxes;
         ExportFormatList.ItemsSource = _exportFormats;
+        ProportionItems.ItemsSource = _proportionAxes;
+        FigureStyleCombo.ItemsSource = Styles.Select(s => s.Name).ToList();
+        BgStretchCombo.ItemsSource = StretchModes.Select(s => s.Name).ToList();
 
         BuildPositionAxes();
         BuildCameraAxes();
+        BuildProportionAxes();
         BuildColorPresets();
         LoadSettings();
 
         _figure.SetPose(Presets.All[0].ToPose());
         _figure.GroundToFloor();
         _ready = true;
+        foreach (var f in _exportFormats) f.PropertyChanged += (_, _) => DrawGuides();
 
         CustomWBox.LostFocus += CustomSize_LostFocus;
         Closing += (_, _) => SaveSettings();
@@ -103,6 +130,65 @@ public partial class MainWindow : Window
             () => _cam.Pitch, v => { _cam.Pitch = v; CameraChanged(); }));
     }
 
+    private void BuildProportionAxes()
+    {
+        _proportionAxes.Clear();
+        void Add(string label, double min, double max, Func<double> get, Action<double> set) =>
+            _proportionAxes.Add(new AxisViewModel(label, min, max, get, v => { set(v); ApplyFigure(); }));
+        Add("Körpergröße (cm)", 50, 230, () => _props.HeightCm, v => _props.HeightCm = v);
+        Add("Armlänge (%)", 70, 130, () => _props.Arm, v => _props.Arm = v);
+        Add("Beinlänge (%)", 70, 130, () => _props.Leg, v => _props.Leg = v);
+        Add("Oberkörper (%)", 75, 125, () => _props.Torso, v => _props.Torso = v);
+        Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
+        Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
+        Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+    }
+
+    private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
+
+    /// <summary>Überträgt Stil, Haare und Proportionen auf die Figur (Pose bleibt erhalten).</summary>
+    private void ApplyFigure()
+    {
+        if (_suppressFigure) return;
+        _figure.SetFigure(CurrentStyle, HairCheck.IsChecked == true, _props);
+        HairCheck.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
+        PoseChanged();
+    }
+
+    private void ShowFigure(FigureData fd)
+    {
+        _suppressFigure = true;
+        _props = fd.Proportions.Clone();
+        _props.Clamp();
+        FigureStyleCombo.SelectedIndex = Math.Max(0, Array.FindIndex(Styles, s => s.Style == fd.Style));
+        HairCheck.IsChecked = fd.Hair;
+        _suppressFigure = false;
+        foreach (var a in _proportionAxes) a.Refresh();
+        ApplyFigure();
+    }
+
+    private void FigureStyle_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFigure) return;
+        var style = CurrentStyle;
+        // Sinnvolle Standards beim Wechsel: Körpergröße und Farbe (Holz ↔ Haut), sofern nicht selbst geändert.
+        if (style == FigureStyle.Female && Math.Abs(_props.HeightCm - 180) < 0.5) _props.HeightCm = 168;
+        if (style != FigureStyle.Female && Math.Abs(_props.HeightCm - 168) < 0.5) _props.HeightCm = 180;
+        if (style == FigureStyle.Mannequin && _figure.BodyColor == SkinColor) SetBodyColor(MannequinColor);
+        if (style != FigureStyle.Mannequin && _figure.BodyColor == MannequinColor) SetBodyColor(SkinColor);
+        foreach (var a in _proportionAxes) a.Refresh();
+        ApplyFigure();
+    }
+
+    private void Figure_Changed(object sender, RoutedEventArgs e) => ApplyFigure();
+
+    private void ResetProportions_Click(object sender, RoutedEventArgs e)
+    {
+        _props = new Proportions { HeightCm = CurrentStyle == FigureStyle.Female ? 168 : 180 };
+        foreach (var a in _proportionAxes) a.Refresh();
+        ApplyFigure();
+    }
+
     private static double NormalizeAngle(double a)
     {
         a %= 360;
@@ -117,6 +203,8 @@ public partial class MainWindow : Window
             BgPresetPanel.Children.Add(MakeSwatchButton(hex, c => SetBackground(c)));
         foreach (var hex in BodyPresets)
             BodyPresetPanel.Children.Add(MakeSwatchButton(hex, c => SetBodyColor(c)));
+        foreach (var hex in HairPresets)
+            HairPresetPanel.Children.Add(MakeSwatchButton(hex, c => SetHairColor(c)));
     }
 
     private static Button MakeSwatchButton(string hex, Action<Color> onClick)
@@ -155,6 +243,11 @@ public partial class MainWindow : Window
         QualitySlider.Value = Math.Clamp(s.JpegQuality, 50, 100);
         FolderBox.Text = s.OutputFolder;
         PrefixBox.Text = s.FilePrefix;
+        SetHairColor(ParseColor(s.HairColor, Color.FromRgb(0x3A, 0x2A, 0x20)));
+        GuidesCheck.IsChecked = s.Guides;
+        BgStretchCombo.SelectedIndex = Math.Max(0, Array.FindIndex(StretchModes, m => m.Mode.ToString() == s.BackgroundStretch));
+        if (!string.IsNullOrEmpty(s.BackgroundImage) && File.Exists(s.BackgroundImage)) LoadBackgroundImage(s.BackgroundImage, quiet: true);
+        ShowFigure(s.Figure ?? new FigureData());
     }
 
     private void SaveSettings()
@@ -174,6 +267,11 @@ public partial class MainWindow : Window
         s.JpegQuality = (int)QualitySlider.Value;
         s.OutputFolder = FolderBox.Text;
         s.FilePrefix = PrefixBox.Text;
+        s.HairColor = ToHex(_figure.HairColor);
+        s.Guides = GuidesCheck.IsChecked == true;
+        s.BackgroundImage = _bgImagePath;
+        s.BackgroundStretch = StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode.ToString();
+        s.Figure = _figure.GetFigure();
         s.Save();
     }
 
@@ -248,6 +346,7 @@ public partial class MainWindow : Window
         var f = PreviewFormatCombo.SelectedItem as AspectFormat;
         FrameInfo.Text = $"Vorschau: {f?.Name}  –  Rahmen entspricht dem Bildausschnitt";
         CameraChanged();
+        Dispatcher.BeginInvoke(DrawGuides, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void PreviewHost_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateFrameSize();
@@ -360,6 +459,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog(this) != true) return;
         var pose = _figure.GetPose();
         pose.Camera = _cam.ToData();
+        pose.Figure = _figure.GetFigure();
         pose.Save(dlg.FileName);
         StatusText.Text = $"Pose gespeichert: {dlg.FileName}";
     }
@@ -372,6 +472,7 @@ public partial class MainWindow : Window
         {
             var pose = PoseData.Load(dlg.FileName);
             PushUndo();
+            if (pose.Figure != null) ShowFigure(pose.Figure);
             _figure.SetPose(pose);
             if (pose.Camera != null) _cam.FromData(pose.Camera);
             PoseChanged();
@@ -398,10 +499,12 @@ public partial class MainWindow : Window
 
     private void CamFull_Click(object sender, RoutedEventArgs e)
     {
-        // Ganze Figur: Abstand so wählen, dass ca. 2,1 m Höhe ins Bild passen.
+        // Ganze Figur mit etwas Rand einpassen.
         var pel = _figure.PelvisWorld;
-        _cam.Target = new Point3D(pel.X, 0.92, pel.Z);
-        _cam.Distance = Math.Clamp(1.05 / Math.Tan(_cam.VerticalFov * Math.PI / 360), OrbitCamera.MinDistance, OrbitCamera.MaxDistance);
+        double min = _figure.ComputeMinY(), max = _figure.ComputeMaxY();
+        double half = (max - min) / 2 * 1.12;
+        _cam.Target = new Point3D(pel.X, (min + max) / 2, pel.Z);
+        _cam.Distance = Math.Clamp(half / Math.Tan(_cam.VerticalFov * Math.PI / 360), OrbitCamera.MinDistance, OrbitCamera.MaxDistance);
         _cam.Pitch = 5;
         CameraChanged();
     }
@@ -423,7 +526,7 @@ public partial class MainWindow : Window
         Frame.Background = new SolidColorBrush(c);
         BgSwatch.Background = new SolidColorBrush(c);
         BgHexBox.Text = ToHex(c);
-        if (refresh) RebuildFloor();
+        if (refresh) { RebuildFloor(); DrawGuides(); }
     }
 
     private void SetBodyColor(Color c)
@@ -453,6 +556,126 @@ public partial class MainWindow : Window
     private void PickBody_Click(object sender, RoutedEventArgs e)
     {
         if (PickColor(_figure.BodyColor) is { } c) SetBodyColor(c);
+    }
+
+    private void SetHairColor(Color c)
+    {
+        _figure.HairColor = c;
+        HairSwatch.Background = new SolidColorBrush(c);
+    }
+
+    private void PickHair_Click(object sender, RoutedEventArgs e)
+    {
+        if (PickColor(_figure.HairColor) is { } c) SetHairColor(c);
+    }
+
+    // =================================================================== Hintergrundbild
+
+    private Stretch CurrentStretch => StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode;
+
+    private void LoadBackgroundImage(string path, bool quiet = false)
+    {
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            bi.UriSource = new Uri(path);
+            bi.EndInit();
+            bi.Freeze();
+            _bgImage = bi;
+            _bgImagePath = path;
+            BgImage.Source = bi;
+            BgImage.Stretch = CurrentStretch;
+            BgImageText.Text = $"{Path.GetFileName(path)}  ({bi.PixelWidth}×{bi.PixelHeight})";
+            BgImageText.ToolTip = path;
+        }
+        catch (Exception ex)
+        {
+            if (!quiet)
+                MessageBox.Show(this, "Das Bild konnte nicht geladen werden:\n" + ex.Message, "Hintergrundbild", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void PickBgImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Filter = "Bilder (*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif)|*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff|Alle Dateien|*.*" };
+        if (dlg.ShowDialog(this) != true) return;
+        LoadBackgroundImage(dlg.FileName);
+        if (_bgImage != null && FloorPreviewCheck.IsChecked == true)
+            StatusText.Text = "Tipp: Für Hintergrundbilder „Boden + Raster“ ausschalten, der Schatten kann bleiben.";
+    }
+
+    private void RemoveBgImage_Click(object sender, RoutedEventArgs e)
+    {
+        _bgImage = null;
+        _bgImagePath = null;
+        BgImage.Source = null;
+        BgImageText.Text = "(kein Bild)";
+        BgImageText.ToolTip = null;
+    }
+
+    private void BgStretch_Changed(object sender, SelectionChangedEventArgs e) => BgImage.Stretch = CurrentStretch;
+
+    // =================================================================== Hilfslinien
+
+    private void Guides_Changed(object sender, RoutedEventArgs e) => DrawGuides();
+
+    /// <summary>Zeichnet für jedes angehakte Exportformat, das schmaler als die Vorschau ist, seinen
+    /// Bildausschnitt als gestrichelte Linien. (Die Bildhöhe ist bei allen Formaten gleich, nur die Breite ändert sich.)</summary>
+    private void DrawGuides()
+    {
+        if (!_ready) return;
+        GuideCanvas.Children.Clear();
+        if (GuidesCheck.IsChecked != true) return;
+        double W = View.ActualWidth, H = View.ActualHeight;
+        if (W < 10 || H < 10) return;
+        double lum = (0.299 * _background.R + 0.587 * _background.G + 0.114 * _background.B) / 255;
+        var color = lum > 0.5 ? Color.FromRgb(0xD0, 0x30, 0x30) : Color.FromRgb(0xFF, 0xC0, 0x40);
+        var brush = new SolidColorBrush(color);
+        var shade = new SolidColorBrush(Color.FromArgb(0x22, 0, 0, 0));
+        int cw = ParseInt(CustomWBox.Text, 1200), ch = ParseInt(CustomHBox.Text, 1600);
+        var preview = PreviewFormatCombo.SelectedItem as AspectFormat;
+
+        var guides = _exportFormats.Where(f => f.IsChecked && !ReferenceEquals(f.Format, preview))
+            .Select(f => (f.Format, Width: H * f.Format.Aspect(cw, ch)))
+            .Where(g => g.Width < W - 2)
+            .OrderBy(g => g.Width).ToList();
+        if (guides.Count == 0) return;
+
+        // Bereich außerhalb des schmalsten Formats leicht abdunkeln
+        double narrow = guides[0].Width;
+        AddRect(0, (W - narrow) / 2, shade);
+        AddRect(W - (W - narrow) / 2, (W - narrow) / 2, shade);
+
+        int i = 0;
+        foreach (var (format, w) in guides)
+        {
+            double x0 = (W - w) / 2, x1 = x0 + w;
+            foreach (var x in new[] { x0, x1 })
+                GuideCanvas.Children.Add(new System.Windows.Shapes.Line
+                {
+                    X1 = x, X2 = x, Y1 = 0, Y2 = H, Stroke = brush, StrokeThickness = 1.5,
+                    StrokeDashArray = new DoubleCollection { 6, 4 }
+                });
+            var label = new TextBlock
+            {
+                Text = format.IsCustom ? $"{cw}×{ch}" : format.Name.Split(' ')[0],
+                Foreground = brush, FontSize = 11, FontWeight = FontWeights.SemiBold
+            };
+            Canvas.SetLeft(label, x0 + 4);
+            Canvas.SetTop(label, 4 + i * 15);
+            GuideCanvas.Children.Add(label);
+            i++;
+        }
+
+        void AddRect(double x, double w, Brush b)
+        {
+            var r = new System.Windows.Shapes.Rectangle { Width = Math.Max(0, w), Height = H, Fill = b };
+            Canvas.SetLeft(r, x);
+            GuideCanvas.Children.Add(r);
+        }
     }
 
     private void BgHexBox_LostFocus(object sender, RoutedEventArgs e) => SetBackground(ParseColor(BgHexBox.Text, _background));
@@ -692,7 +915,9 @@ public partial class MainWindow : Window
         {
             Background = _background,
             Floor = FloorExportCheck.IsChecked == true,
-            Shadow = ShadowExportCheck.IsChecked == true
+            Shadow = ShadowExportCheck.IsChecked == true,
+            BackgroundImage = _bgImage,
+            BackgroundStretch = CurrentStretch
         };
         string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         string prefix = SafeFileName(PrefixBox.Text);
