@@ -53,7 +53,9 @@ public static class SceneFactory
     private static Color Lighten(Color c, int d) =>
         Color.FromRgb((byte)Math.Min(255, c.R + d), (byte)Math.Min(255, c.G + d), (byte)Math.Min(255, c.B + d));
 
-    public static Model3DGroup CreateFloor(SceneOptions o, Mannequin figure, OrbitCamera cam)
+    public static Model3DGroup CreateFloor(SceneOptions o, Mannequin figure, OrbitCamera cam) => CreateFloor(o, new[] { figure }, cam);
+
+    public static Model3DGroup CreateFloor(SceneOptions o, IReadOnlyList<Mannequin> figures, OrbitCamera cam)
     {
         var g = new Model3DGroup();
         bool hasSet = o.Set.Type != SetType.None;
@@ -80,7 +82,6 @@ public static class SceneFactory
         }
         if (o.Shadow)
         {
-            var pelvis = figure.PelvisWorld;
             double blob = 1.0;
             if (o.Light.CastShadow)
             {
@@ -88,43 +89,86 @@ public static class SceneFactory
                 var receivers = hasSet ? SetBuilder.Get(o.Set).Receivers : new List<ShadowReceiver> { ShadowReceiver.Ground(0) };
                 foreach (var r in receivers)
                 {
-                    var cast = ShadowCaster.Create(figure, from, o.Light.ShadowStrength, o.Light.Softness, o.ShadowResolution, r);
+                    var cast = ShadowCaster.Create(figures, from, o.Light.ShadowStrength, o.Light.Softness, o.ShadowResolution, r);
                     if (cast != null) g.Children.Add(cast);
                 }
                 blob = 0.45; // nur noch leichter Kontaktschatten unter der Figur
             }
-            var rg = new RadialGradientBrush();
-            rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x70, 0, 0, 0), 0));
-            rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x30, 0, 0, 0), 0.55));
-            rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0, 0, 0), 1));
-            rg.Opacity = blob;
-            var mat = new DiffuseMaterial(rg);
-            g.Children.Add(new GeometryModel3D(MeshFactory.FloorQuad(pelvis.X, pelvis.Z, 0.45, 0.004), mat) { BackMaterial = mat });
+            foreach (var fig in figures)
+            {
+                var pelvis = fig.PelvisWorld;
+                var rg = new RadialGradientBrush();
+                rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x70, 0, 0, 0), 0));
+                rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x30, 0, 0, 0), 0.55));
+                rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0, 0, 0), 1));
+                rg.Opacity = blob;
+                var mat = new DiffuseMaterial(rg);
+                g.Children.Add(new GeometryModel3D(MeshFactory.FloorQuad(pelvis.X, pelvis.Z, 0.45, 0.004), mat) { BackMaterial = mat });
+            }
         }
         return g;
     }
 
-    /// <summary>Rendert die Szene offscreen in der Zielauflösung (mit 2x-Supersampling für glatte Kanten).</summary>
-    public static BitmapSource Render(Mannequin figure, OrbitCamera cam, SceneOptions o, int width, int height)
-    {
-        int ss = Math.Max(width, height) <= 4000 ? 2 : 1;
-        int rw = width * ss, rh = height * ss;
+    public static BitmapSource Render(Mannequin figure, OrbitCamera cam, SceneOptions o, int width, int height) =>
+        Render(new[] { figure }, cam, o, width, height);
 
+    /// <summary>Rendert die Szene offscreen in der Zielauflösung (mit 2x-Supersampling für glatte Kanten).</summary>
+    public static BitmapSource Render(IReadOnlyList<Mannequin> figures, OrbitCamera cam, SceneOptions o, int width, int height)
+    {
         var scene = new Model3DGroup();
         scene.Children.Add(CreateLights(cam, o.Light));
         var set = o.Set.Type != SetType.None ? SetBuilder.Get(o.Set) : null;
         if (set != null) scene.Children.Add(set.Model);
-        if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figure, cam));
-        SelfShadow.Apply(figure, cam, o.Light);
-        scene.Children.Add(figure.CreateSnapshot());
+        if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figures, cam));
+        SelfShadow.Apply(figures, cam, o.Light);
+        foreach (var fig in figures) scene.Children.Add(fig.CreateSnapshot());
 
-        var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };
-        vp.Children.Add(new ModelVisual3D { Content = scene });
         Brush back = new SolidColorBrush(o.Background);
         if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;
+        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height);
+    }
+
+    // ================================================================= ControlNet
+
+    /// <summary>Farben je Figur für die ControlNet-Bilder (kräftig, gut unterscheidbar – wie im Trainingsmaterial).</summary>
+    public static readonly Color[] FigurePalette =
+    {
+        Color.FromRgb(0x9E, 0xA6, 0xF2), Color.FromRgb(0xF2, 0xAE, 0x9C), Color.FromRgb(0xB3, 0xAA, 0x22), Color.FromRgb(0x1E, 0x8F, 0xC0),
+        Color.FromRgb(0x8F, 0xD0, 0x7A), Color.FromRgb(0xE0, 0x7A, 0xB8), Color.FromRgb(0xF0, 0xC2, 0x4A), Color.FromRgb(0x7A, 0x5A, 0xD0),
+    };
+
+    public enum ControlMode { Pose3D, Regions }
+
+    /// <summary>ControlNet-Eingabebild: Figuren einfarbig (je Figur eigene Farbe) auf Schwarz.
+    /// Pose3D = glänzend schattiert (für anima_3dpose), Regions = flache Farbflächen (für anima_regional).
+    /// Ohne Boden, Kulisse, Schatten, Haare und Objekte.</summary>
+    public static BitmapSource RenderControl(IReadOnlyList<Mannequin> figures, OrbitCamera cam, ControlMode mode, int width, int height,
+        bool includeProps = false)
+    {
+        var scene = new Model3DGroup();
+        if (mode == ControlMode.Pose3D)
+        {
+            // Studiolicht relativ zur Kamera: Hauptlicht oben links, Aufheller, Kante – weich und gleichmäßig
+            var look = cam.LookDirection; var right = cam.Right; var up = cam.Up;
+            scene.Children.Add(new AmbientLight(Color.FromRgb(0x46, 0x46, 0x46)));
+            scene.Children.Add(new DirectionalLight(Color.FromRgb(0xC8, 0xC8, 0xC8), look + right * 0.55 - up * 0.75));
+            scene.Children.Add(new DirectionalLight(Color.FromRgb(0x50, 0x50, 0x50), look - right * 0.8 + up * 0.2));
+            scene.Children.Add(new DirectionalLight(Color.FromRgb(0x38, 0x38, 0x38), -look - up * 0.3));
+        }
+        for (int i = 0; i < figures.Count; i++)
+            scene.Children.Add(figures[i].CreateControlSnapshot(FigurePalette[i % FigurePalette.Length], mode == ControlMode.Regions, includeProps));
+        return RenderScene(scene, cam, Brushes.Black, null, Stretch.None, width, height);
+    }
+
+    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height)
+    {
+        int ss = Math.Max(width, height) <= 4000 ? 2 : 1;
+        int rw = width * ss, rh = height * ss;
+        var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };
+        vp.Children.Add(new ModelVisual3D { Content = scene });
         var root = new Grid { Width = rw, Height = rh, Background = back };
-        if (o.BackgroundImage != null)
-            root.Children.Add(new Image { Source = o.BackgroundImage, Stretch = o.BackgroundStretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        if (image != null)
+            root.Children.Add(new Image { Source = image, Stretch = stretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         root.Children.Add(vp);
         root.Measure(new Size(rw, rh));
         root.Arrange(new Rect(0, 0, rw, rh));
@@ -143,7 +187,6 @@ public static class SceneFactory
         small.Freeze();
         return small;
     }
-
     public static void SavePng(BitmapSource bmp, string path)
     {
         // In nicht vormultipliziertes BGRA wandeln; fast deckende Pixel (Rundung beim Verkleinern) voll deckend machen

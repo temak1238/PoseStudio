@@ -16,7 +16,10 @@ namespace PoseStudio;
 
 public partial class MainWindow : Window
 {
-    private readonly Mannequin _figure = new();
+    /// <summary>Aktive Figur (wird bearbeitet). Alle Figuren der Szene stehen in _figures.</summary>
+    private Mannequin _figure = new();
+    private readonly List<Mannequin> _figures = new();
+    private readonly Model3DGroup _figuresGroup = new();
     private readonly OrbitCamera _cam = new();
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly Model3DGroup _scene = new();
@@ -71,7 +74,9 @@ public partial class MainWindow : Window
         _scene.Children.Add(_lights);
         _scene.Children.Add(_setGroup);
         _scene.Children.Add(_floor);
-        _scene.Children.Add(_figure.Group);
+        _figures.Add(_figure);
+        _figuresGroup.Children.Add(_figure.Group);
+        _scene.Children.Add(_figuresGroup);
         SceneVisual.Content = _scene;
 
         // Vorlagen nach Kategorie gruppiert (Reihenfolge der Kategorien wie im ersten Auftreten)
@@ -97,10 +102,14 @@ public partial class MainWindow : Window
         LightItems.ItemsSource = _lightAxes;
         _scene.Children.Add(_lightMarker);
         BuildColorPresets();
-        LoadSettings();
+        bool restored = LoadSettings();
 
-        _figure.SetPose(Presets.All[0].ToPose());
-        _figure.GroundToFloor();
+        if (!restored)
+        {
+            _figure.SetPose(Presets.All[0].ToPose());
+            _figure.GroundToFloor();
+        }
+        RefreshFigureList();
         _ready = true;
         foreach (var f in _exportFormats) f.PropertyChanged += (_, _) => DrawGuides();
 
@@ -158,6 +167,127 @@ public partial class MainWindow : Window
         Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
         Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
         Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+    }
+
+    // =================================================================== Mehrere Figuren
+
+    private sealed record FigureItem(string Name, Brush Swatch);
+
+    private Mannequin? OwnerOf(GeometryModel3D g) =>
+        _figures.FirstOrDefault(fg => fg.TryGetJoint(g, out _) || fg.IsPropPart(g));
+
+    private static PoseData FigureToData(Mannequin m)
+    {
+        var p = m.GetPose();
+        p.Figure = m.GetFigure();
+        p.BodyColor = ToHex(m.BodyColor);
+        p.HairColor = ToHex(m.HairColor);
+        return p;
+    }
+
+    private static void DataToFigure(Mannequin m, PoseData d)
+    {
+        if (d.Figure != null) m.SetFigure(d.Figure.Style, d.Figure.Hair, d.Figure.Proportions);
+        if (d.BodyColor != null) m.BodyColor = ParseColor(d.BodyColor, m.BodyColor);
+        if (d.HairColor != null) m.HairColor = ParseColor(d.HairColor, m.HairColor);
+        m.SetPose(d);
+    }
+
+    /// <summary>Szene aus gespeicherten Figuren aufbauen (Einstellungen oder Pose-Datei).</summary>
+    private void RestoreFigures(List<PoseData> list, int active)
+    {
+        _figure.Select(null);
+        _figure.SelectProp(false);
+        _figures.Clear();
+        _figuresGroup.Children.Clear();
+        foreach (var d in list)
+        {
+            var m = new Mannequin();
+            DataToFigure(m, d);
+            _figures.Add(m);
+            _figuresGroup.Children.Add(m.Group);
+        }
+        _figure = _figures[Math.Clamp(active, 0, _figures.Count - 1)];
+        ActivateFigure(_figures.IndexOf(_figure));
+    }
+
+    private void RefreshFigureList()
+    {
+        _suppressFigureList = true;
+        FigureList.ItemsSource = _figures.Select((fg, i) =>
+        {
+            string style = fg.Style switch { FigureStyle.Male => "Mann", FigureStyle.Female => "Frau", _ => "Gliederpuppe" };
+            string prop = fg.Prop.Active ? " + Objekt" : "";
+            return new FigureItem($"Figur {i + 1} – {style}{prop}", new SolidColorBrush(SceneFactory.FigurePalette[i % SceneFactory.FigurePalette.Length]));
+        }).ToList();
+        FigureList.SelectedIndex = _figures.IndexOf(_figure);
+        _suppressFigureList = false;
+    }
+
+    private bool _suppressFigureList;
+
+    /// <summary>Figur zur aktiven machen: alle Bedienelemente zeigen danach deren Werte.</summary>
+    private void ActivateFigure(int index)
+    {
+        if (index < 0 || index >= _figures.Count) return;
+        _figure.Select(null);
+        _figure.SelectProp(false);
+        _figure = _figures[index];
+        JointList.ItemsSource = _figure.Joints;
+        _axes.Clear();
+        SelectedJointText.Text = "– Gelenk anklicken –";
+        ShowFigure(_figure.GetFigure());
+        SetBodyColor(_figure.BodyColor);
+        SetHairColor(_figure.HairColor);
+        ShowProp();
+        foreach (var a in _positionAxes) a.Refresh();
+        _undo.Clear(); // Rückgängig gilt je Figur
+        RefreshFigureList();
+        StatusText.Text = $"Figur {index + 1} ausgewählt.";
+    }
+
+    private void FigureList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressFigureList || FigureList.SelectedIndex < 0) return;
+        ActivateFigure(FigureList.SelectedIndex);
+    }
+
+    private void AddFigureFrom(PoseData data)
+    {
+        var m = new Mannequin();
+        DataToFigure(m, data);
+        // rechts neben die bisherigen Figuren stellen
+        double maxX = _figures.Max(fg => fg.PelvisWorld.X);
+        m.RootPosition = new Vector3D(maxX + 0.75, m.RootPosition.Y, _figure.RootPosition.Z);
+        m.GroundToFloor();
+        _figures.Add(m);
+        _figuresGroup.Children.Add(m.Group);
+        ActivateFigure(_figures.Count - 1);
+        PoseChanged();
+    }
+
+    private void AddFigure_Click(object sender, RoutedEventArgs e)
+    {
+        var d = Presets.All[0].ToPose();
+        d.Figure = _figure.GetFigure();
+        d.BodyColor = ToHex(_figure.BodyColor);
+        d.HairColor = ToHex(_figure.HairColor);
+        d.Prop = new PropSettings();
+        AddFigureFrom(d);
+    }
+
+    private void DuplicateFigure_Click(object sender, RoutedEventArgs e) => AddFigureFrom(FigureToData(_figure));
+
+    private void RemoveFigure_Click(object sender, RoutedEventArgs e)
+    {
+        if (_figures.Count <= 1) { StatusText.Text = "Die letzte Figur kann nicht entfernt werden."; return; }
+        int i = _figures.IndexOf(_figure);
+        _figure.Select(null);
+        _figuresGroup.Children.Remove(_figure.Group);
+        _figures.RemoveAt(i);
+        _figure = _figures[Math.Max(0, i - 1)];
+        ActivateFigure(_figures.IndexOf(_figure));
+        PoseChanged();
     }
 
     // =================================================================== Objekt in der Hand
@@ -256,6 +386,7 @@ public partial class MainWindow : Window
         _figure.SetProp(_propUi);
         PoseChanged();
         ShowProp();
+        RefreshFigureList();
     }
 
     private void SelectPropInView()
@@ -471,6 +602,7 @@ public partial class MainWindow : Window
         _figure.SetFigure(CurrentStyle, HairCheck.IsChecked == true, _props);
         HairCheck.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
         PoseChanged();
+        if (_ready) RefreshFigureList();
     }
 
     private void ShowFigure(FigureData fd)
@@ -539,7 +671,8 @@ public partial class MainWindow : Window
 
     // =================================================================== Einstellungen
 
-    private void LoadSettings()
+    /// <summary>Lädt die Einstellungen; true, wenn dabei Figuren samt Posen wiederhergestellt wurden.</summary>
+    private bool LoadSettings()
     {
         var s = _settings;
         SetBackground(ParseColor(s.Background, Color.FromRgb(0xE6, 0xE6, 0xE6)), refresh: false);
@@ -578,6 +711,15 @@ public partial class MainWindow : Window
         ShowSet(s.Set ?? new SetSettings());
         _figure.SetProp(s.Prop ?? new PropSettings());
         ShowProp();
+        Cn3dCheck.IsChecked = s.ControlNet3D;
+        CnRegionCheck.IsChecked = s.ControlNetRegions;
+        CnOnlyCheck.IsChecked = s.ControlNetOnly;
+        if (s.Figures is { Count: > 0 })
+        {
+            try { RestoreFigures(s.Figures, s.ActiveFigure); return true; }
+            catch { /* defekte Szene ignorieren */ }
+        }
+        return false;
     }
 
     private void SaveSettings()
@@ -607,6 +749,11 @@ public partial class MainWindow : Window
         s.Light = _light.Clone();
         s.Set = _set.Clone();
         s.Prop = _figure.Prop;
+        s.Figures = _figures.Select(FigureToData).ToList();
+        s.ActiveFigure = _figures.IndexOf(_figure);
+        s.ControlNet3D = Cn3dCheck.IsChecked == true;
+        s.ControlNetRegions = CnRegionCheck.IsChecked == true;
+        s.ControlNetOnly = CnOnlyCheck.IsChecked == true;
         s.Save();
     }
 
@@ -654,7 +801,7 @@ public partial class MainWindow : Window
 
     private void RebuildFloorNow()
     {
-        SelfShadow.Apply(_figure, _cam, _light);
+        SelfShadow.Apply(_figures, _cam, _light);
         _floor.Children.Clear();
         var o = new SceneOptions
         {
@@ -665,7 +812,7 @@ public partial class MainWindow : Window
             Set = _set,
             ShadowResolution = 640
         };
-        if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figure, _cam));
+        if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figures, _cam));
     }
 
     /// <summary>Nach jeder Änderung an der Pose: ggf. auf den Boden stellen, Schatten nachführen, Regler aktualisieren.</summary>
@@ -817,11 +964,12 @@ public partial class MainWindow : Window
     {
         var dlg = new SaveFileDialog { Filter = "Pose (*.pose.json)|*.pose.json|JSON (*.json)|*.json", FileName = "pose.pose.json" };
         if (dlg.ShowDialog(this) != true) return;
-        var pose = _figure.GetPose();
+        var pose = FigureToData(_figure);
         pose.Camera = _cam.ToData();
-        pose.Figure = _figure.GetFigure();
         pose.Light = _light.Clone();
         pose.Set = _set.Clone();
+        pose.Figures = _figures.Select(FigureToData).ToList();
+        pose.ActiveFigure = _figures.IndexOf(_figure);
         pose.Save(dlg.FileName);
         StatusText.Text = $"Pose gespeichert: {dlg.FileName}";
     }
@@ -833,12 +981,16 @@ public partial class MainWindow : Window
         try
         {
             var pose = PoseData.Load(dlg.FileName);
-            PushUndo();
-            if (pose.Figure != null) ShowFigure(pose.Figure);
             if (pose.Light != null) ShowLight(pose.Light);
             if (pose.Set != null) ShowSet(pose.Set);
-            ShowProp();
-            _figure.SetPose(pose);
+            if (pose.Figures is { Count: > 0 })
+                RestoreFigures(pose.Figures, pose.ActiveFigure);   // ganze Szene
+            else
+            {
+                PushUndo();
+                DataToFigure(_figure, pose);                       // ältere Datei: eine Figur
+                ActivateFigure(_figures.IndexOf(_figure));
+            }
             if (pose.Camera != null) _cam.FromData(pose.Camera);
             PoseChanged();
             CameraChanged();
@@ -866,7 +1018,8 @@ public partial class MainWindow : Window
     {
         // Ganze Figur mit etwas Rand einpassen.
         var pel = _figure.PelvisWorld;
-        double min = _figure.ComputeMinY(), max = _figure.ComputeMaxY();
+        double min = _figures.Min(fg => fg.ComputeMinY()), max = _figures.Max(fg => fg.ComputeMaxY());
+        pel = new Point3D(_figures.Average(fg => fg.PelvisWorld.X), 0, _figures.Average(fg => fg.PelvisWorld.Z));
         double half = (max - min) / 2 * 1.12;
         _cam.Target = new Point3D(pel.X, (min + max) / 2, pel.Z);
         _cam.Distance = Math.Clamp(half / Math.Tan(_cam.VerticalFov * Math.PI / 360), OrbitCamera.MinDistance, OrbitCamera.MaxDistance);
@@ -1126,7 +1279,7 @@ public partial class MainWindow : Window
         GeometryModel3D? found = null;
         VisualTreeHelper.HitTest(View, null, r =>
         {
-            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && (_figure.TryGetJoint(g, out _) || _figure.IsPropPart(g)))
+            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && OwnerOf(g) != null)
             {
                 found = g;
                 return HitTestResultBehavior.Stop;
@@ -1142,6 +1295,9 @@ public partial class MainWindow : Window
         _leftDown = true;
         _dragging = false;
         _pressedPart = HitPart(_mouseStart);
+        // Klick auf eine andere Figur macht diese zur aktiven Figur
+        if (_pressedPart != null && OwnerOf(_pressedPart) is { } owner && !ReferenceEquals(owner, _figure))
+            ActivateFigure(_figures.IndexOf(owner));
         _lightDrag = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
         bool mod = !_lightDrag && (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         _jointDrag = false;
@@ -1388,12 +1544,27 @@ public partial class MainWindow : Window
             foreach (var f in formats)
             {
                 var (w, h) = f.PixelSize(longSide, cw, ch);
-                var bmp = SceneFactory.Render(_figure, _cam, opts, w, h);
                 string tag = f.IsCustom || f.Fixed ? $"{w}x{h}" : f.Key;
-                string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}.{(png ? "png" : "jpg")}");
-                if (png) SceneFactory.SavePng(bmp, path);
-                else SceneFactory.SaveJpeg(bmp, path, quality);
-                written.Add(Path.GetFileName(path));
+                if (CnOnlyCheck.IsChecked != true || (Cn3dCheck.IsChecked != true && CnRegionCheck.IsChecked != true))
+                {
+                    var bmp = SceneFactory.Render(_figures, _cam, opts, w, h);
+                    string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}.{(png ? "png" : "jpg")}");
+                    if (png) SceneFactory.SavePng(bmp, path);
+                    else SceneFactory.SaveJpeg(bmp, path, quality);
+                    written.Add(Path.GetFileName(path));
+                }
+                if (Cn3dCheck.IsChecked == true)
+                {
+                    string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}_cn3dpose.png");
+                    SceneFactory.SavePng(SceneFactory.RenderControl(_figures, _cam, SceneFactory.ControlMode.Pose3D, w, h), path);
+                    written.Add(Path.GetFileName(path));
+                }
+                if (CnRegionCheck.IsChecked == true)
+                {
+                    string path = Path.Combine(folder, $"{prefix}_{stamp}_{tag}_cnregions.png");
+                    SceneFactory.SavePng(SceneFactory.RenderControl(_figures, _cam, SceneFactory.ControlMode.Regions, w, h), path);
+                    written.Add(Path.GetFileName(path));
+                }
             }
             StatusText.Text = $"{written.Count} Datei(en) gespeichert in {folder}: {string.Join(", ", written)}";
         }

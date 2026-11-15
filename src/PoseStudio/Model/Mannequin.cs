@@ -38,8 +38,24 @@ public sealed class Joint
     public override string ToString() => Name;
 }
 
-internal sealed record Part(GeometryModel3D Model, Joint Joint, MaterialKind Kind, bool Uniform);
+internal sealed record Part(GeometryModel3D Model, Joint Joint, MaterialKind Kind, bool Uniform)
+{
+    /// <summary>Weiche Übergänge an den Gelenken (nur menschliche Figuren): Ausgangsform und Gewichte je Punkt.</summary>
+    public SkinData? Skin { get; set; }
+    /// <summary>Ursprüngliche Punkte/Normalen im Gelenk-System (das Mesh selbst enthält nach dem Skinning Weltkoordinaten).</summary>
+    public Point3D[] LocalPos { get; init; } = Array.Empty<Point3D>();
+    public Vector3D[] LocalNrm { get; init; } = Array.Empty<Vector3D>();
+}
 
+internal sealed class SkinData
+{
+    public required Point3D[] Rest { get; init; }      // Punkte im System des Heimatgelenks (unskaliert)
+    public required Vector3D[] RestN { get; init; }
+    public required Joint[] Chain { get; init; }        // Gelenkkette entlang des Knochens
+    public required Vector3D[] Cum { get; init; }       // Lage jedes Kettengelenks im Heimat-System (unskaliert)
+    public required int[] K { get; init; }              // erstes beteiligtes Gelenk je Punkt
+    public required double[] T { get; init; }           // Anteil des nächsten Gelenks (0..1)
+}
 /// <summary>Posierbare Figur (Gliederpuppe oder Mensch). Koordinaten in Metern, Y nach oben,
 /// Figur schaut nach +Z. Links der Figur = +X.</summary>
 public sealed class Mannequin
@@ -231,6 +247,7 @@ public sealed class Mannequin
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
         else builder.BuildHuman(Style == FigureStyle.Female, Hair, gripL, gripR);
         foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
+        _skinDirty = true;
         Select(sel);
         SelectProp(_propSelected);
     }
@@ -248,7 +265,7 @@ public sealed class Mannequin
         m.TextureCoordinates = tc;
         var gm = new GeometryModel3D(m, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
         if (kind == MaterialKind.Hair) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
-        var p = new Part(gm, j, kind, uniform);
+        var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray() };
         j.Parts.Add(p);
         _parts[gm] = p;
         Group.Children.Add(gm);
@@ -308,6 +325,7 @@ public sealed class Mannequin
         _ikEnabled = true;
         SetPoseValues(pose);
         _globalScale = natural > 0.1 ? p.HeightCm / 100 / natural : 1;
+        _skinDirty = true;
     }
 
     // ------------------------------------------------------------------ Kinematik
@@ -334,10 +352,12 @@ public sealed class Mannequin
             SolveProp();
             ComputeWorlds();
         }
+        if (_skinDirty) BuildSkin();
         foreach (var j in Joints)
         {
             foreach (var p in j.Parts)
             {
+                if (p.Skin != null) { ApplySkin(p, j); continue; }
                 var sc = p.Uniform ? new Vector3D(j.UniformScale, j.UniformScale, j.UniformScale) : j.SegScale;
                 var m = Matrix3D.Identity;
                 m.Scale(sc);
@@ -348,6 +368,97 @@ public sealed class Mannequin
         foreach (var p in _propJoint.Parts) ((MatrixTransform3D)p.Model.Transform).Matrix = pw;
     }
 
+    // ------------------------------------------------------------------ Weiche Gelenkübergänge (Skinning)
+
+    private bool _skinDirty = true;
+
+    /// <summary>Kind-Gelenk entlang des Knochens (für den Übergang am Segmentende).</summary>
+    private Joint? BoneChild(Joint j) => j.Id switch
+    {
+        "pelvis" => this["spine"], "spine" => this["chest"], "chest" => this["neck"], "neck" => this["head"],
+        _ when j.Id.StartsWith("shoulder") => this["elbow" + j.Id[^2..]],
+        _ when j.Id.StartsWith("elbow") => this["wrist" + j.Id[^2..]],
+        _ when j.Id.StartsWith("hip") => this["knee" + j.Id[^2..]],
+        _ when j.Id.StartsWith("knee") => this["ankle" + j.Id[^2..]],
+        _ => null
+    };
+
+    /// <summary>Gewichte für die weichen Übergänge: Jeder Punkt gehört entlang des Knochens zu einem Kettengelenk;
+    /// in einer Zone um jedes Gelenk wird zwischen beiden Gelenken überblendet. Durchgehende Formen (Bein, Arm, Rumpf)
+    /// biegen sich so ohne Naht und ohne Knick.</summary>
+    private void BuildSkin()
+    {
+        _skinDirty = false;
+        foreach (var j in Joints)
+            foreach (var p in j.Parts)
+            {
+                p.Skin = null;
+                if (Style == FigureStyle.Mannequin || p.Uniform) continue; // Gliederpuppe bleibt bewusst gegliedert
+                var chain = new List<Joint>(); var cum = new List<Vector3D>();
+                if (j.Parent != null) { chain.Add(j.Parent); cum.Add(-j.BaseOffset); }
+                chain.Add(j); cum.Add(new Vector3D());
+                var acc = new Vector3D();
+                for (var c = BoneChild(j); c != null; c = BoneChild(c)) { acc += c.BaseOffset; chain.Add(c); cum.Add(acc); }
+                var first = BoneChild(j);
+                var dir = first != null ? first.BaseOffset : new Vector3D(0, 1, 0);
+                dir.Normalize();
+                double zone = j.Id is "pelvis" or "spine" or "chest" or "neck" ? 0.035 : 0.06;
+                var a = cum.Select(v => Vector3D.DotProduct(v, dir)).ToArray();
+
+                int n = p.LocalPos.Length;
+                var kk = new int[n]; var tt = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    double x = Vector3D.DotProduct((Vector3D)p.LocalPos[i], dir);
+                    double ci = 0;
+                    for (int b = 1; b < a.Length; b++)
+                    {
+                        double s = Math.Clamp((x - a[b]) / (2 * zone) + 0.5, 0, 1);
+                        ci += s * s * (3 - 2 * s);
+                    }
+                    int k = Math.Min((int)Math.Floor(ci), chain.Count - 1);
+                    kk[i] = k;
+                    tt[i] = k >= chain.Count - 1 ? 0 : ci - k;
+                }
+                p.Skin = new SkinData { Rest = p.LocalPos, RestN = p.LocalNrm, Chain = chain.ToArray(), Cum = cum.ToArray(), K = kk, T = tt };
+                ((MatrixTransform3D)p.Model.Transform).Matrix = Matrix3D.Identity;
+            }
+    }
+
+    /// <summary>Linear Blend Skinning: Punkt im System des jeweiligen Kettengelenks (mit dessen Proportionen) auswerten
+    /// und zwischen den beiden beteiligten Gelenken überblenden.</summary>
+    private static void ApplySkin(Part p, Joint j)
+    {
+        var s = p.Skin!;
+        var mesh = (MeshGeometry3D)p.Model.Geometry;
+        int n = s.Rest.Length;
+        var pos = new Point3DCollection(n);
+        var nrm = new Vector3DCollection(n);
+        for (int i = 0; i < n; i++)
+        {
+            int k = s.K[i]; double t = s.T[i];
+            var r = s.Rest[i]; var rn = s.RestN[i];
+            var (pk, nk) = Eval(s.Chain[k], r - s.Cum[k], rn);
+            if (t > 0)
+            {
+                var (p2, n2) = Eval(s.Chain[k + 1], r - s.Cum[k + 1], rn);
+                pk = (Point3D)((Vector3D)pk * (1 - t) + (Vector3D)p2 * t);
+                nk = nk * (1 - t) + n2 * t;
+            }
+            if (nk.LengthSquared > 0) nk.Normalize();
+            pos.Add(pk); nrm.Add(nk);
+        }
+        mesh.Positions = pos;
+        mesh.Normals = nrm;
+
+        static (Point3D, Vector3D) Eval(Joint jt, Point3D local, Vector3D n)
+        {
+            var sc = jt.SegScale;
+            var q = new Point3D(local.X * sc.X, local.Y * sc.Y, local.Z * sc.Z);
+            var nq = new Vector3D(n.X / sc.X, n.Y / sc.Y, n.Z / sc.Z);
+            return (jt.World.Transform(q), jt.World.Transform(nq));
+        }
+    }
     private void ComputeWorlds()
     {
         foreach (var j in Joints)
@@ -563,6 +674,37 @@ public sealed class Mannequin
         Select(sel);
         SelectProp(propSel);
         return clone;
+    }
+
+    /// <summary>Einfarbige Kopie für ControlNet-Bilder: flat = nur Farbfläche (Regionen-Karte),
+    /// sonst glänzend schattiert. Haare/Augenbrauen fallen weg (glatter Kopf wie im Trainingsmaterial).</summary>
+    public Model3DGroup CreateControlSnapshot(Color color, bool flat, bool includeProps)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        var mg = new MaterialGroup();
+        if (flat)
+        {
+            mg.Children.Add(new DiffuseMaterial(Brushes.Black));
+            mg.Children.Add(new EmissiveMaterial(brush));
+        }
+        else
+        {
+            mg.Children.Add(new DiffuseMaterial(brush));
+            mg.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), 22));
+        }
+        mg.Freeze();
+        var group = new Model3DGroup();
+        foreach (var p in _parts.Values)
+        {
+            if (p.Kind == MaterialKind.Hair) continue;
+            if (ReferenceEquals(p.Joint, _propJoint) && !includeProps) continue;
+            group.Children.Add(new GeometryModel3D(p.Model.Geometry.CloneCurrentValue(), mg)
+            {
+                Transform = new MatrixTransform3D(((MatrixTransform3D)p.Model.Transform).Matrix)
+            });
+        }
+        return group;
     }
 
     // ------------------------------------------------------------------ Posen

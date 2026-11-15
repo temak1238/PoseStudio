@@ -29,6 +29,11 @@ public sealed class AppSettings
     public PoseStudio.Rendering.LightSettings Light { get; set; } = new();
     public PoseStudio.Rendering.SetSettings Set { get; set; } = new();
     public PoseStudio.Model.PropSettings Prop { get; set; } = new();
+    public List<PoseStudio.Model.PoseData>? Figures { get; set; }
+    public int ActiveFigure { get; set; }
+    public bool ControlNet3D { get; set; } = true;
+    public bool ControlNetRegions { get; set; }
+    public bool ControlNetOnly { get; set; }
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

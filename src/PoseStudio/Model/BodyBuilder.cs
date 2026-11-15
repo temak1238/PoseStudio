@@ -51,43 +51,31 @@ internal sealed class BodyBuilder
         double hip = female ? 1.1 : 1.0; // Becken breiter
         double sh = female ? 0.92 : 1.0; // Brustkorb schmaler
 
-        // ---- Becken
+        // ---- Rumpf als eine durchgehende Form von Schritt bis Hals (im Becken-System).
+        // Sie wird über die Kette Becken → Bauch → Brust → Hals → Kopf weich gebogen (Skinning in Mannequin).
+        double waist = female ? 0.86 : 1.0;
         _add("pelvis", Loft(
             (-0.13, 0.095 * hip, 0.07, 0.0),
             (-0.07, 0.155 * hip, 0.095, -0.005),
             (0.00, 0.158 * hip, 0.096, 0.0),
             (0.06, 0.145 * (female ? 1.02 : 1), 0.088, 0.005),
-            (0.11, 0.118 * (female ? 0.92 : 1), 0.078, 0.005)), MaterialKind.Body);
+            (0.12, 0.135 * (female ? 0.9 : 1), 0.085, 0.008),
+            (0.19, 0.13 * waist, 0.084, 0.008),
+            (0.25, 0.138 * (female ? 0.9 : 1), 0.088, 0.006),
+            (0.31, 0.155 * sh, 0.10, 0.005),
+            (0.40, 0.17 * sh, 0.105, 0.0),
+            (0.47, 0.18 * sh, 0.098, -0.005),
+            (0.51, 0.175 * sh, 0.085, -0.01),
+            (0.54, 0.14 * sh, 0.068, -0.01),
+            (0.565, 0.08 * sh, 0.056, -0.006),
+            (0.59, 0.052 * w, 0.05 * w, 0.0),
+            (0.65, 0.046 * w, 0.046 * w, 0.006),
+            (0.69, 0.045 * w, 0.045 * w, 0.012)), MaterialKind.Body);
         foreach (var s in new[] { 1, -1 })
             _add("pelvis", MeshFactory.Ellipsoid(P(s * 0.068 * hip, -0.06, -0.045), 0.078 * hip, 0.085, 0.07 * (female ? 1.08 : 1)), MaterialKind.Body);
-
-        // ---- Bauch (Taille)
-        double waist = female ? 0.86 : 1.0;
-        _add("spine", Loft(
-            (-0.03, 0.14 * (female ? 0.95 : 1), 0.088, 0.005),
-            (0.06, 0.13 * waist, 0.084, 0.008),
-            (0.14, 0.135 * waist, 0.086, 0.005),
-            (0.20, 0.12 * waist, 0.08, 0.0)), MaterialKind.Body);
-
-        // ---- Brustkorb, zum Hals hin verjüngt
-        _add("chest", Loft(
-            (-0.03, 0.125 * waist, 0.082, 0.0),
-            (0.06, 0.155 * sh, 0.10, 0.005),
-            (0.15, 0.17 * sh, 0.105, 0.0),
-            (0.22, 0.18 * sh, 0.098, -0.005),
-            (0.26, 0.175 * sh, 0.085, -0.01),
-            (0.29, 0.14 * sh, 0.068, -0.01),
-            (0.31, 0.07 * sh, 0.05, -0.01)), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
-                _add("chest", MeshFactory.Ellipsoid(P(s * 0.068, 0.122, 0.07), 0.064, 0.07, 0.055), MaterialKind.Body);
-
-        // ---- Hals
-        _add("neck", Loft(
-            (-0.03, 0.052 * w, 0.05 * w, 0.0),
-            (0.05, 0.046 * w, 0.046 * w, 0.005),
-            (0.11, 0.046 * w, 0.046 * w, 0.01)), MaterialKind.Body);
-
+                _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
         BuildHead(female, hair);
 
         foreach (var s in new[] { 1, -1 })
@@ -95,42 +83,31 @@ internal sealed class BodyBuilder
             string sfx = s > 0 ? "_l" : "_r";
 
             // ---- Oberarm mit Schulter
-            _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w, 0.065, 0.054 * w), MaterialKind.Body, true);
+            _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w, 0.065, 0.054 * w), MaterialKind.Body);
+            // Ober- und Unterarm als eine Form (Schulter → Ellbogen → Handgelenk)
             _add("shoulder" + sfx, Loft(
                 (0.00, 0.05 * w, 0.05 * w, 0.0),
                 (-0.06, 0.052 * w, 0.05 * w, 0.003),
                 (-0.16, 0.046 * w, 0.047 * w, 0.005),
-                (-0.26, 0.039 * w, 0.04 * w, 0.0),
-                (-0.30, 0.036 * w, 0.036 * w, 0.0)), MaterialKind.Body);
-
-            // ---- Unterarm
-            _add("elbow" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.037 * w), MaterialKind.Body, true);
-            _add("elbow" + sfx, Loft(
-                (0.01, 0.038 * w, 0.037 * w, 0.0),
-                (-0.05, 0.043 * w, 0.039 * w, 0.0),
-                (-0.15, 0.035 * w, 0.031 * w, 0.0),
-                (-0.24, 0.026 * w, 0.021 * w, 0.0),
-                (-0.27, 0.024 * w, 0.019 * w, 0.0)), MaterialKind.Body);
-
+                (-0.25, 0.039 * w, 0.04 * w, 0.0),
+                (-0.29, 0.036 * w, 0.036 * w, 0.0),
+                (-0.33, 0.041 * w, 0.038 * w, 0.0),
+                (-0.43, 0.035 * w, 0.031 * w, 0.0),
+                (-0.52, 0.026 * w, 0.021 * w, 0.0),
+                (-0.56, 0.024 * w, 0.019 * w, 0.0)), MaterialKind.Body);
             BuildHand("wrist" + sfx, s, female ? 0.9 : 1.0, s > 0 ? gripL : gripR);
 
-            // ---- Oberschenkel
+            // ---- Bein als eine Form (Hüfte → Knie → Knöchel), mit Kniescheibe und Wade
             _add("hip" + sfx, Loft(
                 (0.04, 0.072, 0.072, 0.0),
                 (-0.04, 0.088 * (female ? 1.04 : 1), 0.09, 0.005),
                 (-0.20, 0.075, 0.078, 0.008),
                 (-0.36, 0.058 * w, 0.06 * w, 0.005),
-                (-0.44, 0.05 * w, 0.05 * w, 0.0)), MaterialKind.Body);
-
-            // ---- Unterschenkel mit Knie und Wade
-            _add("knee" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.05 * w), MaterialKind.Body, true);
-            _add("knee" + sfx, Loft(
-                (0.0, 0.05 * w, 0.05 * w, 0.0),
-                (-0.06, 0.05 * w, 0.055 * w, -0.008),
-                (-0.14, 0.052 * w, 0.06 * w, -0.015),
-                (-0.30, 0.038 * w, 0.04 * w, -0.005),
-                (-0.42, 0.03 * w, 0.03 * w, 0.0)), MaterialKind.Body);
-
+                (-0.44, 0.051 * w, 0.055 * w, 0.006),
+                (-0.50, 0.05 * w, 0.055 * w, -0.008),
+                (-0.58, 0.052 * w, 0.06 * w, -0.015),
+                (-0.74, 0.038 * w, 0.04 * w, -0.005),
+                (-0.86, 0.03 * w, 0.03 * w, 0.0)), MaterialKind.Body);
             // ---- Fuß
             double f = female ? 0.92 : 1.0;
             _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.033 * f), MaterialKind.Body, true);

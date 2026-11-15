@@ -16,7 +16,9 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 - **Alt + ziehen**: Lichtquelle bewegen (links/rechts = Richtung, hoch/runter = Höhe)
 - Strg+Z: Rückgängig
 
-**Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
+**Links – Figuren in der Szene:** Mehrere Figuren mit eigener Pose, Position, Figurtyp, Farben und Objekt. Hinzufügen, Duplizieren, Entfernen; aktive Figur per Liste oder Klick in der Ansicht. Figuren werfen auch Schatten aufeinander. Die Szene wird in den Einstellungen und in der Pose-Datei gespeichert.
+
+**Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren; Rumpf, Arme und Beine als durchgehende Formen mit weichen Gelenkübergängen). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
 
 **Links – Objekt in der Hand:** Schwert, Zauberstab, Stock, langer Stab, Speer – mit rechter, linker oder beiden Händen. Die Arme folgen dem Objekt automatisch (inverse Kinematik), die Hände schließen sich um den Griff. Lage per Regler oder direkt in der Ansicht: Objekt anklicken, **Strg + ziehen** verschiebt, **Umschalt + ziehen** dreht. Das Objekt hängt am Oberkörper und bewegt sich mit.
 
@@ -33,6 +35,7 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 **Rechts – Ausgabe:** Alle angehakten Formate werden mit einem Klick exportiert (Standard: 16:9 und 9:16). Seitenverhältnisse 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 5:4, 4:5, 2:1, 1:2, 21:9 und benutzerdefiniert (lange Seite frei wählbar, Standard 1920 px). Dazu feste **SDXL-Auflösungen** für ComfyUI (1024×1024, 1152×896, 896×1152, 1216×832, 832×1216, 1344×768, 768×1344, 1536×640, 640×1536).
 **Dateiformat** JPG (Qualität einstellbar) oder PNG; PNG optional mit **transparentem Hintergrund**, wenn kein Hintergrundbild gesetzt ist (Vorschau zeigt dann ein Schachbrett, Schatten bleiben halbtransparent).
 Gestrichelte **Hilfslinien** in der Vorschau zeigen den Ausschnitt der anderen angehakten Formate (z. B. 9:16 in der 16:9-Vorschau). Der Export-Button ist unten rechts immer sichtbar.
+**ControlNet für ComfyUI:** zusätzlich (oder ausschließlich) PNGs im gleichen Ausschnitt: *3D-Pose* (Figuren einfarbig glänzend auf Schwarz, jede Figur eigene Farbe – für toyxyz/Anima_ControlNet-LLLite `anima_3dpose`) und *Regionen-Karte* (flache Farbfläche je Figur – für `anima_regional`). Ohne Haare, Objekte, Boden und Kulisse.
 Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 
 Einstellungen werden in `%APPDATA%\PoseStudio\settings.json` gespeichert.

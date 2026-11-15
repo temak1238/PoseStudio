@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--controlnet")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            ControlNetTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--props")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -100,6 +108,35 @@ public partial class App : Application
 
     /// <summary>Alle Kulissen mit Figur, Licht und Schatten (je 3/4-Ansicht und Rückansicht).</summary>
     /// <summary>Alle Objekte × Haltungen: Ganzkörper 3/4-Ansicht und Nahaufnahme der Haupthand.</summary>
+    /// <summary>Vier Figuren (ähnlich dem Beispiel aus dem anima_3dpose-Repo) als ControlNet-Bilder und normales Bild.</summary>
+    private static void ControlNetTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var setup = new[]
+        {
+            (FigureStyle.Female, 11, -0.95, 0.2, 15.0),   // Hände hinter dem Kopf
+            (FigureStyle.Female, 35, -0.2, -0.3, 0.0),    // Tanzen
+            (FigureStyle.Female, 8, 0.75, -0.6, -20.0),   // Hände in den Hüften
+            (FigureStyle.Male, 22, 0.45, 0.5, -25.0),     // am Boden sitzen
+        };
+        var figs = new List<Mannequin>();
+        foreach (var (style, preset, x, z, rot) in setup)
+        {
+            var m = new Mannequin();
+            m.SetFigure(style, true, new Proportions { HeightCm = style == FigureStyle.Female ? 168 : 180 });
+            var pose = Presets.All[preset].ToPose();
+            pose.Joints["pelvis"] = new[] { pose.Joints.TryGetValue("pelvis", out var pv) ? pv[0] : 0, pv?[1] ?? 0, rot };
+            m.SetPose(pose);
+            m.RootPosition = new System.Windows.Media.Media3D.Vector3D(x, m.RootPosition.Y, z);
+            m.GroundToFloor();
+            figs.Add(m);
+        }
+        var cam = new OrbitCamera { Yaw = 0, Pitch = 6, Distance = 7.6, Target = new System.Windows.Media.Media3D.Point3D(0, 0.85, 0) };
+        SceneFactory.SavePng(SceneFactory.RenderControl(figs, cam, SceneFactory.ControlMode.Pose3D, 768, 1152), Path.Combine(folder, "cn_3dpose.png"));
+        SceneFactory.SavePng(SceneFactory.RenderControl(figs, cam, SceneFactory.ControlMode.Regions, 768, 1152), Path.Combine(folder, "cn_regions.png"));
+        SceneFactory.SaveJpeg(SceneFactory.Render(figs, cam, new SceneOptions(), 768, 1152), Path.Combine(folder, "normal.jpg"), 90);
+    }
+
     private static void PropSheet(string folder, string style)
     {
         Directory.CreateDirectory(folder);

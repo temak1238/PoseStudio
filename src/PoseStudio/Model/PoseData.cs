@@ -21,6 +21,11 @@ public sealed class PoseData
     public CameraData? Camera { get; set; }
     public FigureData? Figure { get; set; }
     public PropSettings? Prop { get; set; }
+    public string? BodyColor { get; set; }
+    public string? HairColor { get; set; }
+    /// <summary>Alle Figuren der Szene (ab Version 0.8); fehlt bei älteren Dateien mit nur einer Figur.</summary>
+    public List<PoseData>? Figures { get; set; }
+    public int ActiveFigure { get; set; }
     public PoseStudio.Rendering.LightSettings? Light { get; set; }
     public PoseStudio.Rendering.SetSettings? Set { get; set; }
 

@@ -15,9 +15,9 @@ namespace PoseStudio.Rendering;
 public static class ShadowCaster
 {
     public static GeometryModel3D? Create(Mannequin figure, Vector3D fromLight, double strength, double softness, int resolution)
-        => Create(figure, fromLight, strength, softness, resolution, ShadowReceiver.Ground(0));
+        => Create(new[] { figure }, fromLight, strength, softness, resolution, ShadowReceiver.Ground(0));
 
-    public static GeometryModel3D? Create(Mannequin figure, Vector3D fromLight, double strength, double softness, int resolution, ShadowReceiver rcv)
+    public static GeometryModel3D? Create(IEnumerable<Mannequin> figures, Vector3D fromLight, double strength, double softness, int resolution, ShadowReceiver rcv)
     {
         if (strength <= 0) return null;
         var travel = -fromLight; // Richtung, in die das Licht fällt
@@ -27,7 +27,7 @@ public static class ShadowCaster
         var tris = new List<Point>(60000);
         double minA = double.MaxValue, maxA = double.MinValue, minB = double.MaxValue, maxB = double.MinValue;
         var proj = new Point[3];
-        foreach (var (mesh, m) in figure.WorldMeshes())
+        foreach (var (mesh, m) in figures.SelectMany(fg => fg.WorldMeshes()))
         {
             var pos = mesh.Positions;
             var world = new Point3D[pos.Count];

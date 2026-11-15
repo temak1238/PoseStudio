@@ -13,9 +13,12 @@ public static class SelfShadow
 {
     private const int Res = 1024;
 
-    public static void Apply(Mannequin figure, OrbitCamera cam, LightSettings light)
+    public static void Apply(Mannequin figure, OrbitCamera cam, LightSettings light) => Apply(new[] { figure }, cam, light);
+
+    /// <summary>Gemeinsame Tiefenkarte aller Figuren – Figuren werfen auch Schatten aufeinander.</summary>
+    public static void Apply(IEnumerable<Mannequin> figures, OrbitCamera cam, LightSettings light)
     {
-        var meshes = figure.WorldMeshes().ToList();
+        var meshes = figures.SelectMany(fg => fg.WorldMeshes()).ToList();
         bool enabled = light.CastShadow && light.ShadowStrength > 0 && light.Intensity > 0;
         if (!enabled)
         {

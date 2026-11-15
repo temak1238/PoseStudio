@@ -44,6 +44,27 @@
             <!-- ============ Links: Pose ============ -->
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
+                    <GroupBox Header="Figuren in der Szene">
+                        <StackPanel>
+                            <ListBox x:Name="FigureList" MaxHeight="110" SelectionChanged="FigureList_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="14" Height="14" Background="{Binding Swatch}" BorderBrush="#555" BorderThickness="1" Margin="0,0,6,0"
+                                                    ToolTip="Farbe im ControlNet-Bild" />
+                                            <TextBlock Text="{Binding Name}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <UniformGrid Columns="3" Margin="0,2,0,0">
+                                <Button Content="+ Neu" Click="AddFigure_Click" ToolTip="Neue Figur neben die anderen stellen" />
+                                <Button Content="Duplizieren" Click="DuplicateFigure_Click" ToolTip="Aktive Figur mit Pose kopieren" />
+                                <Button Content="Entfernen" Click="RemoveFigure_Click" />
+                            </UniformGrid>
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Figur">
                         <StackPanel>
                             <DockPanel Margin="0,2">
@@ -240,6 +261,12 @@
                                 <RadioButton x:Name="JpgRadio" Content="JPG" GroupName="FileType" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center" Checked="FileType_Changed" />
                                 <RadioButton x:Name="PngRadio" Content="PNG" GroupName="FileType" VerticalAlignment="Center" Checked="FileType_Changed" />
                             </DockPanel>
+                            <TextBlock Text="Zusätzlich für ComfyUI (PNG, gleicher Ausschnitt):" Margin="0,6,0,2" FontWeight="SemiBold" />
+                            <CheckBox x:Name="Cn3dCheck" Content="ControlNet 3D-Pose (anima__3dpose)" Margin="0,1"
+                                      ToolTip="Figuren einfarbig glänzend auf Schwarz, jede Figur eigene Farbe – ohne Kulisse, Haare und Objekte" />
+                            <CheckBox x:Name="CnRegionCheck" Content="Regionen-Karte (anima__regional)" Margin="0,1"
+                                      ToolTip="Flache Farbfläche je Figur auf Schwarz – für eigene Prompts je Person" />
+                            <CheckBox x:Name="CnOnlyCheck" Content="Nur diese Bilder (ohne normales Bild)" Margin="0,1,0,4" />
                             <CheckBox x:Name="TransparentCheck" Margin="100,2,0,2" Checked="FileType_Changed" Unchecked="FileType_Changed"
                                       ToolTip="Nur wenn kein Hintergrundbild gesetzt ist. Schatten bleiben halbtransparent erhalten.">
                                 <TextBlock Text="Transparenter Hintergrund (PNG, ohne Hintergrundbild)" TextWrapping="Wrap" />
