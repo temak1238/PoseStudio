@@ -20,6 +20,7 @@ public sealed class PoseData
     public double[] RootPosition { get; set; } = new double[3];
     public CameraData? Camera { get; set; }
     public FigureData? Figure { get; set; }
+    public PropSettings? Prop { get; set; }
     public PoseStudio.Rendering.LightSettings? Light { get; set; }
     public PoseStudio.Rendering.SetSettings? Set { get; set; }
 

@@ -14,7 +14,11 @@ public enum MaterialKind
     Lips,
     EyeWhite,
     Iris,
-    Hair
+    Hair,
+    PropWood,
+    PropMetal,
+    PropGold,
+    PropGem
 }
 
 /// <summary>Körperproportionen. Prozentwerte: 100 = Standard.</summary>

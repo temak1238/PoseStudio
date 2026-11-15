@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--props")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PropSheet(e.Args[1], e.Args.Length >= 3 ? e.Args[2] : "Male");
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--sets")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -91,6 +99,44 @@ public partial class App : Application
     }
 
     /// <summary>Alle Kulissen mit Figur, Licht und Schatten (je 3/4-Ansicht und Rückansicht).</summary>
+    /// <summary>Alle Objekte × Haltungen: Ganzkörper 3/4-Ansicht und Nahaufnahme der Haupthand.</summary>
+    private static void PropSheet(string folder, string style)
+    {
+        Directory.CreateDirectory(folder);
+        var m = new Mannequin();
+        m.SetFigure(Enum.Parse<FigureStyle>(style), true, new Proportions());
+        var types = Enum.GetValues<PropType>().Where(t => t != PropType.None).ToList();
+        var holds = new[] { HoldMode.Right, HoldMode.BothRightTop };
+        const int cw = 260, ch = 340;
+        var opts = new SceneOptions { Floor = true, Shadow = true, Light = new LightSettings { CastShadow = false } };
+        var dv = new System.Windows.Media.DrawingVisual();
+        var log = new System.Text.StringBuilder();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < types.Count; i++)
+                for (int h = 0; h < holds.Length; h++)
+                {
+                    m.SetPose(Presets.All[0].ToPose());
+                    var p = new PropSettings { Type = types[i], Hold = holds[h] };
+                    p.ApplyDefaultPlacement();
+                    m.SetProp(p);
+                    m.GroundToFloor();
+                    log.AppendLine($"{types[i]} {holds[h]}: Griff-Fehler {m.LastGripError * 100:F1} cm");
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = 30, Pitch = 8, Target = new System.Windows.Media.Media3D.Point3D(pel.X, 1.0, pel.Z), Distance = 5.6 };
+                    double x = (h * 2) * cw, y = i * ch;
+                    dc.DrawImage(SceneFactory.Render(m, cam, opts, cw, ch), new Rect(x, y, cw, ch));
+                    var hand = m["wrist_r"].World.Transform(new System.Windows.Media.Media3D.Point3D(0, -0.08, 0));
+                    var cam2 = new OrbitCamera { Yaw = 50, Pitch = 10, Target = hand, Distance = 0.9 };
+                    dc.DrawImage(SceneFactory.Render(m, cam2, opts, cw, ch), new Rect(x + cw, y, cw, ch));
+                    dc.DrawText(new System.Windows.Media.FormattedText($"{types[i]} / {holds[h]}", System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight, new System.Windows.Media.Typeface("Segoe UI"), 12, System.Windows.Media.Brushes.Black, 1.0), new Point(x + 4, y + 2));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(cw * 4, ch * types.Count, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"props_{style}.jpg"), 88);
+        File.WriteAllText(Path.Combine(folder, "props.txt"), log.ToString());
+    }
+
     private static void SetSheet(string folder)
     {
         Directory.CreateDirectory(folder);

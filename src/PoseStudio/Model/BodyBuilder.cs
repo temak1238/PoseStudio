@@ -45,7 +45,7 @@ internal sealed class BodyBuilder
 
     // ================================================================= Mensch
 
-    public void BuildHuman(bool female, bool hair)
+    public void BuildHuman(bool female, bool hair, bool gripL = false, bool gripR = false)
     {
         double w = female ? 0.9 : 1.0;   // Gliedmaßen schlanker
         double hip = female ? 1.1 : 1.0; // Becken breiter
@@ -112,7 +112,7 @@ internal sealed class BodyBuilder
                 (-0.24, 0.026 * w, 0.021 * w, 0.0),
                 (-0.27, 0.024 * w, 0.019 * w, 0.0)), MaterialKind.Body);
 
-            BuildHand("wrist" + sfx, s, female ? 0.9 : 1.0);
+            BuildHand("wrist" + sfx, s, female ? 0.9 : 1.0, s > 0 ? gripL : gripR);
 
             // ---- Oberschenkel
             _add("hip" + sfx, Loft(
@@ -181,8 +181,9 @@ internal sealed class BodyBuilder
                 (-0.08, 0.07, 0.028, -0.055)), MaterialKind.Hair, true);
     }
 
-    private void BuildHand(string joint, int s, double k)
+    private void BuildHand(string joint, int s, double k, bool grip = false)
     {
+        if (grip) { BuildGripHand(joint, s, k); return; }
         // Handfläche zeigt zum Körper (-s·X), Daumen nach vorne (+Z).
         Point3D Q(double x, double y, double z) => new(x * k, y * k, z * k);
         _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.026 * k), MaterialKind.Body, true);
@@ -208,6 +209,44 @@ internal sealed class BodyBuilder
         var t0 = Q(-s * 0.006, -0.02, 0.03);
         var t1 = Q(-s * 0.02, -0.052, 0.052);
         var t2 = Q(-s * 0.03, -0.078, 0.058);
+        _add(joint, MeshFactory.Tube(t0, t1, 0.013 * k, 0.0105 * k), MaterialKind.Body, true);
+        _add(joint, MeshFactory.Tube(t1, t2, 0.0105 * k, 0.008 * k), MaterialKind.Body, true);
+    }
+
+    /// <summary>Geschlossene Hand: Finger legen sich im Bogen um den Griffpunkt (−s·0,03 | −0,092), Daumen darüber.
+    /// Der Griffpunkt muss zu Mannequin.SolveArm passen.</summary>
+    private void BuildGripHand(string joint, int s, double k)
+    {
+        Point3D Q(double x, double y, double z) => new(x * k, y * k, z * k);
+        _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.026 * k), MaterialKind.Body, true);
+        _add(joint, MeshFactory.LoftY(k,
+            (0.0, 0.018, 0.03, 0.0),
+            (-0.03, 0.017, 0.04, 0.002),
+            (-0.07, 0.015, 0.042, 0.0),
+            (-0.088, 0.014, 0.039, 0.0)), MaterialKind.Body, true);
+
+        double cx = -s * 0.03, cy = -0.092, R = 0.027;
+        double[] zs = { 0.027, 0.009, -0.009, -0.026 };
+        double[] len = { 0.07, 0.078, 0.073, 0.058 };
+        double[] rad = { 0.0092, 0.0095, 0.009, 0.0078 };
+        double th0 = Math.Atan2(-0.085 - cy, 0 - cx); // Winkel des Fingeransatzes um den Griff
+        for (int i = 0; i < 4; i++)
+        {
+            double arc = len[i] / R;
+            var pts = new List<Point3D>();
+            for (int k2 = 0; k2 <= 3; k2++)
+            {
+                // rechte Hand (s = −1): gegen den Uhrzeigersinn, linke Hand gespiegelt
+                double th = th0 - s * arc * k2 / 3;
+                pts.Add(Q(cx + R * Math.Cos(th), cy + R * Math.Sin(th), zs[i]));
+            }
+            pts[0] = Q(0, -0.085, zs[i]);
+            for (int k2 = 0; k2 < 3; k2++)
+                _add(joint, MeshFactory.Tube(pts[k2], pts[k2 + 1], rad[i] * (1 - 0.08 * k2) * k, rad[i] * (0.92 - 0.08 * k2) * k), MaterialKind.Body, true);
+        }
+        var t0 = Q(-s * 0.006, -0.02, 0.03);
+        var t1 = Q(-s * 0.032, -0.052, 0.045);
+        var t2 = Q(-s * 0.055, -0.075, 0.03);
         _add(joint, MeshFactory.Tube(t0, t1, 0.013 * k, 0.0105 * k), MaterialKind.Body, true);
         _add(joint, MeshFactory.Tube(t1, t2, 0.0105 * k, 0.008 * k), MaterialKind.Body, true);
     }

@@ -18,6 +18,8 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 
 **Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
 
+**Links – Objekt in der Hand:** Schwert, Zauberstab, Stock, langer Stab, Speer – mit rechter, linker oder beiden Händen. Die Arme folgen dem Objekt automatisch (inverse Kinematik), die Hände schließen sich um den Griff. Lage per Regler oder direkt in der Ansicht: Objekt anklicken, **Strg + ziehen** verschiebt, **Umschalt + ziehen** dreht. Das Objekt hängt am Oberkörper und bewegt sich mit.
+
 **Links – Pose:** 38 Vorlagen in 5 Kategorien (Stehen, Gesten, Sitzen & Knien, Liegen, Bewegung) – Auswahl wendet direkt an, Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
 
 **Rechts – Kamera:** Entfernung, Brennweite (14–200 mm), Blickhöhe, Drehung, Neigung, Schnellansichten (Vorne, 3/4, Seite, Hinten, Oben, Unten, Ganz, Porträt).

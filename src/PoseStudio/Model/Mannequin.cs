@@ -58,6 +58,11 @@ public sealed class Mannequin
     private readonly Material _highlightMat;
     private Joint? _selected;
     private double _globalScale = 1;
+    private bool _ikEnabled = true;
+    private PropSettings _prop = new();
+    private bool _propSelected;
+    /// <summary>Unsichtbarer Träger für die Objekt-Teile (nicht in der Gelenkliste).</summary>
+    private readonly Joint _propJoint = new() { Id = "prop", Name = "Objekt" };
 
     public List<Joint> Joints { get; } = new();
     public Model3DGroup Group { get; } = new();
@@ -77,6 +82,11 @@ public sealed class Mannequin
         _mats[MaterialKind.EyeWhite] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xF4, 0xF1, 0xEC)).Brush, 0x70);
         _mats[MaterialKind.Iris] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x3B, 0x2C, 0x22)).Brush, 0x90);
         _mats[MaterialKind.Hair] = MakeMaterial(_hairBrush.Brush, 0x20);
+        _mats[MaterialKind.PropWood] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x7A, 0x52, 0x32)).Brush, 0x30);
+        _mats[MaterialKind.PropMetal] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xC4, 0xC8, 0xCC)).Brush, 0xC0);
+        _mats[MaterialKind.PropGold] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xC9, 0xA2, 0x3E)).Brush, 0xA0);
+        _mats[MaterialKind.PropGem] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x4F, 0x9C, 0xE0)).Brush, 0xC0);
+        _byId["prop"] = _propJoint;
         _highlightMat = MakeMaterial(new ShadeBrush(Color.FromRgb(0xFF, 0x8C, 0x1A)).Brush, 0x40);
         BodyColor = _bodyBrush.Color;
         BuildSkeleton();
@@ -212,11 +222,17 @@ public sealed class Mannequin
         Group.Children.Clear();
         _parts.Clear();
         foreach (var j in Joints) j.Parts.Clear();
+        _propJoint.Parts.Clear();
 
+        // Greifende Hände bekommen eine geschlossene Hand (Faust um den Griff)
+        bool gripL = _prop.Active && (_prop.TwoHanded || _prop.MainSide > 0);
+        bool gripR = _prop.Active && (_prop.TwoHanded || _prop.MainSide < 0);
         var builder = new BodyBuilder(AddPart);
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
-        else builder.BuildHuman(Style == FigureStyle.Female, Hair);
+        else builder.BuildHuman(Style == FigureStyle.Female, Hair, gripL, gripR);
+        foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
         Select(sel);
+        SelectProp(_propSelected);
     }
 
     private void AddPart(string jointId, MeshGeometry3D mesh, MaterialKind kind, bool uniform = false)
@@ -286,32 +302,40 @@ public sealed class Mannequin
         var pose = GetPose();
         foreach (var j in Joints) j.BendValue = j.SideValue = j.TwistValue = 0;
         _globalScale = 1;
+        _ikEnabled = false; // Messung in Grundstellung, Arme nicht vom Objekt verbiegen lassen
         Update();
         double natural = ComputeMaxY() - ComputeMinY();
+        _ikEnabled = true;
         SetPoseValues(pose);
         _globalScale = natural > 0.1 ? p.HeightCm / 100 / natural : 1;
     }
 
     // ------------------------------------------------------------------ Kinematik
 
-    private Matrix3D LocalMatrix(Joint j)
+    private Matrix3D LocalMatrix(Joint j) => LocalMatrix(j, j.BendValue, j.SideValue, j.TwistValue);
+
+    private Matrix3D LocalMatrix(Joint j, double bend, double side, double twist)
     {
         var m = Matrix3D.Identity;
         if (j.Parent == null && Math.Abs(_globalScale - 1) > 1e-9) m.Scale(new Vector3D(_globalScale, _globalScale, _globalScale));
         // Reihenfolge (Zeilenvektoren): erst um Knochenachse drehen, dann seitlich, dann beugen, dann versetzen.
-        if (j.Twist != null && j.TwistValue != 0) m.Rotate(new Quaternion(new Vector3D(0, 1, 0), j.Twist.Sign * j.TwistValue));
-        if (j.Side != null && j.SideValue != 0) m.Rotate(new Quaternion(new Vector3D(0, 0, 1), j.Side.Sign * j.SideValue));
-        if (j.Bend != null && j.BendValue != 0) m.Rotate(new Quaternion(new Vector3D(1, 0, 0), j.Bend.Sign * j.BendValue));
+        if (j.Twist != null && twist != 0) m.Rotate(new Quaternion(new Vector3D(0, 1, 0), j.Twist.Sign * twist));
+        if (j.Side != null && side != 0) m.Rotate(new Quaternion(new Vector3D(0, 0, 1), j.Side.Sign * side));
+        if (j.Bend != null && bend != 0) m.Rotate(new Quaternion(new Vector3D(1, 0, 0), j.Bend.Sign * bend));
         m.Translate(j.Parent == null ? j.Offset + RootPosition : j.Offset);
         return m;
     }
 
     public void Update()
     {
+        ComputeWorlds();
+        if (_prop.Active && _ikEnabled)
+        {
+            SolveProp();
+            ComputeWorlds();
+        }
         foreach (var j in Joints)
         {
-            var local = LocalMatrix(j);
-            j.World = j.Parent == null ? local : local * j.Parent.World;
             foreach (var p in j.Parts)
             {
                 var sc = p.Uniform ? new Vector3D(j.UniformScale, j.UniformScale, j.UniformScale) : j.SegScale;
@@ -320,12 +344,178 @@ public sealed class Mannequin
                 ((MatrixTransform3D)p.Model.Transform).Matrix = m * j.World;
             }
         }
+        var pw = PropWorld;
+        foreach (var p in _propJoint.Parts) ((MatrixTransform3D)p.Model.Transform).Matrix = pw;
+    }
+
+    private void ComputeWorlds()
+    {
+        foreach (var j in Joints)
+        {
+            var local = LocalMatrix(j);
+            j.World = j.Parent == null ? local : local * j.Parent.World;
+        }
+    }
+
+    // ------------------------------------------------------------------ Objekt in der Hand
+
+    public PropSettings Prop => _prop.Clone();
+    public bool PropSelected => _propSelected;
+    public bool IsPropPart(GeometryModel3D model) => _parts.TryGetValue(model, out var p) && ReferenceEquals(p.Joint, _propJoint);
+
+    /// <summary>Welt-Lage des Objekts (hängt am Brustkorb).</summary>
+    public Matrix3D PropWorld => _prop.LocalMatrix() * this["chest"].World;
+
+    /// <summary>Bewegungsrahmen des Brustkorbs (für das Umrechnen von Mausbewegungen).</summary>
+    public Matrix3D ChestWorld => this["chest"].World;
+
+    /// <summary>Objekt setzen/ändern. Bei neuem Objekt oder anderer Haltung werden die Hände neu aufgebaut.</summary>
+    public void SetProp(PropSettings p, bool update = true)
+    {
+        var old = _prop;
+        _prop = p.Clone();
+        _prop.Clamp();
+        if (old.Type != _prop.Type || old.Hold != _prop.Hold) BuildParts();
+        if (update) Update();
+    }
+
+    public void SelectProp(bool on)
+    {
+        _propSelected = on && _prop.Active;
+        foreach (var p in _propJoint.Parts) p.Model.Material = _propSelected ? _highlightMat : _mats[p.Kind];
+    }
+
+    /// <summary>Die greifenden Arme per inverser Kinematik an die Griffpunkte des Objekts führen.</summary>
+    private void SolveProp()
+    {
+        LastGripError = 0;
+        var pw = PropWorld;
+        var axis = pw.Transform(new Vector3D(0, 1, 0));
+        axis.Normalize();
+        int s = _prop.MainSide;
+        SolveArm(s, pw.Transform(new Point3D(0, 0, 0)), axis);
+        if (_prop.TwoHanded)
+            SolveArm(-s, pw.Transform(new Point3D(0, -_prop.GripSpacing / 100, 0)), axis);
+    }
+
+    /// <summary>Arm-IK (gedämpfte Gauß-Newton-Iteration über 7 Gelenkwinkel): Griffpunkt der Hand auf den Zielpunkt,
+    /// Daumenseite der Hand entlang der Objektachse. Gelenkgrenzen werden eingehalten, das Handgelenk bleibt möglichst gerade.</summary>
+    private void SolveArm(int s, Point3D target, Vector3D axis)
+    {
+        string sfx = s > 0 ? "_l" : "_r";
+        var sh = this["shoulder" + sfx]; var el = this["elbow" + sfx]; var wr = this["wrist" + sfx];
+        var chestW = sh.Parent!.World;
+        double u = wr.UniformScale;
+        var grip = Style == FigureStyle.Mannequin ? new Point3D(-s * 0.028 * u, -0.088 * u, 0) : new Point3D(-s * 0.03 * u, -0.092 * u, 0);
+        var defs = new[] { sh.Bend!, sh.Side!, sh.Twist!, el.Bend!, el.Twist!, wr.Bend!, wr.Side! };
+        const int n = 7, rows = 11;
+
+        double[] Residual(double[] q)
+        {
+            var ws = LocalMatrix(sh, q[0], q[1], q[2]) * chestW;
+            var we = LocalMatrix(el, q[3], 0, q[4]) * ws;
+            var ww = LocalMatrix(wr, q[5], q[6], 0) * we;
+            var g = ww.Transform(grip);
+            var z = ww.Transform(new Vector3D(0, 0, 1)); z.Normalize();
+            // Zielpunkt und Achse haben Vorrang; schwache Vorlieben für eine natürliche Haltung
+            // (Handgelenk gerade, Schulter wenig gedreht und nicht weit abgespreizt, Unterarm wenig verdreht)
+            const double wAxis = 0.12, wWrist = 0.0008, wPref = 0.0004;
+            return new[]
+            {
+                target.X - g.X, target.Y - g.Y, target.Z - g.Z,
+                wAxis * (axis.X - z.X), wAxis * (axis.Y - z.Y), wAxis * (axis.Z - z.Z),
+                -wWrist * q[5], -wWrist * q[6],
+                -wPref * q[2], -wPref * Math.Max(0, q[1] - 25), -wPref * q[4]
+            };
+        }
+        static double Norm(double[] r) => Math.Sqrt(r.Sum(x => x * x));
+
+        double[] Solve(double[] q)
+        {
+            q = (double[])q.Clone();
+            for (int it = 0; it < 60; it++)
+            {
+                var r = Residual(q);
+                if (Norm(r) < 0.0015) break;
+                var J = new double[rows, n];
+                for (int k = 0; k < n; k++)
+                {
+                    var qq = (double[])q.Clone();
+                    qq[k] += 0.5;
+                    var r2 = Residual(qq);
+                    for (int i = 0; i < rows; i++) J[i, k] = (r2[i] - r[i]) / 0.5;
+                }
+                // (JᵀJ + λI) Δ = -Jᵀ r
+                var A = new double[n, n + 1];
+                for (int a = 0; a < n; a++)
+                {
+                    for (int b = 0; b < n; b++)
+                    {
+                        double sum = 0;
+                        for (int i = 0; i < rows; i++) sum += J[i, a] * J[i, b];
+                        A[a, b] = sum + (a == b ? 2e-6 : 0);
+                    }
+                    double rb = 0;
+                    for (int i = 0; i < rows; i++) rb += J[i, a] * r[i];
+                    A[a, n] = -rb;
+                }
+                var d = GaussSolve(A, n);
+                if (d == null) break;
+                for (int k = 0; k < n; k++)
+                    q[k] = Math.Clamp(q[k] + Math.Clamp(d[k], -12, 12), defs[k].Min, defs[k].Max);
+            }
+            return q;
+        }
+
+        var start = new[] { sh.BendValue, sh.SideValue, sh.TwistValue, el.BendValue, el.TwistValue, wr.BendValue, wr.SideValue };
+        var best = Solve(start);
+        double bestErr = Norm(Residual(best));
+        if (bestErr > 0.02)
+        {
+            // schlechte Ausgangslage: mit typischen Armhaltungen neu versuchen
+            foreach (var seed in new[] { new double[] { 40, 15, 0, 70, 0, 0, 0 }, new double[] { 80, 10, 0, 30, 0, 0, 0 },
+                                         new double[] { 20, 40, -40, 90, 30, 0, 0 }, new double[] { 0, 20, 0, 20, 0, 0, 0 },
+                                         new double[] { 120, 20, 0, 40, 0, 0, 0 } })
+            {
+                var q = Solve(seed);
+                double e = Norm(Residual(q));
+                if (e < bestErr) { best = q; bestErr = e; }
+            }
+        }
+        sh.BendValue = best[0]; sh.SideValue = best[1]; sh.TwistValue = best[2];
+        el.BendValue = best[3]; el.TwistValue = best[4];
+        wr.BendValue = best[5]; wr.SideValue = best[6];
+        LastGripError = Math.Max(LastGripError, Math.Sqrt(Math.Pow(Residual(best)[0], 2) + Math.Pow(Residual(best)[1], 2) + Math.Pow(Residual(best)[2], 2)));
+    }
+
+    /// <summary>Größter Abstand Hand ↔ Griffpunkt der letzten Berechnung (m) – zeigt, ob das Objekt erreichbar ist.</summary>
+    public double LastGripError { get; private set; }
+
+    private static double[]? GaussSolve(double[,] a, int n)
+    {
+        for (int c = 0; c < n; c++)
+        {
+            int piv = c;
+            for (int r = c + 1; r < n; r++) if (Math.Abs(a[r, c]) > Math.Abs(a[piv, c])) piv = r;
+            if (Math.Abs(a[piv, c]) < 1e-14) return null;
+            if (piv != c) for (int k = 0; k <= n; k++) (a[c, k], a[piv, k]) = (a[piv, k], a[c, k]);
+            for (int r = 0; r < n; r++)
+            {
+                if (r == c) continue;
+                double f = a[r, c] / a[c, c];
+                for (int k = c; k <= n; k++) a[r, k] -= f * a[c, k];
+            }
+        }
+        var x = new double[n];
+        for (int i = 0; i < n; i++) x[i] = a[i, n] / a[i, i];
+        return x;
     }
 
     private IEnumerable<Point3D> AllWorldPoints()
     {
         foreach (var p in _parts.Values)
         {
+            if (ReferenceEquals(p.Joint, _propJoint)) continue; // Objekt zählt nicht für die Bodenhöhe (Stab darf den Boden berühren)
             var m = ((MatrixTransform3D)p.Model.Transform).Matrix;
             var mesh = (MeshGeometry3D)p.Model.Geometry;
             // jeder zweite Punkt genügt für die Bodenhöhe
@@ -366,9 +556,12 @@ public sealed class Mannequin
     public Model3DGroup CreateSnapshot()
     {
         var sel = _selected;
+        bool propSel = _propSelected;
         Select(null);
+        SelectProp(false);
         var clone = Group.Clone();
         Select(sel);
+        SelectProp(propSel);
         return clone;
     }
 
@@ -379,6 +572,7 @@ public sealed class Mannequin
         var pose = new PoseData { RootPosition = new[] { RootPosition.X, RootPosition.Y, RootPosition.Z } };
         foreach (var j in Joints)
             pose.Joints[j.Id] = new[] { j.BendValue, j.SideValue, j.TwistValue };
+        pose.Prop = _prop.Clone();
         return pose;
     }
 
@@ -404,6 +598,7 @@ public sealed class Mannequin
     public void SetPose(PoseData pose)
     {
         SetPoseValues(pose);
+        if (pose.Prop != null) SetProp(pose.Prop, false);
         Update();
     }
 
@@ -440,6 +635,17 @@ public sealed class Mannequin
             }
         }
         RootPosition = new Vector3D(-RootPosition.X, RootPosition.Y, RootPosition.Z);
+        if (_prop.Active)
+        {
+            var p = _prop.Clone();
+            p.X = -p.X; p.Tilt = -p.Tilt; p.Yaw = -p.Yaw; p.Roll = -p.Roll;
+            p.Hold = p.Hold switch
+            {
+                HoldMode.Right => HoldMode.Left, HoldMode.Left => HoldMode.Right,
+                HoldMode.BothRightTop => HoldMode.BothLeftTop, _ => HoldMode.BothRightTop
+            };
+            SetProp(p, false);
+        }
         Update();
     }
 }

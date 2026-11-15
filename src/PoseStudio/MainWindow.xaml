@@ -77,6 +77,31 @@
                         </DockPanel>
                     </GroupBox>
 
+                    <GroupBox Header="Objekt in der Hand">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Objekt" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="PropCombo" SelectionChanged="PropType_Changed" />
+                            </DockPanel>
+                            <StackPanel x:Name="PropPanel">
+                                <DockPanel Margin="0,2">
+                                    <TextBlock Text="Halten" Width="60" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HoldCombo" SelectionChanged="Hold_Changed" />
+                                </DockPanel>
+                                <Expander Header="Lage des Objekts" IsExpanded="False" Margin="0,2,0,0">
+                                    <ItemsControl x:Name="PropItems" ItemTemplate="{StaticResource AxisTemplate}"
+                                                  PreviewMouseLeftButtonDown="UndoPoint_PreviewMouseDown" />
+                                </Expander>
+                                <DockPanel Margin="0,2,0,0">
+                                    <Button DockPanel.Dock="Left" Content="Grundposition" Click="PropDefault_Click" />
+                                    <TextBlock x:Name="PropStatus" VerticalAlignment="Center" Margin="6,0,0,0" TextWrapping="Wrap" FontSize="11" Foreground="#B04000" />
+                                </DockPanel>
+                                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" FontSize="11" Foreground="#666"
+                                           Text="Die Arme folgen dem Objekt. In der Ansicht: Objekt anklicken, Strg + ziehen = verschieben, Umschalt + ziehen = drehen." />
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Gelenke">
                         <ListBox x:Name="JointList" Height="250" DisplayMemberPath="DisplayName"
                                  SelectionChanged="JointList_SelectionChanged" />

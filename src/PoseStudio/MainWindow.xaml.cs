@@ -57,7 +57,7 @@ public partial class MainWindow : Window
 
     // Maus
     private Point _mouseStart, _mouseLast;
-    private bool _leftDown, _rightDown, _dragging, _jointDrag;
+    private bool _leftDown, _rightDown, _dragging, _jointDrag, _propDrag;
     private GeometryModel3D? _pressedPart;
 
     private static readonly string[] BgPresets = { "#FFFFFF", "#E6E6E6", "#9E9E9E", "#3A3A3A", "#000000", "#00B140", "#2B6CB0" };
@@ -93,6 +93,7 @@ public partial class MainWindow : Window
         BuildProportionAxes();
         BuildLightAxes();
         InitSetUi();
+        InitPropUi();
         LightItems.ItemsSource = _lightAxes;
         _scene.Children.Add(_lightMarker);
         BuildColorPresets();
@@ -157,6 +158,139 @@ public partial class MainWindow : Window
         Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
         Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
         Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+    }
+
+    // =================================================================== Objekt in der Hand
+
+    private PropSettings _propUi = new();
+    private readonly ObservableCollection<AxisViewModel> _propAxes = new();
+    private bool _suppressProp;
+
+    private static readonly (PropType Type, string Name)[] PropTypes =
+    {
+        (PropType.None, "Keins"), (PropType.Sword, "Schwert"), (PropType.Wand, "Zauberstab"),
+        (PropType.Stick, "Stock"), (PropType.Staff, "Langer Stab"), (PropType.Spear, "Speer"),
+    };
+    private static readonly (HoldMode Mode, string Name)[] HoldModes =
+    {
+        (HoldMode.Right, "Rechte Hand"), (HoldMode.Left, "Linke Hand"),
+        (HoldMode.BothRightTop, "Beide Hände (rechte oben)"), (HoldMode.BothLeftTop, "Beide Hände (linke oben)"),
+    };
+
+    private void InitPropUi()
+    {
+        PropCombo.ItemsSource = PropTypes.Select(p => p.Name).ToList();
+        HoldCombo.ItemsSource = HoldModes.Select(h => h.Name).ToList();
+        PropItems.ItemsSource = _propAxes;
+        void Add(string label, double min, double max, Func<double> get, Action<double> set) =>
+            _propAxes.Add(new AxisViewModel(label, min, max, get, v => { set(v); ApplyProp(); }));
+        Add("Vor/zurück (cm)", -100, 120, () => _propUi.Z, v => _propUi.Z = v);
+        Add("Höhe (cm)", -150, 120, () => _propUi.Y, v => _propUi.Y = v);
+        Add("Links/rechts (cm)", -120, 120, () => _propUi.X, v => _propUi.X = v);
+        Add("Spitze vor/zurück (°)", -180, 180, () => _propUi.Pitch, v => _propUi.Pitch = v);
+        Add("Spitze seitlich (°)", -90, 90, () => _propUi.Tilt, v => _propUi.Tilt = v);
+        Add("Drehen (°)", -180, 180, () => _propUi.Yaw, v => _propUi.Yaw = v);
+        Add("Um eigene Achse (°)", -180, 180, () => _propUi.Roll, v => _propUi.Roll = v);
+        Add("Griffabstand (cm)", 8, 80, () => _propUi.GripSpacing, v => _propUi.GripSpacing = v);
+    }
+
+    /// <summary>Bedienelemente auf den Stand der Figur bringen (nach Laden, Rückgängig, Spiegeln).</summary>
+    private void ShowProp()
+    {
+        _suppressProp = true;
+        _propUi = _figure.Prop;
+        PropCombo.SelectedIndex = Math.Max(0, Array.FindIndex(PropTypes, p => p.Type == _propUi.Type));
+        HoldCombo.SelectedIndex = Math.Max(0, Array.FindIndex(HoldModes, h => h.Mode == _propUi.Hold));
+        PropPanel.Visibility = _propUi.Active ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var a in _propAxes) a.Refresh();
+        _suppressProp = false;
+        UpdatePropStatus();
+    }
+
+    private void ApplyProp()
+    {
+        if (_suppressProp) return;
+        _figure.SetProp(_propUi);
+        PoseChanged();
+        UpdatePropStatus();
+    }
+
+    private void UpdatePropStatus()
+    {
+        PropStatus.Text = _propUi.Active && _figure.LastGripError > 0.03
+            ? "Griff nicht erreichbar – Objekt näher an den Körper bewegen."
+            : "";
+    }
+
+    private void PropType_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressProp || PropCombo.SelectedIndex < 0) return;
+        PushUndo();
+        var type = PropTypes[PropCombo.SelectedIndex].Type;
+        bool wasActive = _propUi.Active;
+        _propUi.Type = type;
+        // Typische Haltung je Objekt, beim ersten Aufnehmen bzw. Wechsel des Objekts
+        if (type is PropType.Staff or PropType.Spear && !wasActive) _propUi.Hold = HoldMode.BothRightTop;
+        if (type != PropType.None) _propUi.ApplyDefaultPlacement();
+        ShowPropAfterChange();
+    }
+
+    private void Hold_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressProp || HoldCombo.SelectedIndex < 0) return;
+        PushUndo();
+        _propUi.Hold = HoldModes[HoldCombo.SelectedIndex].Mode;
+        _propUi.ApplyDefaultPlacement();
+        ShowPropAfterChange();
+    }
+
+    private void PropDefault_Click(object sender, RoutedEventArgs e)
+    {
+        PushUndo();
+        _propUi.ApplyDefaultPlacement();
+        ShowPropAfterChange();
+    }
+
+    private void ShowPropAfterChange()
+    {
+        _figure.SetProp(_propUi);
+        PoseChanged();
+        ShowProp();
+    }
+
+    private void SelectPropInView()
+    {
+        SelectJoint(null);
+        _figure.SelectProp(true);
+        SelectedJointText.Text = "Objekt ausgewählt – Strg + ziehen verschiebt, Umschalt + ziehen dreht";
+    }
+
+    /// <summary>Objekt mit der Maus bewegen: Strg = in der Bildebene verschieben, Umschalt = drehen.</summary>
+    private void DragProp(Vector d)
+    {
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            _propUi.Yaw = NormalizeAngle(_propUi.Yaw + d.X * 0.6);
+            _propUi.Pitch = NormalizeAngle(_propUi.Pitch + d.Y * 0.6);
+        }
+        else
+        {
+            var pos = _figure.PropWorld.Transform(new Point3D(0, 0, 0));
+            double z = Math.Max(0.2, Vector3D.DotProduct(pos - _cam.Position, _cam.LookDirection));
+            double px = z * Math.Tan(_cam.VerticalFov * Math.PI / 360) * 2 / Math.Max(1, View.ActualHeight);
+            var world = _cam.Right * d.X * px - _cam.Up * d.Y * px;
+            var inv = _figure.ChestWorld;
+            inv.Invert();
+            var local = inv.Transform(world); // Bewegung im Brustkorb-System (das Objekt hängt am Oberkörper)
+            _propUi.X += local.X * 100;
+            _propUi.Y += local.Y * 100;
+            _propUi.Z += local.Z * 100;
+        }
+        _propUi.Clamp();
+        _figure.SetProp(_propUi);
+        PoseChanged(false);
+        foreach (var a in _propAxes) a.Refresh();
+        UpdatePropStatus();
     }
 
     // =================================================================== Kulisse
@@ -442,6 +576,8 @@ public partial class MainWindow : Window
         ShowFigure(s.Figure ?? new FigureData());
         ShowLight(s.Light ?? new LightSettings());
         ShowSet(s.Set ?? new SetSettings());
+        _figure.SetProp(s.Prop ?? new PropSettings());
+        ShowProp();
     }
 
     private void SaveSettings()
@@ -470,6 +606,7 @@ public partial class MainWindow : Window
         s.Figure = _figure.GetFigure();
         s.Light = _light.Clone();
         s.Set = _set.Clone();
+        s.Prop = _figure.Prop;
         s.Save();
     }
 
@@ -573,6 +710,7 @@ public partial class MainWindow : Window
     private void SelectJoint(Joint? j)
     {
         _figure.Select(j);
+        if (j != null) _figure.SelectProp(false);
         if (!ReferenceEquals(JointList.SelectedItem, j)) JointList.SelectedItem = j;
         _axes.Clear();
         if (j == null)
@@ -614,6 +752,7 @@ public partial class MainWindow : Window
     {
         if (_undo.Count == 0) { StatusText.Text = "Nichts rückgängig zu machen."; return; }
         _figure.SetPose(_undo.Pop());
+        ShowProp();
         PoseChanged();
         StatusText.Text = "Rückgängig gemacht.";
     }
@@ -664,6 +803,7 @@ public partial class MainWindow : Window
     {
         PushUndo();
         _figure.Mirror();
+        ShowProp();
         PoseChanged();
     }
 
@@ -697,6 +837,7 @@ public partial class MainWindow : Window
             if (pose.Figure != null) ShowFigure(pose.Figure);
             if (pose.Light != null) ShowLight(pose.Light);
             if (pose.Set != null) ShowSet(pose.Set);
+            ShowProp();
             _figure.SetPose(pose);
             if (pose.Camera != null) _cam.FromData(pose.Camera);
             PoseChanged();
@@ -985,7 +1126,7 @@ public partial class MainWindow : Window
         GeometryModel3D? found = null;
         VisualTreeHelper.HitTest(View, null, r =>
         {
-            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && _figure.TryGetJoint(g, out _))
+            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && (_figure.TryGetJoint(g, out _) || _figure.IsPropPart(g)))
             {
                 found = g;
                 return HitTestResultBehavior.Stop;
@@ -1004,7 +1145,16 @@ public partial class MainWindow : Window
         _lightDrag = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
         bool mod = !_lightDrag && (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         _jointDrag = false;
-        if (mod)
+        _propDrag = false;
+        bool onProp = _pressedPart != null && _figure.IsPropPart(_pressedPart);
+        if (mod && (onProp || (_pressedPart == null && _figure.PropSelected)))
+        {
+            // Strg/Umschalt am Objekt: Objekt verschieben/drehen, die Arme folgen
+            if (onProp) SelectPropInView();
+            _propDrag = true;
+            PushUndo();
+        }
+        else if (mod)
         {
             // Strg/Umschalt: angeklicktes (oder bereits gewähltes) Gelenk mit der Maus bewegen.
             if (_pressedPart != null && _figure.TryGetJoint(_pressedPart, out var j) && !ReferenceEquals(j, _figure.Selected))
@@ -1020,11 +1170,13 @@ public partial class MainWindow : Window
         if (_leftDown && !_dragging)
         {
             // Einfacher Klick: Gelenk auswählen bzw. Auswahl aufheben.
-            if (_pressedPart != null && _figure.TryGetJoint(_pressedPart, out var j)) SelectJoint(j);
-            else if (!_jointDrag) SelectJoint(null);
+            if (_pressedPart != null && _figure.IsPropPart(_pressedPart)) SelectPropInView();
+            else if (_pressedPart != null && _figure.TryGetJoint(_pressedPart, out var j)) SelectJoint(j);
+            else if (!_jointDrag && !_propDrag) { SelectJoint(null); _figure.SelectProp(false); }
         }
         _leftDown = false;
         _jointDrag = false;
+        _propDrag = false;
         _lightDrag = false;
         if (!_rightDown) Frame.ReleaseMouseCapture();
     }
@@ -1057,6 +1209,7 @@ public partial class MainWindow : Window
                     _light.Elevation = Math.Clamp(_light.Elevation - d.Y * 0.4, 5, 90);
                     LightChanged();
                 }
+                else if (_propDrag) DragProp(d);
                 else if (_jointDrag && _figure.Selected is { } j) DragJoint(j, d);
                 else
                 {
