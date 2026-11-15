@@ -23,6 +23,8 @@ public sealed class PoseData
     public PropSettings? Prop { get; set; }
     public string? BodyColor { get; set; }
     public string? HairColor { get; set; }
+    /// <summary>Referenzfoto dieser Figur (nur Vorschau).</summary>
+    public string? ReferenceImage { get; set; }
     /// <summary>Alle Figuren der Szene (ab Version 0.8); fehlt bei älteren Dateien mit nur einer Figur.</summary>
     public List<PoseData>? Figures { get; set; }
     public int ActiveFigure { get; set; }

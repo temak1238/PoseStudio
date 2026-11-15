@@ -108,6 +108,22 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox Header="Referenzfoto (aktive Figur)">
+                        <StackPanel>
+                            <UniformGrid Columns="3">
+                                <Button Content="Foto laden…" Click="PickRefImage_Click" ToolTip="Foto halbtransparent über die Ansicht legen – nur für die aktive Figur, wird nie exportiert" />
+                                <Button Content="Pose übernehmen" Click="PoseFromPhoto_Click" FontWeight="SemiBold" ToolTip="Pose der Person im Foto erkennen und auf die aktive Figur übertragen" />
+                                <Button Content="Entfernen" Click="RemoveRefImage_Click" />
+                            </UniformGrid>
+                            <DockPanel Margin="0,4,0,0">
+                                <TextBlock Text="Deckkraft" Width="60" VerticalAlignment="Center" />
+                                <Slider x:Name="RefOpacitySlider" Minimum="10" Maximum="90" Value="50" VerticalAlignment="Center" ValueChanged="RefOpacity_Changed" />
+                            </DockPanel>
+                            <TextBlock x:Name="RefImageText" Margin="0,2,0,0" Foreground="#666" FontSize="11" TextWrapping="Wrap"
+                                       Text="Kein Foto. Jede Figur kann ihr eigenes Referenzfoto haben." />
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Objekt in der Hand">
                         <StackPanel>
                             <DockPanel Margin="0,2">
@@ -162,8 +178,6 @@
                             <Button Content="Alles zurücksetzen" Click="ResetAll_Click" />
                             <Button Content="Pose speichern…" Click="SavePose_Click" />
                             <Button Content="Pose laden…" Click="LoadPose_Click" />
-                            <Button Content="Pose aus Foto…" Click="PoseFromPhoto_Click" FontWeight="SemiBold"
-                                    ToolTip="Pose einer Person im Foto erkennen und auf die aktive Figur übertragen (nutzt das Referenzbild, falls geladen)" />
                             <Button Content="Als Vorlage speichern…" Click="SaveTemplate_Click" ToolTip="Pose der aktiven Figur in die eigene Bibliothek (mit Vorschaubild)" />
                         </WrapPanel>
                     </GroupBox>
@@ -376,15 +390,6 @@
                                 <ComboBox x:Name="BgStretchCombo" SelectionChanged="BgStretch_Changed" />
                             </DockPanel>
                             <TextBlock x:Name="BgImageText" Margin="90,0,0,4" Foreground="#666" FontSize="11" TextTrimming="CharacterEllipsis" Text="(kein Bild)" />
-                            <DockPanel Margin="0,8,0,2">
-                                <TextBlock Text="Referenzbild" Width="90" VerticalAlignment="Center" ToolTip="Foto halbtransparent über der Ansicht – zum Nachstellen einer Pose. Wird nicht exportiert." />
-                                <Button DockPanel.Dock="Right" Content="Entfernen" Click="RemoveRefImage_Click" />
-                                <Button DockPanel.Dock="Right" Content="Bild…" Click="PickRefImage_Click" />
-                                <Slider x:Name="RefOpacitySlider" Minimum="10" Maximum="90" Value="50" VerticalAlignment="Center"
-                                        ToolTip="Deckkraft des Referenzbilds" ValueChanged="RefOpacity_Changed" />
-                            </DockPanel>
-                            <TextBlock x:Name="RefImageText" Margin="90,0,0,4" Foreground="#666" FontSize="11" TextTrimming="CharacterEllipsis"
-                                       Text="(kein Referenzbild – nur zum Nachstellen, wird nicht exportiert)" TextWrapping="Wrap" />
                             <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="90" /><ColumnDefinition /><ColumnDefinition />

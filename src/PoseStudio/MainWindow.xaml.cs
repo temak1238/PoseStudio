@@ -175,9 +175,10 @@ public partial class MainWindow : Window
     private Mannequin? OwnerOf(GeometryModel3D g) =>
         _figures.FirstOrDefault(fg => fg.TryGetJoint(g, out _) || fg.IsPropPart(g));
 
-    private static PoseData FigureToData(Mannequin m)
+    private PoseData FigureToData(Mannequin m)
     {
         var p = m.GetPose();
+        p.ReferenceImage = _refPaths.TryGetValue(m, out var refPath) ? refPath : null;
         p.Figure = m.GetFigure();
         p.BodyColor = ToHex(m.BodyColor);
         p.HairColor = ToHex(m.HairColor);
@@ -199,10 +200,13 @@ public partial class MainWindow : Window
         _figure.SelectProp(false);
         _figures.Clear();
         _figuresGroup.Children.Clear();
+        _refPaths.Clear();
+        _refDetections.Clear();
         foreach (var d in list)
         {
             var m = new Mannequin();
             DataToFigure(m, d);
+            if (!string.IsNullOrEmpty(d.ReferenceImage) && File.Exists(d.ReferenceImage)) _refPaths[m] = d.ReferenceImage;
             _figures.Add(m);
             _figuresGroup.Children.Add(m.Group);
         }
@@ -241,6 +245,7 @@ public partial class MainWindow : Window
         ShowProp();
         foreach (var a in _positionAxes) a.Refresh();
         _undo.Clear(); // Rückgängig gilt je Figur
+        ShowReferenceForActive();
         RefreshFigureList();
         StatusText.Text = $"Figur {index + 1} ausgewählt.";
     }
@@ -275,7 +280,12 @@ public partial class MainWindow : Window
         AddFigureFrom(d);
     }
 
-    private void DuplicateFigure_Click(object sender, RoutedEventArgs e) => AddFigureFrom(FigureToData(_figure));
+    private void DuplicateFigure_Click(object sender, RoutedEventArgs e)
+    {
+        var d = FigureToData(_figure);
+        d.ReferenceImage = null; // Referenzfoto gehört nur zur Originalfigur
+        AddFigureFrom(d);
+    }
 
     private void RemoveFigure_Click(object sender, RoutedEventArgs e)
     {
@@ -283,6 +293,8 @@ public partial class MainWindow : Window
         int i = _figures.IndexOf(_figure);
         _figure.Select(null);
         _figuresGroup.Children.Remove(_figure.Group);
+        _refPaths.Remove(_figure);
+        _refDetections.Remove(_figure);
         _figures.RemoveAt(i);
         _figure = _figures[Math.Max(0, i - 1)];
         ActivateFigure(_figures.IndexOf(_figure));
@@ -715,7 +727,6 @@ public partial class MainWindow : Window
         CnOnlyCheck.IsChecked = s.ControlNetOnly;
         ClickSelectsFigureCheck.IsChecked = s.ClickSelectsFigure;
         RefOpacitySlider.Value = Math.Clamp(s.ReferenceOpacity, 10, 90);
-        if (!string.IsNullOrEmpty(s.ReferenceImage) && File.Exists(s.ReferenceImage)) LoadReferenceImage(s.ReferenceImage);
         if (s.Figures is { Count: > 0 })
         {
             try { RestoreFigures(s.Figures, s.ActiveFigure); return true; }
@@ -770,7 +781,7 @@ public partial class MainWindow : Window
         s.ControlNetRegions = CnRegionCheck.IsChecked == true;
         s.ControlNetOnly = CnOnlyCheck.IsChecked == true;
         s.ClickSelectsFigure = ClickSelectsFigureCheck.IsChecked == true;
-        s.ReferenceImage = _refImagePath;
+        s.ReferenceImage = null; // Referenzfotos stehen jetzt je Figur in s.Figures
         s.ReferenceOpacity = RefOpacitySlider.Value;
         s.Save();
     }
@@ -1306,6 +1317,7 @@ public partial class MainWindow : Window
             _detector ??= new PoseStudio.Detection.PoseDetector(Path.Combine(AppContext.BaseDirectory, "Models"));
             var pose = _detector.Detect(_refBitmap);
             _lastDetection = pose;
+            if (pose != null) _refDetections[_figure] = pose;
             if (pose == null)
             {
                 DrawGuides();
@@ -1356,49 +1368,65 @@ public partial class MainWindow : Window
 
     // =================================================================== Referenzbild (nur Vorschau)
 
-    private string? _refImagePath;
+    /// <summary>Referenzfoto je Figur (Pfad) und die zuletzt darin erkannte Pose.</summary>
+    private readonly Dictionary<Mannequin, string> _refPaths = new();
+    private readonly Dictionary<Mannequin, PoseStudio.Detection.DetectedPose> _refDetections = new();
 
+    /// <summary>Foto als Referenz für die aktive Figur laden und anzeigen.</summary>
     private void LoadReferenceImage(string path)
     {
-        try
+        _refPaths[_figure] = path;
+        _refDetections.Remove(_figure);
+        ShowReferenceForActive();
+    }
+
+    /// <summary>Referenzfoto der aktiven Figur anzeigen (oder ausblenden, wenn sie keins hat).</summary>
+    private void ShowReferenceForActive()
+    {
+        _refBitmap = null;
+        _lastDetection = null;
+        RefImage.Source = null;
+        if (_refPaths.TryGetValue(_figure, out var path))
         {
-            var bi = new BitmapImage();
-            bi.BeginInit();
-            bi.CacheOption = BitmapCacheOption.OnLoad;
-            bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            bi.UriSource = new Uri(path);
-            bi.EndInit();
-            bi.Freeze();
-            RefImage.Source = bi;
-            RemoveRefOverlayButton.Visibility = Visibility.Visible;
-            _refBitmap = bi;
-            _lastDetection = null;
-            _refImagePath = path;
-            RefImageText.Text = $"{Path.GetFileName(path)} – Kamera (Höhe, Neigung, Brennweite) an das Foto anpassen, dann die Figur nachstellen.";
+            try
+            {
+                var bi = new BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = BitmapCacheOption.OnLoad;
+                bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                bi.UriSource = new Uri(path);
+                bi.EndInit();
+                bi.Freeze();
+                RefImage.Source = bi;
+                _refBitmap = bi;
+                _refDetections.TryGetValue(_figure, out _lastDetection);
+            }
+            catch (Exception ex)
+            {
+                _refPaths.Remove(_figure);
+                StatusText.Text = "Referenzfoto konnte nicht geladen werden: " + ex.Message;
+            }
         }
-        catch (Exception ex)
-        {
-            StatusText.Text = "Referenzbild konnte nicht geladen werden: " + ex.Message;
-        }
+        int idx = _figures.IndexOf(_figure) + 1;
+        RemoveRefOverlayButton.Visibility = _refBitmap != null ? Visibility.Visible : Visibility.Collapsed;
+        RefImageText.Text = _refBitmap != null
+            ? $"Figur {idx}: {Path.GetFileName(path)} – Kamera grob wie im Foto einstellen, dann „Pose übernehmen“."
+            : $"Figur {idx}: kein Foto. Jede Figur kann ihr eigenes Referenzfoto haben (wird nie exportiert).";
+        DrawGuides();
     }
 
     private void PickRefImage_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFileDialog { Filter = "Bilder (*.jpg;*.jpeg;*.png;*.bmp;*.webp)|*.jpg;*.jpeg;*.png;*.bmp;*.webp|Alle Dateien|*.*" };
+        var dlg = new OpenFileDialog { Title = $"Referenzfoto für Figur {_figures.IndexOf(_figure) + 1}", Filter = "Bilder (*.jpg;*.jpeg;*.png;*.bmp;*.webp)|*.jpg;*.jpeg;*.png;*.bmp;*.webp|Alle Dateien|*.*" };
         if (dlg.ShowDialog(this) == true) LoadReferenceImage(dlg.FileName);
     }
 
     private void RemoveRefImage_Click(object sender, RoutedEventArgs e)
     {
-        RefImage.Source = null;
-        RemoveRefOverlayButton.Visibility = Visibility.Collapsed;
-        _refBitmap = null;
-        _lastDetection = null;
-        DrawGuides();
-        _refImagePath = null;
-        RefImageText.Text = "(kein Referenzbild – nur zum Nachstellen, wird nicht exportiert)";
+        _refPaths.Remove(_figure);
+        _refDetections.Remove(_figure);
+        ShowReferenceForActive();
     }
-
     private void RefOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (RefImage != null) RefImage.Opacity = e.NewValue / 100;
