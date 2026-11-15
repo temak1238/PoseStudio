@@ -80,10 +80,7 @@ public partial class MainWindow : Window
         SceneVisual.Content = _scene;
 
         // Vorlagen nach Kategorie gruppiert (Reihenfolge der Kategorien wie im ersten Auftreten)
-        var cats = Presets.All.Select(p => p.Category).Distinct().ToList();
-        var presetView = new System.Windows.Data.ListCollectionView(Presets.All.OrderBy(p => cats.IndexOf(p.Category)).ToList());
-        presetView.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(PosePreset.Category)));
-        PresetCombo.ItemsSource = presetView;
+        RefreshPresetCombo();
         PresetCombo.SelectedIndex = 0;
         JointList.ItemsSource = _figure.Joints;
         AxisItems.ItemsSource = _axes;
@@ -714,6 +711,8 @@ public partial class MainWindow : Window
         Cn3dCheck.IsChecked = s.ControlNet3D;
         CnRegionCheck.IsChecked = s.ControlNetRegions;
         CnOnlyCheck.IsChecked = s.ControlNetOnly;
+        RefOpacitySlider.Value = Math.Clamp(s.ReferenceOpacity, 10, 90);
+        if (!string.IsNullOrEmpty(s.ReferenceImage) && File.Exists(s.ReferenceImage)) LoadReferenceImage(s.ReferenceImage);
         if (s.Figures is { Count: > 0 })
         {
             try { RestoreFigures(s.Figures, s.ActiveFigure); return true; }
@@ -754,6 +753,8 @@ public partial class MainWindow : Window
         s.ControlNet3D = Cn3dCheck.IsChecked == true;
         s.ControlNetRegions = CnRegionCheck.IsChecked == true;
         s.ControlNetOnly = CnOnlyCheck.IsChecked == true;
+        s.ReferenceImage = _refImagePath;
+        s.ReferenceOpacity = RefOpacitySlider.Value;
         s.Save();
     }
 
@@ -914,6 +915,92 @@ public partial class MainWindow : Window
 
     // =================================================================== Pose-Buttons
 
+    // =================================================================== Vorlagen-Bibliothek
+
+    /// <summary>Auswahlliste: eigene Vorlagen (oben, „Eigene“) und eingebaute, nach Kategorie gruppiert.</summary>
+    private void RefreshPresetCombo()
+    {
+        var user = PoseLibrary.LoadUser().Select(e => new PosePreset(PoseLibrary.UserCategory, e.Name,
+            new Dictionary<string, (double, double, double)>()) { Data = e.Pose });
+        var all = user.Concat(Presets.All).ToList();
+        var cats = all.Select(p => p.Category).Distinct().ToList();
+        var view = new System.Windows.Data.ListCollectionView(all.OrderBy(p => cats.IndexOf(p.Category)).ToList());
+        view.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(PosePreset.Category)));
+        bool ready = _ready;
+        _ready = false; // Auswahl beim Neuaufbau nicht anwenden
+        PresetCombo.ItemsSource = view;
+        PresetCombo.SelectedItem = all.FirstOrDefault(p => p.Category != PoseLibrary.UserCategory);
+        _ready = ready;
+    }
+
+    private PoseLibraryWindow? _library;
+
+    private void OpenLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_library is { IsVisible: true }) { _library.Activate(); return; }
+        _library = new PoseLibraryWindow(() => _figure.GetFigure(), () => _figure.BodyColor, ApplyLibraryEntry, SaveTemplate, GetVersion()) { Owner = this };
+        _library.Show();
+    }
+
+    /// <summary>Pose aus der Bibliothek auf die aktive Figur anwenden (Position der Figur bleibt).</summary>
+    private void ApplyLibraryEntry(LibraryEntry entry)
+    {
+        PushUndo();
+        var p = PoseLibrary.Clone(entry.Pose);
+        p.RootPosition = new[] { _figure.RootPosition.X, _figure.RootPosition.Y, _figure.RootPosition.Z };
+        _figure.SetPose(p);
+        _figure.GroundToFloor();
+        ShowProp();
+        PoseChanged();
+        RefreshFigureList();
+        StatusText.Text = $"Vorlage „{entry.Name}“ angewendet.";
+    }
+
+    private void SaveTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        if (SaveTemplate() is { } name) StatusText.Text = $"Vorlage „{name}“ gespeichert.";
+    }
+
+    /// <summary>Pose der aktiven Figur als eigene Vorlage speichern (Name abfragen, Vorschaubild rendern).</summary>
+    private string? SaveTemplate()
+    {
+        var owner = _library is { IsVisible: true } ? (Window)_library : this;
+        var name = AskText(owner, "Als Vorlage speichern", "Name der Vorlage:", "Meine Pose");
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        name = PoseLibrary.SafeName(name);
+        if (File.Exists(Path.Combine(PoseLibrary.UserFolder, name + ".pose.json")) &&
+            MessageBox.Show(owner, $"Es gibt schon eine Vorlage „{name}“. Überschreiben?", "Vorlage", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return null;
+        var pose = _figure.GetPose();
+        pose.Figure = _figure.GetFigure();
+        var thumb = PoseLibrary.RenderThumb(pose, pose.Figure, _figure.BodyColor);
+        PoseLibrary.SaveUser(name, pose, thumb);
+        RefreshPresetCombo();
+        return name;
+    }
+
+    /// <summary>Einfacher Eingabedialog.</summary>
+    private static string? AskText(Window owner, string title, string prompt, string initial)
+    {
+        var box = new TextBox { Text = initial, Margin = new Thickness(0, 6, 0, 10), MinWidth = 280 };
+        var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 0, 6, 0) };
+        var cancel = new Button { Content = "Abbrechen", IsCancel = true, MinWidth = 80 };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok); buttons.Children.Add(cancel);
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = prompt });
+        panel.Children.Add(box);
+        panel.Children.Add(buttons);
+        var dlg = new Window
+        {
+            Title = title, Content = panel, SizeToContent = SizeToContent.WidthAndHeight, ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = owner, ShowInTaskbar = false
+        };
+        ok.Click += (_, _) => dlg.DialogResult = true;
+        dlg.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+        return dlg.ShowDialog() == true ? box.Text.Trim() : null;
+    }
+
     private void PresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Auswahl in der Liste wendet die Vorlage direkt an (nicht beim Programmstart)
@@ -923,11 +1010,7 @@ public partial class MainWindow : Window
     private void ApplyPreset_Click(object sender, RoutedEventArgs e)
     {
         if (PresetCombo.SelectedItem is not PosePreset p) return;
-        PushUndo();
-        _figure.SetPose(p.ToPose());
-        _figure.GroundToFloor();
-        PoseChanged();
-        StatusText.Text = $"Vorlage „{p.Name}“ angewendet.";
+        ApplyLibraryEntry(new LibraryEntry { Name = p.Name, Category = p.Category, Pose = p.ToPose() });
     }
 
     private void ResetJoint_Click(object sender, RoutedEventArgs e)
@@ -1185,6 +1268,49 @@ public partial class MainWindow : Window
 
     private void BgStretch_Changed(object sender, SelectionChangedEventArgs e) => BgImage.Stretch = CurrentStretch;
 
+    // =================================================================== Referenzbild (nur Vorschau)
+
+    private string? _refImagePath;
+
+    private void LoadReferenceImage(string path)
+    {
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            bi.UriSource = new Uri(path);
+            bi.EndInit();
+            bi.Freeze();
+            RefImage.Source = bi;
+            _refImagePath = path;
+            RefImageText.Text = $"{Path.GetFileName(path)} – Kamera (Höhe, Neigung, Brennweite) an das Foto anpassen, dann die Figur nachstellen.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Referenzbild konnte nicht geladen werden: " + ex.Message;
+        }
+    }
+
+    private void PickRefImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Filter = "Bilder (*.jpg;*.jpeg;*.png;*.bmp;*.webp)|*.jpg;*.jpeg;*.png;*.bmp;*.webp|Alle Dateien|*.*" };
+        if (dlg.ShowDialog(this) == true) LoadReferenceImage(dlg.FileName);
+    }
+
+    private void RemoveRefImage_Click(object sender, RoutedEventArgs e)
+    {
+        RefImage.Source = null;
+        _refImagePath = null;
+        RefImageText.Text = "(kein Referenzbild – nur zum Nachstellen, wird nicht exportiert)";
+    }
+
+    private void RefOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (RefImage != null) RefImage.Opacity = e.NewValue / 100;
+    }
+
     // =================================================================== Hilfslinien
 
     private void Guides_Changed(object sender, RoutedEventArgs e) => DrawGuides();
@@ -1315,7 +1441,7 @@ public partial class MainWindow : Window
             // Strg/Umschalt: angeklicktes (oder bereits gewähltes) Gelenk mit der Maus bewegen.
             if (_pressedPart != null && _figure.TryGetJoint(_pressedPart, out var j) && !ReferenceEquals(j, _figure.Selected))
                 SelectJoint(j);
-            if (_figure.Selected != null) { _jointDrag = true; PushUndo(); }
+            if (_figure.Selected != null) { _jointDrag = true; _ikTargetRel = null; PushUndo(); }
         }
         Frame.CaptureMouse();
         Frame.Focus();
@@ -1384,9 +1510,36 @@ public partial class MainWindow : Window
         _mouseLast = p;
     }
 
+    private Vector3D? _ikTargetRel; // Zielpunkt beim Ziehen von Hand/Fuß, relativ zur Figurposition
+
+    private static bool IsLimbEnd(Joint j) => j.Id.StartsWith("wrist") || j.Id.StartsWith("ankle");
+
+    /// <summary>Hand/Fuß mit der Maus führen: der Zielpunkt folgt der Maus in der Bildebene, Arm bzw. Bein per IK.</summary>
+    private void DragLimbEnd(Joint j, Vector d)
+    {
+        if (_figure.HandHoldsProp(j))
+        {
+            StatusText.Text = "Diese Hand hält ein Objekt – bitte das Objekt bewegen (Strg + ziehen am Objekt).";
+            return;
+        }
+        var root = _figure.RootPosition;
+        if (_ikTargetRel == null)
+            _ikTargetRel = (Vector3D)j.World.Transform(new Point3D(0, 0, 0)) - root;
+        var cur = (Point3D)(_ikTargetRel.Value + root);
+        double z = Math.Max(0.2, Vector3D.DotProduct(cur - _cam.Position, _cam.LookDirection));
+        double px = z * Math.Tan(_cam.VerticalFov * Math.PI / 360) * 2 / Math.Max(1, View.ActualHeight);
+        var target = cur + _cam.Right * d.X * px - _cam.Up * d.Y * px;
+        _ikTargetRel = (Vector3D)target - root;
+        _figure.ReachTo(j, target);
+    }
+
     private void DragJoint(Joint j, Vector d)
     {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && IsLimbEnd(j))
+        {
+            DragLimbEnd(j, d);
+        }
+        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
             if (j.Twist != null) j.TwistValue = Math.Clamp(Math.Round(j.TwistValue + d.X * 0.5, 1), j.Twist.Min, j.Twist.Max);
         }

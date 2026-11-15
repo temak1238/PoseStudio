@@ -599,6 +599,72 @@ public sealed class Mannequin
         LastGripError = Math.Max(LastGripError, Math.Sqrt(Math.Pow(Residual(best)[0], 2) + Math.Pow(Residual(best)[1], 2) + Math.Pow(Residual(best)[2], 2)));
     }
 
+    /// <summary>Hält die Hand dieser Seite gerade ein Objekt (dann steuert das Objekt den Arm)?</summary>
+    public bool HandHoldsProp(Joint wrist) =>
+        _prop.Active && wrist.Id.StartsWith("wrist") && (_prop.TwoHanded || (_prop.MainSide > 0) == wrist.Id.EndsWith("_l"));
+
+    /// <summary>Hand (Handgelenk) oder Fuß (Knöchel) an einen Zielpunkt führen – Arm bzw. Bein folgen per IK.
+    /// Freiheitsgrade: Schulter/Hüfte (beugen, seitlich, drehen) und Ellbogen/Knie (beugen, drehen).
+    /// Rückgabe: verbleibender Abstand zum Ziel in Metern.</summary>
+    public double ReachTo(Joint end, Point3D target)
+    {
+        string sfx = end.Id[^2..];
+        Joint upper, lower;
+        if (end.Id.StartsWith("wrist")) { upper = this["shoulder" + sfx]; lower = this["elbow" + sfx]; }
+        else if (end.Id.StartsWith("ankle")) { upper = this["hip" + sfx]; lower = this["knee" + sfx]; }
+        else return double.NaN;
+
+        var parentW = upper.Parent!.World;
+        var defs = new[] { upper.Bend!, upper.Side!, upper.Twist!, lower.Bend!, lower.Twist! };
+        const int n = 5, rows = 6;
+        double[] Residual(double[] q)
+        {
+            var wu = LocalMatrix(upper, q[0], q[1], q[2]) * parentW;
+            var wl = LocalMatrix(lower, q[3], 0, q[4]) * wu;
+            var p = wl.Transform((Point3D)end.Offset);
+            const double wPref = 0.0005;
+            return new[] { target.X - p.X, target.Y - p.Y, target.Z - p.Z, -wPref * q[2], -wPref * q[4], -wPref * Math.Max(0, Math.Abs(q[1]) - 30) };
+        }
+        static double Norm(double[] r) => Math.Sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+
+        var q = new[] { upper.BendValue, upper.SideValue, upper.TwistValue, lower.BendValue, lower.TwistValue };
+        for (int it = 0; it < 40; it++)
+        {
+            var r = Residual(q);
+            if (Norm(r) < 0.001) break;
+            var J = new double[rows, n];
+            for (int k = 0; k < n; k++)
+            {
+                var qq = (double[])q.Clone();
+                qq[k] += 0.5;
+                var r2 = Residual(qq);
+                for (int i = 0; i < rows; i++) J[i, k] = (r2[i] - r[i]) / 0.5;
+            }
+            var A = new double[n, n + 1];
+            for (int a = 0; a < n; a++)
+            {
+                for (int b = 0; b < n; b++)
+                {
+                    double sum = 0;
+                    for (int i = 0; i < rows; i++) sum += J[i, a] * J[i, b];
+                    A[a, b] = sum + (a == b ? 3e-6 : 0);
+                }
+                double rb = 0;
+                for (int i = 0; i < rows; i++) rb += J[i, a] * r[i];
+                A[a, n] = -rb;
+            }
+            var d = GaussSolve(A, n);
+            if (d == null) break;
+            for (int k = 0; k < n; k++)
+                q[k] = Math.Clamp(q[k] + Math.Clamp(d[k], -10, 10), defs[k].Min, defs[k].Max);
+        }
+        upper.BendValue = q[0]; upper.SideValue = q[1]; upper.TwistValue = q[2];
+        lower.BendValue = q[3]; lower.TwistValue = q[4];
+        double err = Norm(Residual(q));
+        Update();
+        return err;
+    }
+
     /// <summary>Größter Abstand Hand ↔ Griffpunkt der letzten Berechnung (m) – zeigt, ob das Objekt erreichbar ist.</summary>
     public double LastGripError { get; private set; }
 

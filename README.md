@@ -11,7 +11,7 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 - Linke Maustaste ziehen: Kamera um die Figur drehen
 - Rechte Maustaste ziehen: Kamera verschieben
 - Mausrad: Entfernung ändern
-- **Strg + ziehen**: ausgewähltes Gelenk beugen (hoch/runter) bzw. seitlich bewegen (links/rechts)
+- **Strg + ziehen**: ausgewähltes Gelenk beugen (hoch/runter) bzw. seitlich bewegen (links/rechts) – bei **Hand oder Fuß** folgt der ganze Arm bzw. das ganze Bein (IK)
 - **Umschalt + ziehen**: ausgewähltes Gelenk um die eigene Achse drehen
 - **Alt + ziehen**: Lichtquelle bewegen (links/rechts = Richtung, hoch/runter = Höhe)
 - Strg+Z: Rückgängig
@@ -21,6 +21,10 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 **Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren; Rumpf, Arme und Beine als durchgehende Formen mit weichen Gelenkübergängen). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
 
 **Links – Objekt in der Hand:** Schwert, Zauberstab, Stock, langer Stab, Speer – mit rechter, linker oder beiden Händen. Die Arme folgen dem Objekt automatisch (inverse Kinematik), die Hände schließen sich um den Griff. Lage per Regler oder direkt in der Ansicht: Objekt anklicken, **Strg + ziehen** verschiebt, **Umschalt + ziehen** dreht. Das Objekt hängt am Oberkörper und bewegt sich mit.
+
+**Pose-Bibliothek:** „Bibliothek…“ zeigt alle Vorlagen als Kacheln mit Vorschaubild (Filter nach Kategorie, Suche); Klick wendet an. „Als Vorlage speichern…“ legt die Pose der aktiven Figur (inkl. Objekt) mit Bild in `%APPDATA%\PoseStudio\Vorlagen` ab – sie erscheint auch in der Vorlagenliste unter „Eigene“.
+
+**Referenzbild:** Foto halbtransparent über der Ansicht (Deckkraft einstellbar), um eine Pose nachzustellen – wird nicht exportiert.
 
 **Links – Pose:** 38 Vorlagen in 5 Kategorien (Stehen, Gesten, Sitzen & Knien, Liegen, Bewegung) – Auswahl wendet direkt an, Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
 

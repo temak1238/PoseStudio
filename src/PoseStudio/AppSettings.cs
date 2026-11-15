@@ -32,6 +32,8 @@ public sealed class AppSettings
     public List<PoseStudio.Model.PoseData>? Figures { get; set; }
     public int ActiveFigure { get; set; }
     public bool ControlNet3D { get; set; } = true;
+    public string? ReferenceImage { get; set; }
+    public double ReferenceOpacity { get; set; } = 50;
     public bool ControlNetRegions { get; set; }
     public bool ControlNetOnly { get; set; }
 

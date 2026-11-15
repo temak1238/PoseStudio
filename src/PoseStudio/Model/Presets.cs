@@ -2,8 +2,12 @@ namespace PoseStudio.Model;
 
 public sealed record PosePreset(string Category, string Name, IReadOnlyDictionary<string, (double Bend, double Side, double Twist)> Values)
 {
+    /// <summary>Vollständige Pose (eigene Vorlagen, inkl. Objekt); sonst wird die Pose aus Values gebaut.</summary>
+    public PoseData? Data { get; init; }
+
     public PoseData ToPose()
     {
+        if (Data != null) return PoseLibrary.Clone(Data);
         var p = new PoseData();
         foreach (var (id, v) in Values) p.Joints[id] = new[] { v.Bend, v.Side, v.Twist };
         return p;

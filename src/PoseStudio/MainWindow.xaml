@@ -82,8 +82,7 @@
                     </GroupBox>
 
                     <GroupBox Header="Pose-Vorlagen">
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Anwenden" Click="ApplyPreset_Click" />
+                        <StackPanel>
                             <ComboBox x:Name="PresetCombo" Margin="2" MaxDropDownHeight="520" SelectionChanged="PresetCombo_SelectionChanged">
                                 <ComboBox.GroupStyle>
                                     <GroupStyle>
@@ -95,7 +94,11 @@
                                     </GroupStyle>
                                 </ComboBox.GroupStyle>
                             </ComboBox>
-                        </DockPanel>
+                            <UniformGrid Columns="2">
+                                <Button Content="Anwenden" Click="ApplyPreset_Click" />
+                                <Button Content="Bibliothek…" Click="OpenLibrary_Click" ToolTip="Alle Vorlagen mit Vorschaubild, eigene Vorlagen" />
+                            </UniformGrid>
+                        </StackPanel>
                     </GroupBox>
 
                     <GroupBox Header="Objekt in der Hand">
@@ -152,6 +155,7 @@
                             <Button Content="Alles zurücksetzen" Click="ResetAll_Click" />
                             <Button Content="Pose speichern…" Click="SavePose_Click" />
                             <Button Content="Pose laden…" Click="LoadPose_Click" />
+                            <Button Content="Als Vorlage speichern…" Click="SaveTemplate_Click" ToolTip="Pose der aktiven Figur in die eigene Bibliothek (mit Vorschaubild)" />
                         </WrapPanel>
                     </GroupBox>
 
@@ -183,6 +187,7 @@
                             </Viewport3D.Camera>
                             <ModelVisual3D x:Name="SceneVisual" />
                         </Viewport3D>
+                        <Image x:Name="RefImage" Stretch="Uniform" IsHitTestVisible="False" Opacity="0.5" />
                         <Canvas x:Name="GuideCanvas" IsHitTestVisible="False" />
                     </Grid>
                 </Border>
@@ -357,6 +362,15 @@
                                 <ComboBox x:Name="BgStretchCombo" SelectionChanged="BgStretch_Changed" />
                             </DockPanel>
                             <TextBlock x:Name="BgImageText" Margin="90,0,0,4" Foreground="#666" FontSize="11" TextTrimming="CharacterEllipsis" Text="(kein Bild)" />
+                            <DockPanel Margin="0,8,0,2">
+                                <TextBlock Text="Referenzbild" Width="90" VerticalAlignment="Center" ToolTip="Foto halbtransparent über der Ansicht – zum Nachstellen einer Pose. Wird nicht exportiert." />
+                                <Button DockPanel.Dock="Right" Content="Entfernen" Click="RemoveRefImage_Click" />
+                                <Button DockPanel.Dock="Right" Content="Bild…" Click="PickRefImage_Click" />
+                                <Slider x:Name="RefOpacitySlider" Minimum="10" Maximum="90" Value="50" VerticalAlignment="Center"
+                                        ToolTip="Deckkraft des Referenzbilds" ValueChanged="RefOpacity_Changed" />
+                            </DockPanel>
+                            <TextBlock x:Name="RefImageText" Margin="90,0,0,4" Foreground="#666" FontSize="11" TextTrimming="CharacterEllipsis"
+                                       Text="(kein Referenzbild – nur zum Nachstellen, wird nicht exportiert)" TextWrapping="Wrap" />
                             <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="90" /><ColumnDefinition /><ColumnDefinition />
