@@ -25,9 +25,61 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--make-icon")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            IconMaker.Write(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length >= 2 && e.Args[0] == "--presets")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PresetSheet(e.Args[1], e.Args.Length >= 3 ? e.Args[2] : "Male");
+            Shutdown();
+            return;
+        }
+
         var w = new MainWindow();
         MainWindow = w;
         w.Show();
+    }
+
+    /// <summary>Alle Pose-Vorlagen als Kontaktbogen (je Vorlage 3/4-Ansicht und Seite).</summary>
+    private static void PresetSheet(string folder, string style)
+    {
+        Directory.CreateDirectory(folder);
+        var m = new Mannequin();
+        m.SetFigure(Enum.Parse<FigureStyle>(style), true, new Proportions());
+        var opts = new SceneOptions { Floor = true, Shadow = true, Light = new LightSettings { CastShadow = false } };
+        const int cw = 170, ch = 250, perRow = 8;
+        int rows = (Presets.All.Count + perRow - 1) / perRow;
+        int W = cw * 2 * perRow, H = ch * rows;
+        var dv = new System.Windows.Media.DrawingVisual();
+        var tf = new System.Windows.Media.Typeface("Segoe UI");
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, W, H));
+            for (int i = 0; i < Presets.All.Count; i++)
+            {
+                m.SetPose(Presets.All[i].ToPose()); m.GroundToFloor();
+                double minY = m.ComputeMinY(), maxY = m.ComputeMaxY();
+                var pel = m.PelvisWorld;
+                for (int v = 0; v < 2; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = v == 0 ? 30 : 95, Pitch = 10, Target = new System.Windows.Media.Media3D.Point3D(pel.X, (minY + maxY) / 2, pel.Z), Distance = 5.2 };
+                    double x = ((i % perRow) * 2 + v) * cw, y = (i / perRow) * ch;
+                    dc.DrawImage(SceneFactory.Render(m, cam, opts, cw, ch), new Rect(x, y, cw, ch));
+                    if (v == 0)
+                        dc.DrawText(new System.Windows.Media.FormattedText($"{i}: {Presets.All[i].Name}", System.Globalization.CultureInfo.CurrentCulture,
+                            FlowDirection.LeftToRight, tf, 11, System.Windows.Media.Brushes.Black, 1.0), new Point(x + 3, y + 2));
+                }
+            }
+        }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W, H, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"presets_{style}.jpg"), 90);
     }
 
     private static void SelfTest(string folder)

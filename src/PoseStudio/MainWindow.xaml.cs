@@ -73,7 +73,11 @@ public partial class MainWindow : Window
         _scene.Children.Add(_figure.Group);
         SceneVisual.Content = _scene;
 
-        PresetCombo.ItemsSource = Presets.All;
+        // Vorlagen nach Kategorie gruppiert (Reihenfolge der Kategorien wie im ersten Auftreten)
+        var cats = Presets.All.Select(p => p.Category).Distinct().ToList();
+        var presetView = new System.Windows.Data.ListCollectionView(Presets.All.OrderBy(p => cats.IndexOf(p.Category)).ToList());
+        presetView.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(PosePreset.Category)));
+        PresetCombo.ItemsSource = presetView;
         PresetCombo.SelectedIndex = 0;
         JointList.ItemsSource = _figure.Joints;
         AxisItems.ItemsSource = _axes;
@@ -520,6 +524,12 @@ public partial class MainWindow : Window
     }
 
     // =================================================================== Pose-Buttons
+
+    private void PresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Auswahl in der Liste wendet die Vorlage direkt an (nicht beim Programmstart)
+        if (_ready && PresetCombo.IsDropDownOpen) ApplyPreset_Click(sender, e);
+    }
 
     private void ApplyPreset_Click(object sender, RoutedEventArgs e)
     {
