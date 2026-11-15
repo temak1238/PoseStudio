@@ -36,6 +36,7 @@ public sealed class AppSettings
     public double ReferenceOpacity { get; set; } = 50;
     public bool ControlNetRegions { get; set; }
     public bool ControlNetOnly { get; set; }
+    public bool ClickSelectsFigure { get; set; }
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

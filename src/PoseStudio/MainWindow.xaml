@@ -62,6 +62,8 @@
                                 <Button Content="Duplizieren" Click="DuplicateFigure_Click" ToolTip="Aktive Figur mit Pose kopieren" />
                                 <Button Content="Entfernen" Click="RemoveFigure_Click" />
                             </UniformGrid>
+                            <CheckBox x:Name="ClickSelectsFigureCheck" Content="Figur per Klick in der Ansicht wählen" Margin="0,4,0,0" FontSize="11"
+                                      ToolTip="Aus: In der Ansicht lässt sich nur die in der Liste markierte Figur anklicken und bewegen – andere Figuren sind gesperrt." />
                         </StackPanel>
                     </GroupBox>
 

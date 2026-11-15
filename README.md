@@ -16,7 +16,7 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 - **Alt + ziehen**: Lichtquelle bewegen (links/rechts = Richtung, hoch/runter = Höhe)
 - Strg+Z: Rückgängig
 
-**Links – Figuren in der Szene:** Mehrere Figuren mit eigener Pose, Position, Figurtyp, Farben und Objekt. Hinzufügen, Duplizieren, Entfernen; aktive Figur per Liste oder Klick in der Ansicht. Figuren werfen auch Schatten aufeinander. Die Szene wird in den Einstellungen und in der Pose-Datei gespeichert.
+**Links – Figuren in der Szene:** Mehrere Figuren mit eigener Pose, Position, Figurtyp, Farben und Objekt. Hinzufügen, Duplizieren, Entfernen; aktive Figur über die Liste. In der Ansicht lässt sich nur die aktive Figur anklicken und bewegen (optional: „Figur per Klick in der Ansicht wählen“). Figuren werfen auch Schatten aufeinander. Die Szene wird in den Einstellungen und in der Pose-Datei gespeichert.
 
 **Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren; Rumpf, Arme und Beine als durchgehende Formen mit weichen Gelenkübergängen). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
 

@@ -711,6 +711,7 @@ public partial class MainWindow : Window
         Cn3dCheck.IsChecked = s.ControlNet3D;
         CnRegionCheck.IsChecked = s.ControlNetRegions;
         CnOnlyCheck.IsChecked = s.ControlNetOnly;
+        ClickSelectsFigureCheck.IsChecked = s.ClickSelectsFigure;
         RefOpacitySlider.Value = Math.Clamp(s.ReferenceOpacity, 10, 90);
         if (!string.IsNullOrEmpty(s.ReferenceImage) && File.Exists(s.ReferenceImage)) LoadReferenceImage(s.ReferenceImage);
         if (s.Figures is { Count: > 0 })
@@ -753,6 +754,7 @@ public partial class MainWindow : Window
         s.ControlNet3D = Cn3dCheck.IsChecked == true;
         s.ControlNetRegions = CnRegionCheck.IsChecked == true;
         s.ControlNetOnly = CnOnlyCheck.IsChecked == true;
+        s.ClickSelectsFigure = ClickSelectsFigureCheck.IsChecked == true;
         s.ReferenceImage = _refImagePath;
         s.ReferenceOpacity = RefOpacitySlider.Value;
         s.Save();
@@ -1480,7 +1482,9 @@ public partial class MainWindow : Window
         GeometryModel3D? found = null;
         VisualTreeHelper.HitTest(View, null, r =>
         {
-            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && OwnerOf(g) != null)
+            // Nur die aktive Figur ist anklickbar – andere Figuren gelten als leere Fläche (außer die Option ist an)
+            if (r is RayMeshGeometry3DHitTestResult m && m.ModelHit is GeometryModel3D g && OwnerOf(g) is { } owner &&
+                (ReferenceEquals(owner, _figure) || ClickSelectsFigureCheck.IsChecked == true))
             {
                 found = g;
                 return HitTestResultBehavior.Stop;
