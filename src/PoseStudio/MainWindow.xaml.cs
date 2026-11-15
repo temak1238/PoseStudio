@@ -1268,6 +1268,75 @@ public partial class MainWindow : Window
 
     private void BgStretch_Changed(object sender, SelectionChangedEventArgs e) => BgImage.Stretch = CurrentStretch;
 
+    // =================================================================== Pose aus Foto
+
+    private PoseStudio.Detection.PoseDetector? _detector;
+    private PoseStudio.Detection.DetectedPose? _lastDetection;
+    private BitmapSource? _refBitmap;
+
+    private void PoseFromPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refBitmap == null)
+        {
+            var dlg = new OpenFileDialog { Title = "Foto mit der gewünschten Pose", Filter = "Bilder (*.jpg;*.jpeg;*.png;*.bmp;*.webp)|*.jpg;*.jpeg;*.png;*.bmp;*.webp|Alle Dateien|*.*" };
+            if (dlg.ShowDialog(this) != true) return;
+            LoadReferenceImage(dlg.FileName);
+            if (_refBitmap == null) return;
+        }
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            _detector ??= new PoseStudio.Detection.PoseDetector(Path.Combine(AppContext.BaseDirectory, "Models"));
+            var pose = _detector.Detect(_refBitmap);
+            _lastDetection = pose;
+            if (pose == null)
+            {
+                DrawGuides();
+                MessageBox.Show(this, "Im Bild wurde keine Person erkannt.\nAm besten klappt es mit einer gut sichtbaren, ganzen Person.", "Pose aus Foto", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            PushUndo();
+            var root = _figure.RootPosition;
+            _figure.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(pose, _cam));
+            _figure.RootPosition = root;
+            _figure.GroundToFloor();
+            PoseChanged();
+            ShowProp();
+            DrawGuides();
+            StatusText.Text = $"Pose erkannt (Sicherheit {pose.Confidence:P0}) und übernommen – bei Bedarf nachkorrigieren (Strg+Z macht es rückgängig).";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Posenerkennung fehlgeschlagen:\n" + ex.Message, "Pose aus Foto", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+    }
+
+    /// <summary>Erkanntes Skelett über dem Referenzbild einzeichnen (gleiche Einpassung wie das Bild).</summary>
+    private void DrawDetection(double W, double H)
+    {
+        if (_lastDetection == null || _refBitmap == null || RefImage.Source == null) return;
+        double iw = _refBitmap.PixelWidth, ih = _refBitmap.PixelHeight;
+        double s = Math.Min(W / iw, H / ih), ox = (W - iw * s) / 2, oy = (H - ih * s) / 2;
+        Point Map(int i) => new(ox + _lastDetection.Image[i].X * s, oy + _lastDetection.Image[i].Y * s);
+        var line = new SolidColorBrush(Color.FromArgb(0xD0, 0x00, 0xC8, 0x60));
+        foreach (var (a, b) in PoseStudio.Detection.PoseDetector.Bones)
+        {
+            var p1 = Map(a); var p2 = Map(b);
+            GuideCanvas.Children.Add(new System.Windows.Shapes.Line { X1 = p1.X, Y1 = p1.Y, X2 = p2.X, Y2 = p2.Y, Stroke = line, StrokeThickness = 2 });
+        }
+        for (int i = 0; i < 33; i++)
+        {
+            var p = Map(i);
+            var dot = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = Brushes.OrangeRed };
+            Canvas.SetLeft(dot, p.X - 3); Canvas.SetTop(dot, p.Y - 3);
+            GuideCanvas.Children.Add(dot);
+        }
+    }
+
     // =================================================================== Referenzbild (nur Vorschau)
 
     private string? _refImagePath;
@@ -1284,6 +1353,8 @@ public partial class MainWindow : Window
             bi.EndInit();
             bi.Freeze();
             RefImage.Source = bi;
+            _refBitmap = bi;
+            _lastDetection = null;
             _refImagePath = path;
             RefImageText.Text = $"{Path.GetFileName(path)} – Kamera (Höhe, Neigung, Brennweite) an das Foto anpassen, dann die Figur nachstellen.";
         }
@@ -1302,6 +1373,9 @@ public partial class MainWindow : Window
     private void RemoveRefImage_Click(object sender, RoutedEventArgs e)
     {
         RefImage.Source = null;
+        _refBitmap = null;
+        _lastDetection = null;
+        DrawGuides();
         _refImagePath = null;
         RefImageText.Text = "(kein Referenzbild – nur zum Nachstellen, wird nicht exportiert)";
     }
@@ -1324,6 +1398,7 @@ public partial class MainWindow : Window
         double W = View.ActualWidth, H = View.ActualHeight;
         if (W < 10 || H < 10) return;
         if (_set.HorizonLine) DrawHorizon(W, H);
+        DrawDetection(W, H);
         if (GuidesCheck.IsChecked != true) return;
         double lum = (0.299 * _background.R + 0.587 * _background.G + 0.114 * _background.B) / 255;
         var color = lum > 0.5 ? Color.FromRgb(0xD0, 0x30, 0x30) : Color.FromRgb(0xFF, 0xC0, 0x40);

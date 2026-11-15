@@ -13,7 +13,7 @@
   <ItemGroup>
     <Resource Include="Assets\PoseStudio.ico" />
     <None Remove="Assets\PoseStudio.png" />
-    <None Update="Models\*.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="Models\*.onnx;Models\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <ItemGroup>

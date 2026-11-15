@@ -665,6 +665,186 @@ public sealed class Mannequin
         return err;
     }
 
+    // ------------------------------------------------------------------ Pose aus erkannten 3D-Punkten
+
+    /// <summary>Gedämpfte Gauß-Newton-Iteration mit numerischer Jacobi-Matrix und Gelenkgrenzen.</summary>
+    private static double[] SolveDls(Func<double[], double[]> residual, double[] start, AxisDef[] defs, int iterations = 60)
+    {
+        var q = (double[])start.Clone();
+        int n = q.Length;
+        for (int it = 0; it < iterations; it++)
+        {
+            var r = residual(q);
+            int rows = r.Length;
+            var J = new double[rows, n];
+            for (int k = 0; k < n; k++)
+            {
+                var qq = (double[])q.Clone();
+                qq[k] += 0.5;
+                var r2 = residual(qq);
+                for (int i = 0; i < rows; i++) J[i, k] = (r2[i] - r[i]) / 0.5;
+            }
+            var A = new double[n, n + 1];
+            for (int a = 0; a < n; a++)
+            {
+                for (int b = 0; b < n; b++)
+                {
+                    double sum = 0;
+                    for (int i = 0; i < rows; i++) sum += J[i, a] * J[i, b];
+                    A[a, b] = sum + (a == b ? 3e-6 : 0);
+                }
+                double rb = 0;
+                for (int i = 0; i < rows; i++) rb += J[i, a] * r[i];
+                A[a, n] = -rb;
+            }
+            var d = GaussSolve(A, n);
+            if (d == null) break;
+            double maxD = 0;
+            for (int k = 0; k < n; k++)
+            {
+                double step = Math.Clamp(d[k], -10, 10);
+                maxD = Math.Max(maxD, Math.Abs(step));
+                q[k] = Math.Clamp(q[k] + step, defs[k].Min, defs[k].Max);
+            }
+            if (maxD < 0.01) break;
+        }
+        return q;
+    }
+
+    private static double SqErr(double[] r) => r.Sum(x => x * x);
+
+    private static Vector3D Axis(Matrix3D m, Vector3D v) { var a = m.Transform(v); a.Normalize(); return a; }
+    private static Vector3D Dir(Vector3D from, Vector3D to) { var d = to - from; if (d.LengthSquared > 1e-12) d.Normalize(); return d; }
+    private static Vector3D Mid(Vector3D a, Vector3D b) => (a + b) / 2;
+
+    /// <summary>Pose aus 33 erkannten Punkten (MediaPipe-Reihenfolge) übernehmen. Die Punkte müssen bereits
+    /// in den Achsen dieser Szene liegen (X = linke Seite der Figur, Y oben, Z zur Kamera); verwendet werden nur Richtungen.
+    /// Position der Figur bleibt erhalten, gehaltene Objekte steuern weiterhin ihre Hand.</summary>
+    public void FitLandmarks(Vector3D[] P)
+    {
+        foreach (var j in Joints) j.BendValue = j.SideValue = j.TwistValue = 0;
+        _ikEnabled = false;
+        Update();
+
+        // ---- Becken, Bauch, Brust
+        var pelvis = this["pelvis"]; var spine = this["spine"]; var chest = this["chest"];
+        var hipAcross = Dir(P[24], P[23]);
+        var shAcross = Dir(P[12], P[11]);
+        var torsoUp = Dir(Mid(P[23], P[24]), Mid(P[11], P[12]));
+        var torsoDefs = new[] { pelvis.Bend!, pelvis.Side!, pelvis.Twist!, spine.Bend!, spine.Side!, spine.Twist!, chest.Bend!, chest.Side!, chest.Twist! };
+        double[] TorsoRes(double[] q)
+        {
+            var pw = LocalMatrix(pelvis, q[0], q[1], q[2]);
+            var sw = LocalMatrix(spine, q[3], q[4], q[5]) * pw;
+            var cw = LocalMatrix(chest, q[6], q[7], q[8]) * sw;
+            var px = Axis(pw, new Vector3D(1, 0, 0)); var py = Axis(pw, new Vector3D(0, 1, 0));
+            var cx = Axis(cw, new Vector3D(1, 0, 0)); var cy = Axis(cw, new Vector3D(0, 1, 0));
+            const double wr = 0.004;
+            return new[]
+            {
+                px.X - hipAcross.X, px.Y - hipAcross.Y, px.Z - hipAcross.Z,
+                cx.X - shAcross.X, cx.Y - shAcross.Y, cx.Z - shAcross.Z,
+                cy.X - torsoUp.X, cy.Y - torsoUp.Y, cy.Z - torsoUp.Z,
+                0.35 * (py.X - torsoUp.X), 0.35 * (py.Y - torsoUp.Y), 0.35 * (py.Z - torsoUp.Z),
+                wr * (q[3] - q[6]), wr * (q[4] - q[7]), wr * (q[5] - q[8])
+            };
+        }
+        // Becken-Drehung grob vorbelegen (Blickrichtung aus der Hüftlinie), dann gemeinsam lösen
+        double yaw0 = Math.Atan2(-hipAcross.Z, hipAcross.X) * 180 / Math.PI;
+        var best = SolveDls(TorsoRes, new double[] { 0, 0, yaw0, 0, 0, 0, 0, 0, 0 }, torsoDefs, 80);
+        foreach (var y0 in new[] { yaw0 + 180, yaw0 - 180 })
+        {
+            if (Math.Abs(y0) > 180) continue;
+            var alt = SolveDls(TorsoRes, new double[] { 0, 0, y0, 0, 0, 0, 0, 0, 0 }, torsoDefs, 80);
+            if (SqErr(TorsoRes(alt)) < SqErr(TorsoRes(best))) best = alt;
+        }
+        (pelvis.BendValue, pelvis.SideValue, pelvis.TwistValue) = (best[0], best[1], best[2]);
+        (spine.BendValue, spine.SideValue, spine.TwistValue) = (best[3], best[4], best[5]);
+        (chest.BendValue, chest.SideValue, chest.TwistValue) = (best[6], best[7], best[8]);
+        ComputeWorlds();
+
+        // ---- Hals und Kopf
+        var neck = this["neck"]; var head = this["head"];
+        var earAcross = Dir(P[8], P[7]);
+        var faceFwd = Dir(Mid(P[7], P[8]), P[0]);
+        var cwFix = chest.World;
+        var headDefs = new[] { neck.Bend!, neck.Side!, neck.Twist!, head.Bend!, head.Side!, head.Twist! };
+        double[] HeadRes(double[] q)
+        {
+            var nw = LocalMatrix(neck, q[0], q[1], q[2]) * cwFix;
+            var hw = LocalMatrix(head, q[3], q[4], q[5]) * nw;
+            var hx = Axis(hw, new Vector3D(1, 0, 0)); var hz = Axis(hw, new Vector3D(0, 0, 1));
+            const double wr = 0.004;
+            return new[]
+            {
+                hx.X - earAcross.X, hx.Y - earAcross.Y, hx.Z - earAcross.Z,
+                hz.X - faceFwd.X, hz.Y - faceFwd.Y, hz.Z - faceFwd.Z,
+                wr * (q[0] - q[3]), wr * (q[1] - q[4]), wr * (q[2] - q[5])
+            };
+        }
+        var hq = SolveDls(HeadRes, new double[6], headDefs);
+        (neck.BendValue, neck.SideValue, neck.TwistValue) = (hq[0], hq[1], hq[2]);
+        (head.BendValue, head.SideValue, head.TwistValue) = (hq[3], hq[4], hq[5]);
+        ComputeWorlds();
+
+        // ---- Arme und Beine
+        FitLimb("shoulder_l", "elbow_l", "wrist_l", P[11], P[13], P[15], Mid(P[17], P[19]), hand: true);
+        FitLimb("shoulder_r", "elbow_r", "wrist_r", P[12], P[14], P[16], Mid(P[18], P[20]), hand: true);
+        FitLimb("hip_l", "knee_l", "ankle_l", P[23], P[25], P[27], P[31], hand: false, heel: P[29]);
+        FitLimb("hip_r", "knee_r", "ankle_r", P[24], P[26], P[28], P[32], hand: false, heel: P[30]);
+
+        _ikEnabled = true;
+        Update();
+    }
+
+    /// <summary>Ein Glied anpassen: mittleres Gelenk und Endgelenk auf die erkannten Richtungen (mit eigenen Knochenlängen),
+    /// danach Hand- bzw. Fußrichtung.</summary>
+    private void FitLimb(string upperId, string lowerId, string endId, Vector3D pA, Vector3D pB, Vector3D pC, Vector3D pTip,
+        bool hand, Vector3D heel = default)
+    {
+        var upper = this[upperId]; var lower = this[lowerId]; var end = this[endId];
+        var parentW = upper.Parent!.World;
+        var a = upper.World.Transform(new Point3D());
+        double l1 = (lower.World.Transform(new Point3D()) - a).Length;
+        double l2 = (end.World.Transform(new Point3D()) - lower.World.Transform(new Point3D())).Length;
+        var tB = a + Dir(pA, pB) * l1;
+        var tC = tB + Dir(pB, pC) * l2;
+        var defs = new[] { upper.Bend!, upper.Side!, upper.Twist!, lower.Bend!, lower.Twist! };
+        double[] Res(double[] q)
+        {
+            var wu = LocalMatrix(upper, q[0], q[1], q[2]) * parentW;
+            var wl = LocalMatrix(lower, q[3], 0, q[4]) * wu;
+            var b = wl.Transform(new Point3D());
+            var c = wl.Transform((Point3D)end.Offset);
+            const double wp = 0.0005;
+            return new[] { tB.X - b.X, tB.Y - b.Y, tB.Z - b.Z, tC.X - c.X, tC.Y - c.Y, tC.Z - c.Z, wp * q[2], wp * q[4] };
+        }
+        var best = SolveDls(Res, new double[5], defs);
+        foreach (var seed in new[] { new double[] { 40, 20, 40, 60, 0 }, new double[] { 40, 20, -40, 60, 0 }, new double[] { 90, 10, 0, 30, 0 } })
+        {
+            if (SqErr(Res(best)) < 1e-4) break;
+            var alt = SolveDls(Res, seed, defs);
+            if (SqErr(Res(alt)) < SqErr(Res(best))) best = alt;
+        }
+        (upper.BendValue, upper.SideValue, upper.TwistValue) = (best[0], best[1], best[2]);
+        (lower.BendValue, lower.TwistValue) = (best[3], best[4]);
+        ComputeWorlds();
+
+        // Hand: Richtung Handgelenk → Fingermitte = lokale −Y-Achse; Fuß: Ferse → Zehen = lokale +Z-Achse
+        var target = hand ? Dir(pC, pTip) : Dir(heel, pTip);
+        var lowerW = lower.World;
+        var endDefs = new[] { end.Bend!, end.Side! };
+        double[] EndRes(double[] q)
+        {
+            var we = LocalMatrix(end, q[0], q[1], 0) * lowerW;
+            var ax = Axis(we, hand ? new Vector3D(0, -1, 0) : new Vector3D(0, 0, 1));
+            return new[] { ax.X - target.X, ax.Y - target.Y, ax.Z - target.Z, 0.002 * q[0], 0.002 * q[1] };
+        }
+        var eq = SolveDls(EndRes, new double[2], endDefs, 40);
+        (end.BendValue, end.SideValue) = (eq[0], eq[1]);
+        ComputeWorlds();
+    }
+
     /// <summary>Größter Abstand Hand ↔ Griffpunkt der letzten Berechnung (m) – zeigt, ob das Objekt erreichbar ist.</summary>
     public double LastGripError { get; private set; }
 

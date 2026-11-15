@@ -155,6 +155,8 @@
                             <Button Content="Alles zurücksetzen" Click="ResetAll_Click" />
                             <Button Content="Pose speichern…" Click="SavePose_Click" />
                             <Button Content="Pose laden…" Click="LoadPose_Click" />
+                            <Button Content="Pose aus Foto…" Click="PoseFromPhoto_Click" FontWeight="SemiBold"
+                                    ToolTip="Pose einer Person im Foto erkennen und auf die aktive Figur übertragen (nutzt das Referenzbild, falls geladen)" />
                             <Button Content="Als Vorlage speichern…" Click="SaveTemplate_Click" ToolTip="Pose der aktiven Figur in die eigene Bibliothek (mit Vorschaubild)" />
                         </WrapPanel>
                     </GroupBox>

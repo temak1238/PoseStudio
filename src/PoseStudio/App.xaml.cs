@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--detect")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            DetectTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--sitting")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -118,6 +126,42 @@ public partial class App : Application
     /// <summary>Alle Objekte × Haltungen: Ganzkörper 3/4-Ansicht und Nahaufnahme der Haupthand.</summary>
     /// <summary>Vier Figuren (ähnlich dem Beispiel aus dem anima_3dpose-Repo) als ControlNet-Bilder und normales Bild.</summary>
     /// <summary>Nahaufnahmen der Hüfte in Sitzposen (Prüfung der Gelenkübergänge).</summary>
+    /// <summary>Selbsttest der Posenerkennung: eigene Renderings erkennen, auf neue Figur übertragen, vergleichen.</summary>
+    private static void DetectTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        using var det = new PoseStudio.Detection.PoseDetector(Path.Combine(AppContext.BaseDirectory, "Models"));
+        log.AppendLine(det.ModelInfo);
+        var names = new[] { "Winken", "Laufen", "Sitzen (Stuhl)", "Arme verschränkt", "Hände in den Hüften", "Ausfallschritt" };
+        const int W = 360, H = 540;
+        var cam = new OrbitCamera { Yaw = 20, Pitch = 5, Distance = 4.6, Target = new System.Windows.Media.Media3D.Point3D(0, 0.9, 0) };
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < names.Length; i++)
+            {
+                var src = new Mannequin(); src.SetFigure(FigureStyle.Male, true, new Proportions());
+                src.SetPose(Presets.All.First(p => p.Name == names[i]).ToPose()); src.GroundToFloor();
+                var img = SceneFactory.Render(src, cam, new SceneOptions { Floor = false }, W, H);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var pose = det.Detect(img);
+                log.AppendLine($"{names[i]}: {(pose == null ? "keine Person" : $"Konfidenz {pose.Confidence:F2}, Detektor {pose.DetectionScore:F2}")}, {sw.ElapsedMilliseconds} ms");
+                dc.DrawImage(img, new Rect(i * W, 0, W, H));
+                if (pose == null) continue;
+                foreach (var p in pose.Image)
+                    dc.DrawEllipse(System.Windows.Media.Brushes.Red, null, new Point(i * W + p.X, p.Y), 3, 3);
+                // MediaPipe-Welt → Szene (X rechts = linke Seite der Figur, Y oben, Z zur Kamera), dann Kamerarichtung
+                var P = PoseStudio.Detection.PoseDetector.ToScene(pose, cam);
+                var fit = new Mannequin(); fit.SetFigure(FigureStyle.Female, true, new Proportions { HeightCm = 168 });
+                fit.FitLandmarks(P); fit.GroundToFloor();
+                dc.DrawImage(SceneFactory.Render(fit, cam, new SceneOptions { Floor = false, Background = System.Windows.Media.Color.FromRgb(0xD8, 0xE4, 0xF0) }, W, H), new Rect(i * W, H, W, H));
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * names.Length, H * 2, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "detect.jpg"), 88);
+        File.WriteAllText(Path.Combine(folder, "detect.txt"), log.ToString());
+    }
+
     private static void SittingTest(string folder)
     {
         Directory.CreateDirectory(folder);

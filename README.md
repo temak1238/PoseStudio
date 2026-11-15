@@ -24,6 +24,8 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 
 **Pose-Bibliothek:** „Bibliothek…“ zeigt alle Vorlagen als Kacheln mit Vorschaubild (Filter nach Kategorie, Suche); Klick wendet an. „Als Vorlage speichern…“ legt die Pose der aktiven Figur (inkl. Objekt) mit Bild in `%APPDATA%\PoseStudio\Vorlagen` ab – sie erscheint auch in der Vorlagenliste unter „Eigene“.
 
+**Pose aus Foto:** „Pose aus Foto…“ (links unter „Pose“) erkennt die Pose einer Person im Foto (bzw. im geladenen Referenzbild) und überträgt sie auf die aktive Figur. Das erkannte Skelett wird über dem Referenzbild eingezeichnet. Grundlage: MediaPipe BlazePose (33 Punkte inkl. 3D) aus dem OpenCV Model Zoo (Apache 2.0) über ONNX Runtime, lokal ohne Internet. Eine Person je Foto; Hände/Finger und Kopfdrehung nur grob – danach mit Strg+Ziehen nachkorrigieren. Die Pose wird so übernommen, wie die aktuelle Kamera schaut.
+
 **Referenzbild:** Foto halbtransparent über der Ansicht (Deckkraft einstellbar), um eine Pose nachzustellen – wird nicht exportiert.
 
 **Links – Pose:** 38 Vorlagen in 5 Kategorien (Stehen, Gesten, Sitzen & Knien, Liegen, Bewegung) – Auswahl wendet direkt an, Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
@@ -45,7 +47,7 @@ Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 Einstellungen werden in `%APPDATA%\PoseStudio\settings.json` gespeichert.
 
 ## Entwicklung
-- .NET 10, WPF, keine externen Pakete
+- .NET 10, WPF; einziges Paket: Microsoft.ML.OnnxRuntime (MIT) für die Posenerkennung. Modelle in `src/PoseStudio/Models` (siehe README-Modelle.txt)
 - Paket bauen: `build\Build-Package.ps1` (vorher Version in `Directory.Build.props` hochzählen)
 - Selbsttest: `PoseStudio.exe --selftest <Ordner>` rendert alle Figurenstile und Vorlagen als Kontaktbogen (braucht eine Sitzung mit aktivem Display)
 - Planung Hintergründe: `docs/Plan-Hintergrund-Generierung.md`
