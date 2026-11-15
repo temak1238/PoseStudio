@@ -60,7 +60,8 @@ public partial class MainWindow : Window
 
     // Maus
     private Point _mouseStart, _mouseLast;
-    private bool _leftDown, _rightDown, _dragging, _jointDrag, _propDrag;
+    private bool _leftDown, _rightDown, _dragging, _jointDrag, _propDrag, _figureDrag;
+    private Point3D? _lastGroundHit;
     private GeometryModel3D? _pressedPart;
 
     private static readonly string[] BgPresets = { "#FFFFFF", "#E6E6E6", "#9E9E9E", "#3A3A3A", "#000000", "#00B140", "#2B6CB0" };
@@ -1521,6 +1522,13 @@ public partial class MainWindow : Window
             if (_pressedPart != null && _figure.TryGetJoint(_pressedPart, out var j) && !ReferenceEquals(j, _figure.Selected))
                 SelectJoint(j);
             if (_figure.Selected != null) { _jointDrag = true; _ikTargetRel = null; PushUndo(); }
+            // Strg am Becken: ganze Figur über den Boden schieben (statt den Körper zu kippen)
+            if (_jointDrag && _figure.Selected?.Id == "pelvis" && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                _jointDrag = false;
+                _figureDrag = true;
+                _lastGroundHit = GroundHit(_mouseStart);
+            }
         }
         Frame.CaptureMouse();
         Frame.Focus();
@@ -1538,6 +1546,7 @@ public partial class MainWindow : Window
         _leftDown = false;
         _jointDrag = false;
         _propDrag = false;
+        _figureDrag = false;
         _lightDrag = false;
         if (!_rightDown) Frame.ReleaseMouseCapture();
     }
@@ -1570,6 +1579,7 @@ public partial class MainWindow : Window
                     _light.Elevation = Math.Clamp(_light.Elevation - d.Y * 0.4, 5, 90);
                     LightChanged();
                 }
+                else if (_figureDrag) DragFigure(p);
                 else if (_propDrag) DragProp(d);
                 else if (_jointDrag && _figure.Selected is { } j) DragJoint(j, d);
                 else
@@ -1590,6 +1600,33 @@ public partial class MainWindow : Window
     }
 
     private Vector3D? _ikTargetRel; // Zielpunkt beim Ziehen von Hand/Fuß, relativ zur Figurposition
+
+    /// <summary>Schnittpunkt des Mausstrahls mit der Bodenebene (y = 0); null, wenn der Strahl über den Horizont zeigt.</summary>
+    private Point3D? GroundHit(Point p)
+    {
+        double W = View.ActualWidth, H = View.ActualHeight;
+        if (W < 1 || H < 1) return null;
+        double t = Math.Tan(_cam.VerticalFov * Math.PI / 360);
+        double nx = (p.X - W / 2) / (H / 2) * t, ny = -(p.Y - H / 2) / (H / 2) * t;
+        var dir = _cam.LookDirection + _cam.Right * nx + _cam.Up * ny;
+        var o = _cam.Position;
+        if (dir.Y > -0.02) return null;               // (fast) parallel zum Boden oder nach oben
+        double s = -o.Y / dir.Y;
+        if (s <= 0 || s > 80) return null;
+        return o + dir * s;
+    }
+
+    /// <summary>Figur folgt der Maus auf dem Boden.</summary>
+    private void DragFigure(Point p)
+    {
+        var hit = GroundHit(p);
+        if (hit == null || _lastGroundHit == null) { _lastGroundHit = hit; return; }
+        var d = hit.Value - _lastGroundHit.Value;
+        _lastGroundHit = hit;
+        var r = _figure.RootPosition;
+        _figure.RootPosition = new Vector3D(r.X + d.X, r.Y, r.Z + d.Z);
+        PoseChanged(false);
+    }
 
     private static bool IsLimbEnd(Joint j) => j.Id.StartsWith("wrist") || j.Id.StartsWith("ankle");
 

@@ -171,6 +171,8 @@
                         Mausrad: Entfernung<LineBreak />
                         Strg + ziehen: Gelenk beugen / seitlich<LineBreak />
                         Umschalt + ziehen: Gelenk drehen<LineBreak />
+                        Strg + ziehen am Becken: Figur auf dem Boden verschieben<LineBreak />
+                        Umschalt + ziehen am Becken: Figur drehen<LineBreak />
                         Alt + ziehen: Licht bewegen
                     </TextBlock>
                 </StackPanel>
