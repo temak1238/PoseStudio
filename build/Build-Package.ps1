@@ -21,6 +21,7 @@ dotnet publish $proj -c Release -r win-x64 --self-contained true `
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish fehlgeschlagen" }
 
 Get-ChildItem $out -Filter *.pdb | Remove-Item -Force
+Get-ChildItem $out -Filter *.lib | Remove-Item -Force   # Import-Bibliotheken aus ONNX Runtime, zur Laufzeit nicht nötig
 Copy-Item (Join-Path $root 'README.md') $out
 $zip = Join-Path $root "publish\PoseStudio-$version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
