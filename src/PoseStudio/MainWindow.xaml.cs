@@ -115,7 +115,8 @@ public partial class MainWindow : Window
         // Alt allein soll nicht das Systemmenü aktivieren (Alt + ziehen bewegt das Licht).
         PreviewKeyDown += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
         PreviewKeyUp += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
-        Closing += (_, _) => SaveSettings();
+        Closing += (_, _) => { try { SaveSettings(); } catch { /* beim Beenden nie blockieren */ } };
+        Closed += (_, _) => ShutdownCleanly();
         Loaded += (_, _) => { UpdateFrameSize(); RefreshAll(); };
     }
 
@@ -721,6 +722,19 @@ public partial class MainWindow : Window
             catch { /* defekte Szene ignorieren */ }
         }
         return false;
+    }
+
+    private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Nach dem Schließen alles freigeben und die Anwendung sicher beenden.
+    /// Falls doch etwas hängen bleibt, beendet eine Notbremse den Prozess nach 3 Sekunden.</summary>
+    private void ShutdownCleanly()
+    {
+        var guard = new System.Threading.Thread(() => { System.Threading.Thread.Sleep(3000); Environment.Exit(0); }) { IsBackground = true };
+        guard.Start();
+        try { _library?.Close(); } catch { }
+        try { _detector?.Dispose(); _detector = null; } catch { }
+        Application.Current.Shutdown();
     }
 
     private void SaveSettings()

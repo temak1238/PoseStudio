@@ -31,7 +31,12 @@
 
     <DockPanel>
         <StatusBar DockPanel.Dock="Bottom">
-            <TextBlock x:Name="StatusText" Text="Bereit" />
+            <StatusBarItem DockPanel.Dock="Right">
+                <Button Content="Beenden" Padding="14,1" Click="Exit_Click" ToolTip="Einstellungen speichern und Pose Studio beenden" />
+            </StatusBarItem>
+            <StatusBarItem>
+                <TextBlock x:Name="StatusText" Text="Bereit" />
+            </StatusBarItem>
         </StatusBar>
 
         <Grid>
