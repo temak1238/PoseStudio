@@ -237,6 +237,26 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox Header="Kulisse (3D-Hintergrund)">
+                        <StackPanel>
+                            <ComboBox x:Name="SetCombo" SelectionChanged="SetType_Changed" />
+                            <DockPanel x:Name="SetColorRow" Margin="0,4,0,0">
+                                <TextBlock x:Name="SetColorLabel" Text="Farbe" Width="90" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="Wählen…" Click="PickSetColor_Click" />
+                                <Border x:Name="SetSwatch" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" DockPanel.Dock="Right" Margin="4,0" />
+                                <TextBlock />
+                            </DockPanel>
+                            <WrapPanel x:Name="SetColorPresetPanel" Margin="90,2,0,2" Visibility="{Binding Visibility, ElementName=SetColorRow}" />
+                            <DockPanel x:Name="SetFloorRow" Margin="0,4,0,0">
+                                <TextBlock Text="Boden" Width="90" VerticalAlignment="Center" />
+                                <ComboBox x:Name="SetFloorCombo" SelectionChanged="SetFloor_Changed" />
+                            </DockPanel>
+                            <ItemsControl x:Name="SetItems" ItemTemplate="{StaticResource AxisTemplate}" Margin="0,4,0,0" />
+                            <CheckBox x:Name="HorizonCheck" Content="Horizontlinie (Augenhöhe der Kamera) zeigen" Margin="0,4,0,0"
+                                      Checked="Horizon_Changed" Unchecked="Horizon_Changed" />
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Licht &amp; Schatten">
                         <StackPanel>
                             <ItemsControl x:Name="LightItems" ItemTemplate="{StaticResource AxisTemplate}" />

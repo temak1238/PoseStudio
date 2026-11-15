@@ -51,7 +51,7 @@ public sealed class OrbitCamera
         return new PerspectiveCamera(Position, LookDirection * Distance, new Vector3D(0, 1, 0), hf)
         {
             NearPlaneDistance = 0.05,
-            FarPlaneDistance = 200
+            FarPlaneDistance = 400
         };
     }
 

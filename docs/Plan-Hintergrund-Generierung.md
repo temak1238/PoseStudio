@@ -1,6 +1,6 @@
 # Plan: Hintergründe für Pose Studio
 
-Stand: 2026-11-15 · Status: Planung (Stufe 0 umgesetzt in 0.2.0)
+Stand: 2026-11-15 · Status: Stufe 0 (0.2.0) und Stufe 1 (0.6.0) umgesetzt; Stufe 2 wartet auf die ControlNet-Auswahl
 
 ## Ziel
 Neben der Figur einen passenden **Basis-Hintergrund** liefern, damit die KI (img2img, ControlNet, Referenzbild)
@@ -20,7 +20,7 @@ Kamera in Pose Studio, „schwebt“ die Figur oder steht schief im Raum. Deshal
 ## Stufe 0 – 2D-Hintergrundbild ✅ (0.2.0)
 Bild laden, Füllen/Einpassen/Strecken, wird in Vorschau und Export verwendet. Schatten bleibt zuschaltbar.
 
-## Stufe 1 – Prozedurale 3D-Basis-Hintergründe (offline, kostenlos)
+## Stufe 1 – Prozedurale 3D-Basis-Hintergründe (offline, kostenlos) ✅ (0.6.0)
 Aufwand: **gering bis mittel** (ca. eine Arbeitssitzung).
 Echte 3D-Kulissen in derselben Szene wie die Figur, dadurch stimmen Horizont, Fluchtpunkte und Kamerabewegung immer.
 
@@ -29,7 +29,7 @@ Vorlagen (jeweils mit Farb-/Größenparametern):
 - **Horizont** – Himmelverlauf + Bodenebene (Gras, Sand, Asphalt, Wasser als Farbe/Textur)
 - **Innenraum** – Boden + 2–3 Wände, optional Fenster/Tür-Öffnungen, Bodenbelag (Holz, Fliese, Teppich)
 - **Straße/Platz** – Fahrbahn, Gehweg, einfache Häuserblöcke links/rechts
-- **Bühne/Podest** – Podest, Rückwand, Spot-Licht
+- ~~Bühne/Podest~~ – noch offen
 
 Dazu: Horizontlinie als Hilfslinie in der Vorschau (zeigt Augenhöhe der Kamera).
 

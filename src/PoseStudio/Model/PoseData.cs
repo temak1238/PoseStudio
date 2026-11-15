@@ -21,6 +21,7 @@ public sealed class PoseData
     public CameraData? Camera { get; set; }
     public FigureData? Figure { get; set; }
     public PoseStudio.Rendering.LightSettings? Light { get; set; }
+    public PoseStudio.Rendering.SetSettings? Set { get; set; }
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 

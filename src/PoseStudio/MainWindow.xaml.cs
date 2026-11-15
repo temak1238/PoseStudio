@@ -69,6 +69,7 @@ public partial class MainWindow : Window
         Title = $"Pose Studio {GetVersion()}";
 
         _scene.Children.Add(_lights);
+        _scene.Children.Add(_setGroup);
         _scene.Children.Add(_floor);
         _scene.Children.Add(_figure.Group);
         SceneVisual.Content = _scene;
@@ -91,6 +92,7 @@ public partial class MainWindow : Window
         BuildCameraAxes();
         BuildProportionAxes();
         BuildLightAxes();
+        InitSetUi();
         LightItems.ItemsSource = _lightAxes;
         _scene.Children.Add(_lightMarker);
         BuildColorPresets();
@@ -155,6 +157,102 @@ public partial class MainWindow : Window
         Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
         Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
         Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+    }
+
+    // =================================================================== Kulisse
+
+    private SetSettings _set = new();
+    private readonly Model3DGroup _setGroup = new();
+    private readonly ObservableCollection<AxisViewModel> _setAxes = new();
+    private bool _suppressSet;
+
+    private static readonly (SetType Type, string Name)[] SetTypes =
+    {
+        (SetType.None, "Keine (einfarbig / Bild)"),
+        (SetType.Studio, "Fotostudio (Hohlkehle)"),
+        (SetType.Meadow, "Draußen – Wiese"),
+        (SetType.Beach, "Draußen – Strand"),
+        (SetType.Desert, "Draußen – Wüste"),
+        (SetType.Snow, "Draußen – Schnee"),
+        (SetType.Room, "Innenraum"),
+        (SetType.Street, "Straße"),
+    };
+    private static readonly (string Key, string Name)[] FloorTypes =
+    {
+        ("Wood", "Holzdielen"), ("Tiles", "Fliesen"), ("Concrete", "Beton"), ("Carpet", "Teppich"),
+    };
+    private static readonly string[] SetColorPresets = { "#D9D5CE", "#F2F0EB", "#8E8A84", "#3A3A3C", "#C9D6E3", "#E8D9C4", "#BFD3C1" };
+
+    private void InitSetUi()
+    {
+        SetCombo.ItemsSource = SetTypes.Select(s => s.Name).ToList();
+        SetFloorCombo.ItemsSource = FloorTypes.Select(f => f.Name).ToList();
+        SetItems.ItemsSource = _setAxes;
+        foreach (var hex in SetColorPresets)
+            SetColorPresetPanel.Children.Add(MakeSwatchButton(hex, c => { _set.Color = ToHex(c); ApplySet(); }));
+    }
+
+    private void ShowSet(SetSettings s)
+    {
+        _suppressSet = true;
+        _set = s.Clone();
+        _set.Clamp();
+        SetCombo.SelectedIndex = Math.Max(0, Array.FindIndex(SetTypes, t => t.Type == _set.Type));
+        SetFloorCombo.SelectedIndex = Math.Max(0, Array.FindIndex(FloorTypes, f => f.Key == _set.Floor));
+        HorizonCheck.IsChecked = _set.HorizonLine;
+        _suppressSet = false;
+        ApplySet();
+    }
+
+    /// <summary>Kulisse neu aufbauen und Bedienelemente an den Typ anpassen.</summary>
+    private void ApplySet()
+    {
+        if (_suppressSet) return;
+        var t = _set.Type;
+        SetColorRow.Visibility = t is SetType.Studio or SetType.Room ? Visibility.Visible : Visibility.Collapsed;
+        SetColorLabel.Text = t == SetType.Room ? "Wandfarbe" : "Studiofarbe";
+        SetSwatch.Background = new SolidColorBrush(ParseColor(_set.Color, Colors.LightGray));
+        SetFloorRow.Visibility = t == SetType.Room ? Visibility.Visible : Visibility.Collapsed;
+
+        _setAxes.Clear();
+        if (t == SetType.Room)
+            _setAxes.Add(new AxisViewModel("Raumbreite (m)", 3, 14, () => _set.RoomWidth, v => { _set.RoomWidth = v; ApplySet(); }));
+        if (t is SetType.Room or SetType.Studio)
+            _setAxes.Add(new AxisViewModel("Abstand Rückwand (m)", 1.2, 12, () => _set.WallDistance, v => { _set.WallDistance = v; ApplySet(); }));
+
+        _setGroup.Children.Clear();
+        if (t != SetType.None) _setGroup.Children.Add(SetBuilder.Get(_set).Model);
+        UpdateFileTypeUi();   // Transparenz ist nur ohne Kulisse möglich; aktualisiert auch den Hintergrund
+        RebuildFloor();
+        DrawGuides();
+    }
+
+    private void SetType_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSet || SetCombo.SelectedIndex < 0) return;
+        _set.Type = SetTypes[SetCombo.SelectedIndex].Type;
+        ApplySet();
+        if (_set.Type != SetType.None && FloorPreviewCheck.IsChecked == true)
+            StatusText.Text = "Kulisse aktiv – das Bodenraster wird dabei ausgeblendet.";
+    }
+
+    private void SetFloor_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSet || SetFloorCombo.SelectedIndex < 0) return;
+        _set.Floor = FloorTypes[SetFloorCombo.SelectedIndex].Key;
+        ApplySet();
+    }
+
+    private void PickSetColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (PickColor(ParseColor(_set.Color, Colors.LightGray)) is { } c) { _set.Color = ToHex(c); ApplySet(); }
+    }
+
+    private void Horizon_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSet) return;
+        _set.HorizonLine = HorizonCheck.IsChecked == true;
+        DrawGuides();
     }
 
     // =================================================================== Licht
@@ -343,6 +441,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(s.BackgroundImage) && File.Exists(s.BackgroundImage)) LoadBackgroundImage(s.BackgroundImage, quiet: true);
         ShowFigure(s.Figure ?? new FigureData());
         ShowLight(s.Light ?? new LightSettings());
+        ShowSet(s.Set ?? new SetSettings());
     }
 
     private void SaveSettings()
@@ -370,6 +469,7 @@ public partial class MainWindow : Window
         s.BackgroundStretch = StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode.ToString();
         s.Figure = _figure.GetFigure();
         s.Light = _light.Clone();
+        s.Set = _set.Clone();
         s.Save();
     }
 
@@ -402,6 +502,8 @@ public partial class MainWindow : Window
         foreach (var a in _cameraAxes) a.Refresh();
         UpdateLightMarker();
         if (_light.FollowCamera) RebuildFloor();
+        if (_set.Type != SetType.None) UpdateFrameBackground(); // Himmel folgt dem Horizont
+        if (_set.HorizonLine) DrawGuides();
     }
 
     /// <summary>Boden/Schatten neu aufbauen – mehrere Aufrufe kurz hintereinander werden zusammengefasst,
@@ -423,6 +525,7 @@ public partial class MainWindow : Window
             Floor = FloorPreviewCheck.IsChecked == true,
             Shadow = ShadowPreviewCheck.IsChecked == true,
             Light = _light,
+            Set = _set,
             ShadowResolution = 640
         };
         if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figure, _cam));
@@ -578,6 +681,7 @@ public partial class MainWindow : Window
         pose.Camera = _cam.ToData();
         pose.Figure = _figure.GetFigure();
         pose.Light = _light.Clone();
+        pose.Set = _set.Clone();
         pose.Save(dlg.FileName);
         StatusText.Text = $"Pose gespeichert: {dlg.FileName}";
     }
@@ -592,6 +696,7 @@ public partial class MainWindow : Window
             PushUndo();
             if (pose.Figure != null) ShowFigure(pose.Figure);
             if (pose.Light != null) ShowLight(pose.Light);
+            if (pose.Set != null) ShowSet(pose.Set);
             _figure.SetPose(pose);
             if (pose.Camera != null) _cam.FromData(pose.Camera);
             PoseChanged();
@@ -693,7 +798,7 @@ public partial class MainWindow : Window
     private bool _suppressFileType;
 
     /// <summary>Transparent nur bei PNG, angehakter Option und ohne Hintergrundbild.</summary>
-    private bool TransparentActive => PngRadio.IsChecked == true && TransparentCheck.IsChecked == true && _bgImage == null;
+    private bool TransparentActive => PngRadio.IsChecked == true && TransparentCheck.IsChecked == true && _bgImage == null && _set.Type == SetType.None;
 
     private void FileType_Changed(object sender, RoutedEventArgs e)
     {
@@ -731,7 +836,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            Frame.Background = new SolidColorBrush(_background);
+            Frame.Background = (_set.Type != SetType.None ? SetBuilder.BackgroundBrush(SetBuilder.Get(_set), _cam) : null)
+                               ?? new SolidColorBrush(_background);
         }
     }
     // =================================================================== Hintergrundbild
@@ -795,9 +901,10 @@ public partial class MainWindow : Window
     {
         if (!_ready) return;
         GuideCanvas.Children.Clear();
-        if (GuidesCheck.IsChecked != true) return;
         double W = View.ActualWidth, H = View.ActualHeight;
         if (W < 10 || H < 10) return;
+        if (_set.HorizonLine) DrawHorizon(W, H);
+        if (GuidesCheck.IsChecked != true) return;
         double lum = (0.299 * _background.R + 0.587 * _background.G + 0.114 * _background.B) / 255;
         var color = lum > 0.5 ? Color.FromRgb(0xD0, 0x30, 0x30) : Color.FromRgb(0xFF, 0xC0, 0x40);
         var brush = new SolidColorBrush(color);
@@ -843,6 +950,22 @@ public partial class MainWindow : Window
             Canvas.SetLeft(r, x);
             GuideCanvas.Children.Add(r);
         }
+    }
+
+    /// <summary>Horizontlinie = Augenhöhe der Kamera. Hilft, 2D-Hintergrundbilder perspektivisch passend auszurichten.</summary>
+    private void DrawHorizon(double W, double H)
+    {
+        double y = SetBuilder.HorizonFraction(_cam) * H;
+        if (y < 0 || y > H) return;
+        var brush = new SolidColorBrush(Color.FromRgb(0x20, 0x90, 0xE0));
+        GuideCanvas.Children.Add(new System.Windows.Shapes.Line
+        {
+            X1 = 0, X2 = W, Y1 = y, Y2 = y, Stroke = brush, StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 10, 4, 2, 4 }
+        });
+        var label = new TextBlock { Text = "Horizont / Augenhöhe", Foreground = brush, FontSize = 11, FontWeight = FontWeights.SemiBold };
+        Canvas.SetRight(label, 6);
+        Canvas.SetTop(label, y - 16);
+        GuideCanvas.Children.Add(label);
     }
 
     private void BgHexBox_LostFocus(object sender, RoutedEventArgs e) => SetBackground(ParseColor(BgHexBox.Text, _background));
@@ -1097,6 +1220,8 @@ public partial class MainWindow : Window
             BackgroundImage = _bgImage,
             BackgroundStretch = CurrentStretch,
             Light = _light,
+            Set = _set,
+            Transparent = transparent,
             ShadowResolution = 2048
         };
         string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);

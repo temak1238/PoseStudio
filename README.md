@@ -18,9 +18,11 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 
 **Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
 
-**Links – Pose:** Vorlagen (Stehen, T-Pose, Gehen, Laufen, Sitzen, Knien, Winken, Jubeln, Hände in den Hüften, Kontrapost), Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
+**Links – Pose:** 38 Vorlagen in 5 Kategorien (Stehen, Gesten, Sitzen & Knien, Liegen, Bewegung) – Auswahl wendet direkt an, Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
 
 **Rechts – Kamera:** Entfernung, Brennweite (14–200 mm), Blickhöhe, Drehung, Neigung, Schnellansichten (Vorne, 3/4, Seite, Hinten, Oben, Unten, Ganz, Porträt).
+
+**Rechts – Kulisse (3D-Hintergrund):** Fotostudio (Hohlkehle, Farbe wählbar), Draußen (Wiese, Strand, Wüste, Schnee) mit Himmel und Horizont, Innenraum (Wandfarbe, Boden Holz/Fliesen/Beton/Teppich, Raumbreite, Wandabstand, Fenster, Tür), Straße (Gehweg, Fahrbahn, Häuserzeilen). Perspektive passt automatisch, Schatten fallen auch auf Wände und Fassaden. Wände zwischen Kamera und Figur werden ausgeblendet. Optional Horizontlinie (Augenhöhe) – hilfreich auch zum Ausrichten eigener Hintergrundbilder.
 
 **Rechts – Licht & Schatten:** Hauptlicht mit Richtung, Höhe, Helligkeit, Umgebungslicht. Echter **Schattenwurf** auf den Boden (auch über einem Hintergrundbild) und **Eigenschatten** auf der Figur (Arm auf Körper, Kopf auf Brust …), Stärke und Weichheit einstellbar. Schnellwahl Vorne/Seite/Gegenlicht/Mittag, Licht wahlweise an der Kamera mitdrehen. Die gelbe Kugel in der Vorschau zeigt die Lichtquelle (nicht im Export).
 

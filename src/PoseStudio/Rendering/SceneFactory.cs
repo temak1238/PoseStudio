@@ -18,6 +18,10 @@ public sealed class SceneOptions
     public int ShadowResolution { get; set; } = 1024;
     /// <summary>Farbe, aus der der Boden abgeleitet wird (wichtig bei transparentem Hintergrund).</summary>
     public Color? FloorBase { get; set; }
+    /// <summary>3D-Kulisse (Studio, Landschaft, Raum, Straße).</summary>
+    public SetSettings Set { get; set; } = new();
+    /// <summary>Transparenter Hintergrund (PNG): kein Himmel/Studio-Hintergrund zeichnen.</summary>
+    public bool Transparent { get; set; }
     public ImageSource? BackgroundImage { get; set; }
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
 }
@@ -52,7 +56,8 @@ public static class SceneFactory
     public static Model3DGroup CreateFloor(SceneOptions o, Mannequin figure, OrbitCamera cam)
     {
         var g = new Model3DGroup();
-        if (o.Floor)
+        bool hasSet = o.Set.Type != SetType.None;
+        if (o.Floor && !hasSet)
         {
             // Helle Hintergründe: Boden etwas dunkler; dunkle Hintergründe: etwas heller.
             var bg = o.FloorBase ?? o.Background;
@@ -79,8 +84,13 @@ public static class SceneFactory
             double blob = 1.0;
             if (o.Light.CastShadow)
             {
-                var cast = ShadowCaster.Create(figure, o.Light.FromDirection(cam), o.Light.ShadowStrength, o.Light.Softness, o.ShadowResolution);
-                if (cast != null) g.Children.Add(cast);
+                var from = o.Light.FromDirection(cam);
+                var receivers = hasSet ? SetBuilder.Get(o.Set).Receivers : new List<ShadowReceiver> { ShadowReceiver.Ground(0) };
+                foreach (var r in receivers)
+                {
+                    var cast = ShadowCaster.Create(figure, from, o.Light.ShadowStrength, o.Light.Softness, o.ShadowResolution, r);
+                    if (cast != null) g.Children.Add(cast);
+                }
                 blob = 0.45; // nur noch leichter Kontaktschatten unter der Figur
             }
             var rg = new RadialGradientBrush();
@@ -102,13 +112,17 @@ public static class SceneFactory
 
         var scene = new Model3DGroup();
         scene.Children.Add(CreateLights(cam, o.Light));
+        var set = o.Set.Type != SetType.None ? SetBuilder.Get(o.Set) : null;
+        if (set != null) scene.Children.Add(set.Model);
         if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figure, cam));
         SelfShadow.Apply(figure, cam, o.Light);
         scene.Children.Add(figure.CreateSnapshot());
 
         var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };
         vp.Children.Add(new ModelVisual3D { Content = scene });
-        var root = new Grid { Width = rw, Height = rh, Background = new SolidColorBrush(o.Background) };
+        Brush back = new SolidColorBrush(o.Background);
+        if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;
+        var root = new Grid { Width = rw, Height = rh, Background = back };
         if (o.BackgroundImage != null)
             root.Children.Add(new Image { Source = o.BackgroundImage, Stretch = o.BackgroundStretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         root.Children.Add(vp);

@@ -172,6 +172,26 @@ public static class MeshFactory
         return Loft(rings, slices, 1.0);
     }
 
+    /// <summary>Rechteck in der Ebene durch o mit Achsen u/v; Vorderseite zeigt nach n.
+    /// Textur (0,0) bei (minA, minB), u läuft entlang u, v entlang v.</summary>
+    public static MeshGeometry3D PlaneQuad(Point3D o, Vector3D u, Vector3D v, Vector3D n, double minA, double maxA, double minB, double maxB)
+    {
+        var mesh = new MeshGeometry3D();
+        mesh.Positions.Add(o + u * minA + v * minB);
+        mesh.Positions.Add(o + u * maxA + v * minB);
+        mesh.Positions.Add(o + u * maxA + v * maxB);
+        mesh.Positions.Add(o + u * minA + v * maxB);
+        for (int i = 0; i < 4; i++) mesh.Normals.Add(n);
+        mesh.TextureCoordinates.Add(new System.Windows.Point(0, 0));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(1, 0));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(1, 1));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(0, 1));
+        bool flip = Vector3D.DotProduct(Vector3D.CrossProduct(u, v), n) < 0;
+        foreach (var idx in flip ? new[] { 0, 2, 1, 0, 3, 2 } : new[] { 0, 1, 2, 0, 2, 3 }) mesh.TriangleIndices.Add(idx);
+        mesh.Freeze();
+        return mesh;
+    }
+
     /// <summary>Rechteckige Bodenfläche; Textur-u läuft mit X, Textur-v mit Z (v = 0 bei minZ).</summary>
     public static MeshGeometry3D RectQuad(double minX, double maxX, double minZ, double maxZ, double y)
     {

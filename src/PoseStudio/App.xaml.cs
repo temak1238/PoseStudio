@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--sets")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            SetSheet(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--presets")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -80,6 +88,33 @@ public partial class App : Application
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W, H, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"presets_{style}.jpg"), 90);
+    }
+
+    /// <summary>Alle Kulissen mit Figur, Licht und Schatten (je 3/4-Ansicht und Rückansicht).</summary>
+    private static void SetSheet(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var m = new Mannequin();
+        m.SetFigure(FigureStyle.Male, true, new Proportions());
+        m.SetPose(Presets.All[2].ToPose()); m.GroundToFloor();
+        var types = Enum.GetValues<SetType>().Where(t => t != SetType.None).ToList();
+        const int cw = 640, ch = 360;
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < types.Count; i++)
+                for (int v = 0; v < 2; v++)
+                {
+                    var set = new SetSettings { Type = types[i], Floor = i % 2 == 0 ? "Wood" : "Tiles" };
+                    var o = new SceneOptions { Floor = false, Shadow = true, ShadowResolution = 1024, Set = set,
+                        Light = new LightSettings { Azimuth = v == 0 ? 50 : -60, Elevation = 40, Softness = 25 } };
+                    var cam = new OrbitCamera { Yaw = v == 0 ? 25 : 160, Pitch = 8, Distance = 5.2, Target = new System.Windows.Media.Media3D.Point3D(0, 1.0, 0) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, o, cw, ch), new Rect(v * cw, i * ch, cw, ch));
+                    dc.DrawText(new System.Windows.Media.FormattedText(types[i].ToString(), System.Globalization.CultureInfo.CurrentCulture,
+                        FlowDirection.LeftToRight, new System.Windows.Media.Typeface("Segoe UI"), 14, System.Windows.Media.Brushes.Black, 1.0), new Point(v * cw + 6, i * ch + 4));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(cw * 2, ch * types.Count, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "sets.jpg"), 88);
     }
 
     private static void SelfTest(string folder)
