@@ -558,14 +558,74 @@ public partial class MainWindow : Window
     {
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
-            if (j.Twist != null) j.TwistValue = Math.Clamp(j.TwistValue + d.X * 0.5, j.Twist.Min, j.Twist.Max);
+            if (j.Twist != null) j.TwistValue = Math.Clamp(Math.Round(j.TwistValue + d.X * 0.5, 1), j.Twist.Min, j.Twist.Max);
         }
         else
         {
-            if (j.Bend != null) j.BendValue = Math.Clamp(j.BendValue - d.Y * 0.5, j.Bend.Min, j.Bend.Max);
-            if (j.Side != null) j.SideValue = Math.Clamp(j.SideValue + d.X * 0.5, j.Side.Min, j.Side.Max);
+            FollowMouse(j, d);
         }
         PoseChanged();
+    }
+
+    /// <summary>Bewegt das Körperteil so, dass sein Ende der Maus folgt (gedämpfte kleinste Quadrate
+    /// über die Achsen Beugen/Seitlich) – funktioniert dadurch aus jeder Kameraperspektive.</summary>
+    private void FollowMouse(Joint j, Vector mouse)
+    {
+        var axes = new List<(Func<double> get, Action<double> set, AxisDef def)>();
+        if (j.Bend != null) axes.Add((() => j.BendValue, v => j.BendValue = v, j.Bend));
+        if (j.Side != null) axes.Add((() => j.SideValue, v => j.SideValue = v, j.Side));
+        if (axes.Count == 0) return;
+
+        var probe = ProbePoint(j);
+        var p0 = ToScreen(j.World.Transform(probe));
+        var jac = new Vector[axes.Count];
+        for (int i = 0; i < axes.Count; i++)
+        {
+            var (get, set, _) = axes[i];
+            double old = get();
+            set(old + 1);
+            _figure.Update();
+            jac[i] = ToScreen(j.World.Transform(probe)) - p0; // Pixel pro Grad
+            set(old);
+        }
+        _figure.Update();
+
+        const double damping = 0.3;
+        double[] delta;
+        if (axes.Count == 1)
+        {
+            delta = new[] { (jac[0] * mouse) / (jac[0].LengthSquared + damping) };
+        }
+        else
+        {
+            double a = jac[0].LengthSquared + damping, b = jac[0] * jac[1], c = jac[1].LengthSquared + damping;
+            double r0 = jac[0] * mouse, r1 = jac[1] * mouse;
+            double det = a * c - b * b;
+            if (Math.Abs(det) < 1e-9) return;
+            delta = new[] { (c * r0 - b * r1) / det, (a * r1 - b * r0) / det };
+        }
+        for (int i = 0; i < axes.Count; i++)
+        {
+            var (get, set, def) = axes[i];
+            set(Math.Clamp(get() + Math.Clamp(delta[i], -8, 8), def.Min, def.Max));
+        }
+    }
+
+    private Point3D ProbePoint(Joint j)
+    {
+        if (j.Parent == null) return new Point3D(0, 0.5, 0);
+        var child = _figure.Joints.FirstOrDefault(c => ReferenceEquals(c.Parent, j));
+        if (child != null) return (Point3D)child.Offset;
+        return j.Id.StartsWith("ankle") ? new Point3D(0, -0.04, 0.15) : new Point3D(0, -0.15, 0); // Hand: Richtung Fingerspitzen
+    }
+
+    private Point ToScreen(Point3D p)
+    {
+        var v = p - _cam.Position;
+        double z = Math.Max(0.01, Vector3D.DotProduct(v, _cam.LookDirection));
+        double f = (View.ActualHeight / 2) / Math.Tan(_cam.VerticalFov * Math.PI / 360);
+        return new Point(View.ActualWidth / 2 + Vector3D.DotProduct(v, _cam.Right) * f / z,
+                         View.ActualHeight / 2 - Vector3D.DotProduct(v, _cam.Up) * f / z);
     }
 
     private void Frame_MouseWheel(object sender, MouseWheelEventArgs e)

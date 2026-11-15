@@ -166,7 +166,8 @@ public sealed class Mannequin
                 new AxisDef("Beugen", -80, 80, -1),
                 new AxisDef("Seitlich", -30, 30, s),
                 null, "wrist" + other);
-            AddPart(wr, MeshFactory.Ellipsoid(P(0, -0.085, 0), 0.022, 0.085, 0.045));
+            AddPart(wr, MeshFactory.Sphere(P(0, 0, 0), 0.032), true);
+            AddPart(wr, MeshFactory.Ellipsoid(P(0, -0.09, 0), 0.024, 0.085, 0.045));
             AddPart(wr, MeshFactory.Ellipsoid(P(-s * 0.006, -0.045, 0.042), 0.016, 0.036, 0.016)); // Daumen
         }
 
