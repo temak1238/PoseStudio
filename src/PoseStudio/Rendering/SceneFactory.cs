@@ -100,6 +100,7 @@ public static class SceneFactory
         var scene = new Model3DGroup();
         scene.Children.Add(CreateLights(cam, o.Light));
         if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figure, cam));
+        SelfShadow.Apply(figure, cam, o.Light);
         scene.Children.Add(figure.CreateSnapshot());
 
         var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };

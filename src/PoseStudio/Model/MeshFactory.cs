@@ -45,8 +45,26 @@ public static class MeshFactory
     public static MeshGeometry3D Sphere(Point3D c, double r) => Ellipsoid(c, r, r, r, 24, 16);
 
     /// <summary>Glatter Körper durch eine Folge von elliptischen Querschnitten, Enden mit gerundeten Kappen.</summary>
-    public static MeshGeometry3D Loft(IReadOnlyList<Ring> rings, int slices = 28, double cap = 0.8)
+    public static MeshGeometry3D Loft(IReadOnlyList<Ring> input, int slices = 28, double cap = 0.8)
     {
+        // Zwischenringe einfügen (max. ~2 cm Abstand) – entlang einer Catmull-Rom-Kurve, damit die
+        // Oberfläche ohne Knicke (und damit ohne Schattierungsstreifen) verläuft und Eigenschatten saubere Kanten bekommen.
+        const double step = 0.02;
+        var rings = new List<Ring> { input[0] };
+        for (int i = 1; i < input.Count; i++)
+        {
+            var p0 = input[Math.Max(0, i - 2)]; var p1 = input[i - 1]; var p2 = input[i]; var p3 = input[Math.Min(input.Count - 1, i + 1)];
+            int steps = Math.Max(1, (int)Math.Ceiling((p2.C - p1.C).Length / step));
+            for (int k = 1; k <= steps; k++)
+            {
+                double t = (double)k / steps;
+                rings.Add(new Ring(
+                    (Point3D)CatmullRom((Vector3D)p0.C, (Vector3D)p1.C, (Vector3D)p2.C, (Vector3D)p3.C, t),
+                    CatmullRom(p0.U, p1.U, p2.U, p3.U, t),
+                    CatmullRom(p0.V, p1.V, p2.V, p3.V, t)));
+            }
+        }
+
         var all = new List<Ring>();
         var (startRings, startApex) = CapRings(rings[0], rings[1], cap);
         startRings.Reverse();
@@ -89,6 +107,12 @@ public static class MeshFactory
             for (int i = 0; i < tri.Count; i += 3) (tri[i + 1], tri[i + 2]) = (tri[i + 2], tri[i + 1]);
 
         return Build(pts, tri);
+    }
+
+    private static Vector3D CatmullRom(Vector3D p0, Vector3D p1, Vector3D p2, Vector3D p3, double t)
+    {
+        double t2 = t * t, t3 = t2 * t;
+        return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
     }
 
     private static (List<Ring> rings, Point3D apex) CapRings(Ring end, Ring neighbor, double cap)

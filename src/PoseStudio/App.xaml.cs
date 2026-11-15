@@ -81,23 +81,37 @@ public partial class App : Application
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "styles_sheet.jpg"), 90);
 
-        // Licht & Schattenwurf
-        m.SetFigure(FigureStyle.Male, true, new Proportions());
-        m.SetPose(Presets.All[2].ToPose()); m.GroundToFloor();
+        // Licht & Schattenwurf inkl. Eigenschatten
         var lights = new[] { (35.0, 50.0, 30.0), (90.0, 25.0, 10.0), (180.0, 35.0, 60.0), (20.0, 85.0, 30.0) };
+        var rows = new[] { (FigureStyle.Male, 8), (FigureStyle.Mannequin, 7), (FigureStyle.Female, 3) };
         var lv = new System.Windows.Media.DrawingVisual();
         var sw = System.Diagnostics.Stopwatch.StartNew();
         using (var dc = lv.RenderOpen())
-            for (int i = 0; i < lights.Length; i++)
+            for (int row = 0; row < rows.Length; row++)
             {
-                var lo = new SceneOptions { Floor = true, Shadow = true, ShadowResolution = 1024,
-                    Light = new LightSettings { Azimuth = lights[i].Item1, Elevation = lights[i].Item2, Softness = lights[i].Item3 } };
-                var cam = new OrbitCamera { Yaw = 30, Pitch = 18, Distance = 5.5, Target = new System.Windows.Media.Media3D.Point3D(0, 0.7, 0) };
-                dc.DrawImage(SceneFactory.Render(m, cam, lo, 480, 480), new Rect(i * 480, 0, 480, 480));
+                m.SetFigure(rows[row].Item1, true, new Proportions());
+                m.SetPose(Presets.All[rows[row].Item2].ToPose()); m.GroundToFloor();
+                for (int i = 0; i < lights.Length; i++)
+                {
+                    var lo = new SceneOptions { Floor = true, Shadow = true, ShadowResolution = 1024,
+                        Light = new LightSettings { Azimuth = lights[i].Item1, Elevation = lights[i].Item2, Softness = lights[i].Item3 } };
+                    var cam = new OrbitCamera { Yaw = 30, Pitch = 12, Distance = 4.4, Target = new System.Windows.Media.Media3D.Point3D(0, 0.9, 0) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, lo, 480, 560), new Rect(i * 480, row * 560, 480, 560));
+                }
             }
-        var lr = new System.Windows.Media.Imaging.RenderTargetBitmap(1920, 480, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        var lr = new System.Windows.Media.Imaging.RenderTargetBitmap(1920, 560 * rows.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         lr.Render(lv);
         SceneFactory.SaveJpeg(lr, Path.Combine(folder, "light_sheet.jpg"), 90);
-        File.WriteAllText(Path.Combine(folder, "timing.txt"), $"4 Renderings mit Schatten: {sw.ElapsedMilliseconds} ms");
+        sw.Stop();
+        m.SetFigure(FigureStyle.Male, true, new Proportions()); m.SetPose(Presets.All[8].ToPose()); m.GroundToFloor();
+        foreach (var cast in new[] { false, true })
+        {
+            var lo = new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Azimuth = 35, Elevation = 50, CastShadow = cast } };
+            var cam = new OrbitCamera { Yaw = 30, Pitch = 5, Distance = 1.6, Target = new System.Windows.Media.Media3D.Point3D(0, 1.25, 0) };
+            SceneFactory.SaveJpeg(SceneFactory.Render(m, cam, lo, 700, 700), Path.Combine(folder, cast ? "torso_shadow.jpg" : "torso_plain.jpg"), 92);
+        }
+        var sw2 = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 10; i++) SelfShadow.Apply(m, new OrbitCamera(), new LightSettings());
+        File.WriteAllText(Path.Combine(folder, "timing.txt"), $"12 Renderings: {sw.ElapsedMilliseconds} ms, Eigenschatten: {sw2.ElapsedMilliseconds / 10} ms je Berechnung");
     }
 }

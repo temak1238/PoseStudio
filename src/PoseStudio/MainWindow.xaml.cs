@@ -402,6 +402,7 @@ public partial class MainWindow : Window
 
     private void RebuildFloorNow()
     {
+        SelfShadow.Apply(_figure, _cam, _light);
         _floor.Children.Clear();
         var o = new SceneOptions
         {

@@ -22,7 +22,7 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 
 **Rechts – Kamera:** Entfernung, Brennweite (14–200 mm), Blickhöhe, Drehung, Neigung, Schnellansichten (Vorne, 3/4, Seite, Hinten, Oben, Unten, Ganz, Porträt).
 
-**Rechts – Licht & Schatten:** Hauptlicht mit Richtung, Höhe, Helligkeit, Umgebungslicht. Echter **Schattenwurf** auf den Boden (auch über einem Hintergrundbild), Stärke und Weichheit einstellbar. Schnellwahl Vorne/Seite/Gegenlicht/Mittag, Licht wahlweise an der Kamera mitdrehen. Die gelbe Kugel in der Vorschau zeigt die Lichtquelle (nicht im Export).
+**Rechts – Licht & Schatten:** Hauptlicht mit Richtung, Höhe, Helligkeit, Umgebungslicht. Echter **Schattenwurf** auf den Boden (auch über einem Hintergrundbild) und **Eigenschatten** auf der Figur (Arm auf Körper, Kopf auf Brust …), Stärke und Weichheit einstellbar. Schnellwahl Vorne/Seite/Gegenlicht/Mittag, Licht wahlweise an der Kamera mitdrehen. Die gelbe Kugel in der Vorschau zeigt die Lichtquelle (nicht im Export).
 
 **Rechts – Darstellung:** Hintergrundfarbe (Farbwähler, Hex oder Schnellfarben inkl. Greenscreen), Figur-/Hautfarbe, Haarfarbe, **Hintergrundbild** (Füllen/Einpassen/Strecken), Boden/Raster und Schatten getrennt für Vorschau und Export.
 

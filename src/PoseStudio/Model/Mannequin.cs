@@ -47,10 +47,14 @@ public sealed class Mannequin
     private readonly Dictionary<GeometryModel3D, Part> _parts = new();
     private readonly Dictionary<string, Joint> _byId = new();
     private readonly Dictionary<MaterialKind, Material> _mats = new();
-    private readonly SolidColorBrush _bodyBrush = new(Color.FromRgb(0xC9, 0xB2, 0x92));
-    private readonly SolidColorBrush _jointBrush = new();
-    private readonly SolidColorBrush _lipsBrush = new();
-    private readonly SolidColorBrush _hairBrush = new(Color.FromRgb(0x3A, 0x2A, 0x20));
+    private readonly ShadeBrush _bodyBrush = new(Color.FromRgb(0xC9, 0xB2, 0x92));
+    private readonly ShadeBrush _jointBrush = new(Colors.Gray);
+    private readonly ShadeBrush _lipsBrush = new(Colors.Gray);
+    private readonly ShadeBrush _hairBrush = new(Color.FromRgb(0x3A, 0x2A, 0x20));
+
+    /// <summary>Anzahl Hilfspunkte am Ende jedes Meshes (Texturkoordinaten (0,0) und (1,1)),
+    /// damit der Schatten-Farbverlauf immer auf 0..1 abgebildet wird.</summary>
+    internal const int DummyVertices = 2;
     private readonly Material _highlightMat;
     private Joint? _selected;
     private double _globalScale = 1;
@@ -67,13 +71,13 @@ public sealed class Mannequin
 
     public Mannequin()
     {
-        _mats[MaterialKind.Body] = MakeMaterial(_bodyBrush, 0x40);
-        _mats[MaterialKind.Joint] = MakeMaterial(_jointBrush, 0x40);
-        _mats[MaterialKind.Lips] = MakeMaterial(_lipsBrush, 0x30);
-        _mats[MaterialKind.EyeWhite] = MakeMaterial(Frozen(Color.FromRgb(0xF4, 0xF1, 0xEC)), 0x70);
-        _mats[MaterialKind.Iris] = MakeMaterial(Frozen(Color.FromRgb(0x3B, 0x2C, 0x22)), 0x90);
-        _mats[MaterialKind.Hair] = MakeMaterial(_hairBrush, 0x20);
-        _highlightMat = MakeMaterial(Frozen(Color.FromRgb(0xFF, 0x8C, 0x1A)), 0x40);
+        _mats[MaterialKind.Body] = MakeMaterial(_bodyBrush.Brush, 0x40);
+        _mats[MaterialKind.Joint] = MakeMaterial(_jointBrush.Brush, 0x40);
+        _mats[MaterialKind.Lips] = MakeMaterial(_lipsBrush.Brush, 0x30);
+        _mats[MaterialKind.EyeWhite] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xF4, 0xF1, 0xEC)).Brush, 0x70);
+        _mats[MaterialKind.Iris] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x3B, 0x2C, 0x22)).Brush, 0x90);
+        _mats[MaterialKind.Hair] = MakeMaterial(_hairBrush.Brush, 0x20);
+        _highlightMat = MakeMaterial(new ShadeBrush(Color.FromRgb(0xFF, 0x8C, 0x1A)).Brush, 0x40);
         BodyColor = _bodyBrush.Color;
         BuildSkeleton();
         BuildParts();
@@ -81,7 +85,21 @@ public sealed class Mannequin
         Update();
     }
 
-    private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+    /// <summary>Farbverlauf Grundfarbe → Schwarz. Die Texturkoordinate u (0..1) eines Punktes bestimmt,
+    /// wie stark er abgedunkelt wird – so entstehen die Eigenschatten.</summary>
+    private sealed class ShadeBrush
+    {
+        private readonly GradientStop _stop;
+        public LinearGradientBrush Brush { get; }
+        public ShadeBrush(Color c)
+        {
+            _stop = new GradientStop(c, 0);
+            Brush = new LinearGradientBrush { StartPoint = new System.Windows.Point(0, 0), EndPoint = new System.Windows.Point(1, 0) };
+            Brush.GradientStops.Add(_stop);
+            Brush.GradientStops.Add(new GradientStop(Colors.Black, 1));
+        }
+        public Color Color { get => _stop.Color; set => _stop.Color = value; }
+    }
 
     private static Material MakeMaterial(Brush brush, byte specular)
     {
@@ -204,7 +222,15 @@ public sealed class Mannequin
     private void AddPart(string jointId, MeshGeometry3D mesh, MaterialKind kind, bool uniform = false)
     {
         var j = _byId[jointId];
-        var gm = new GeometryModel3D(mesh, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
+        // Eigene, veränderbare Kopie mit Texturkoordinaten für den Eigenschatten
+        var m = mesh.Clone();
+        m.Positions.Add(m.Positions[0]); m.Positions.Add(m.Positions[0]);
+        m.Normals.Add(m.Normals[0]); m.Normals.Add(m.Normals[0]);
+        var tc = new PointCollection(m.Positions.Count);
+        for (int i = 0; i < m.Positions.Count - DummyVertices; i++) tc.Add(new System.Windows.Point(0, 0.5));
+        tc.Add(new System.Windows.Point(0, 0)); tc.Add(new System.Windows.Point(1, 1));
+        m.TextureCoordinates = tc;
+        var gm = new GeometryModel3D(m, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
         if (kind == MaterialKind.Hair) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
         var p = new Part(gm, j, kind, uniform);
         j.Parts.Add(p);
