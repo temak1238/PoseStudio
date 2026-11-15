@@ -1,0 +1,219 @@
+<Window x:Class="PoseStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pose Studio" Width="1520" Height="920" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen" Background="#F3F3F3">
+
+    <Window.Resources>
+        <!-- Zeile: Beschriftung, Regler, Zahlenfeld -->
+        <DataTemplate x:Key="AxisTemplate">
+            <Grid Margin="0,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Slider Grid.Column="1" Minimum="{Binding Min}" Maximum="{Binding Max}" Value="{Binding Value}"
+                        VerticalAlignment="Center" SmallChange="1" LargeChange="10" />
+                <TextBox Grid.Column="2" Style="{StaticResource ValueBox}"
+                         Text="{Binding Value, StringFormat=F0, UpdateSourceTrigger=LostFocus}" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Control" Command="ApplicationCommands.Undo" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Executed" />
+    </Window.CommandBindings>
+
+    <DockPanel>
+        <StatusBar DockPanel.Dock="Bottom">
+            <TextBlock x:Name="StatusText" Text="Bereit" />
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="330" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ============ Links: Pose ============ -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <GroupBox Header="Pose-Vorlagen">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Anwenden" Click="ApplyPreset_Click" />
+                            <ComboBox x:Name="PresetCombo" Margin="2" />
+                        </DockPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Gelenke">
+                        <ListBox x:Name="JointList" Height="250" DisplayMemberPath="DisplayName"
+                                 SelectionChanged="JointList_SelectionChanged" />
+                    </GroupBox>
+
+                    <GroupBox x:Name="AxisGroup" Header="Ausgewähltes Gelenk">
+                        <StackPanel>
+                            <TextBlock x:Name="SelectedJointText" FontWeight="SemiBold" Margin="0,0,0,4" Text="– Gelenk anklicken –" />
+                            <ItemsControl x:Name="AxisItems" ItemTemplate="{StaticResource AxisTemplate}"
+                                          PreviewMouseLeftButtonDown="UndoPoint_PreviewMouseDown" />
+                            <Button Content="Gelenk zurücksetzen" HorizontalAlignment="Left" Click="ResetJoint_Click" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Position der Figur">
+                        <StackPanel PreviewMouseLeftButtonDown="UndoPoint_PreviewMouseDown">
+                            <ItemsControl x:Name="PositionItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                            <CheckBox x:Name="AutoGroundCheck" Content="Automatisch auf den Boden stellen" IsChecked="True"
+                                      Margin="0,4" Checked="AutoGround_Changed" Unchecked="AutoGround_Changed" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Pose">
+                        <WrapPanel>
+                            <Button Content="Spiegeln" Click="Mirror_Click" ToolTip="Links und rechts tauschen" />
+                            <Button Content="Rückgängig" Click="Undo_Click" ToolTip="Strg+Z" />
+                            <Button Content="Alles zurücksetzen" Click="ResetAll_Click" />
+                            <Button Content="Pose speichern…" Click="SavePose_Click" />
+                            <Button Content="Pose laden…" Click="LoadPose_Click" />
+                        </WrapPanel>
+                    </GroupBox>
+
+                    <TextBlock Margin="10,6" TextWrapping="Wrap" Foreground="#666" FontSize="11">
+                        <Run FontWeight="SemiBold">Bedienung in der Ansicht</Run><LineBreak />
+                        Klick auf Körperteil: Gelenk auswählen<LineBreak />
+                        Linke Maustaste ziehen: Kamera drehen<LineBreak />
+                        Rechte Maustaste ziehen: Kamera verschieben<LineBreak />
+                        Mausrad: Entfernung<LineBreak />
+                        Strg + ziehen: Gelenk beugen / seitlich<LineBreak />
+                        Umschalt + ziehen: Gelenk drehen
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ============ Mitte: 3D-Ansicht ============ -->
+            <Grid x:Name="PreviewHost" Grid.Column="1" Background="#2D2D30" SizeChanged="PreviewHost_SizeChanged" ClipToBounds="True">
+                <Border x:Name="Frame" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#E6E6E6"
+                        BorderBrush="#111" BorderThickness="1"
+                        MouseLeftButtonDown="Frame_MouseLeftButtonDown" MouseLeftButtonUp="Frame_MouseLeftButtonUp"
+                        MouseRightButtonDown="Frame_MouseRightButtonDown" MouseRightButtonUp="Frame_MouseRightButtonUp"
+                        MouseMove="Frame_MouseMove" MouseWheel="Frame_MouseWheel">
+                    <Viewport3D x:Name="View" ClipToBounds="True">
+                        <Viewport3D.Camera>
+                            <PerspectiveCamera x:Name="ViewCamera" />
+                        </Viewport3D.Camera>
+                        <ModelVisual3D x:Name="SceneVisual" />
+                    </Viewport3D>
+                </Border>
+                <TextBlock x:Name="FrameInfo" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
+                           Foreground="#BBB" FontSize="11" />
+            </Grid>
+
+            <!-- ============ Rechts: Kamera & Ausgabe ============ -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <GroupBox Header="Kamera">
+                        <StackPanel>
+                            <ItemsControl x:Name="CameraItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                            <UniformGrid Columns="4" Margin="0,4,0,0">
+                                <Button Content="Vorne" Click="CamPreset_Click" Tag="0" />
+                                <Button Content="3/4" Click="CamPreset_Click" Tag="35" />
+                                <Button Content="Seite" Click="CamPreset_Click" Tag="90" />
+                                <Button Content="Hinten" Click="CamPreset_Click" Tag="180" />
+                                <Button Content="Oben" Click="CamTop_Click" />
+                                <Button Content="Unten" Click="CamLow_Click" />
+                                <Button Content="Ganz" Click="CamFull_Click" ToolTip="Ganze Figur einpassen" />
+                                <Button Content="Porträt" Click="CamPortrait_Click" ToolTip="Kopf und Oberkörper" />
+                            </UniformGrid>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Darstellung">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Hintergrund" Width="90" VerticalAlignment="Center" />
+                                <Button x:Name="BgPickButton" DockPanel.Dock="Right" Content="Wählen…" Click="PickBackground_Click" />
+                                <Border x:Name="BgSwatch" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" DockPanel.Dock="Right" Margin="4,0" />
+                                <TextBox x:Name="BgHexBox" VerticalAlignment="Center" LostFocus="BgHexBox_LostFocus" KeyDown="HexBox_KeyDown" />
+                            </DockPanel>
+                            <WrapPanel x:Name="BgPresetPanel" Margin="90,2,0,4" />
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Figurfarbe" Width="90" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="Wählen…" Click="PickBody_Click" />
+                                <Border x:Name="BodySwatch" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" DockPanel.Dock="Right" Margin="4,0" />
+                                <TextBox x:Name="BodyHexBox" VerticalAlignment="Center" LostFocus="BodyHexBox_LostFocus" KeyDown="HexBox_KeyDown" />
+                            </DockPanel>
+                            <WrapPanel x:Name="BodyPresetPanel" Margin="90,2,0,4" />
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="90" /><ColumnDefinition /><ColumnDefinition />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                <TextBlock Grid.Column="1" Text="Vorschau" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Export" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="1" Text="Boden + Raster" />
+                                <CheckBox Grid.Row="1" Grid.Column="1" x:Name="FloorPreviewCheck" Checked="Display_Changed" Unchecked="Display_Changed" />
+                                <CheckBox Grid.Row="1" Grid.Column="2" x:Name="FloorExportCheck" />
+                                <TextBlock Grid.Row="2" Text="Schatten" />
+                                <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ShadowPreviewCheck" Checked="Display_Changed" Unchecked="Display_Changed" />
+                                <CheckBox Grid.Row="2" Grid.Column="2" x:Name="ShadowExportCheck" />
+                            </Grid>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Ausgabe (JPG)">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Vorschau-Format" Width="100" VerticalAlignment="Center" />
+                                <ComboBox x:Name="PreviewFormatCombo" SelectionChanged="PreviewFormat_Changed" />
+                            </DockPanel>
+                            <TextBlock Text="Exportieren in folgenden Formaten:" Margin="0,6,0,2" />
+                            <ItemsControl x:Name="ExportFormatList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Format.Name}" IsChecked="{Binding IsChecked}" Margin="0,1" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="Lange Seite (px)" Width="100" VerticalAlignment="Center" />
+                                <ComboBox x:Name="LongSideCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Benutzerdef. (px)" Width="100" VerticalAlignment="Center" />
+                                <TextBox x:Name="CustomWBox" Width="60" />
+                                <TextBlock Text=" × " VerticalAlignment="Center" />
+                                <TextBox x:Name="CustomHBox" Width="60" HorizontalAlignment="Left" LostFocus="CustomSize_LostFocus" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="JPG-Qualität" Width="100" VerticalAlignment="Center" />
+                                <TextBox DockPanel.Dock="Right" Style="{StaticResource ValueBox}"
+                                         Text="{Binding Value, ElementName=QualitySlider, StringFormat=F0}" />
+                                <Slider x:Name="QualitySlider" Minimum="50" Maximum="100" Value="95" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="Zielordner" Width="100" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="…" Click="BrowseFolder_Click" />
+                                <TextBox x:Name="FolderBox" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Dateiname" Width="100" VerticalAlignment="Center" />
+                                <TextBox x:Name="PrefixBox" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <Button Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8" Margin="2,10,2,2"
+                                    Background="#2B7BD6" Foreground="White" Click="Export_Click" />
+                            <Button Content="Zielordner öffnen" Click="OpenFolder_Click" />
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
