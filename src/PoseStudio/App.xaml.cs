@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--sitting")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            SittingTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--controlnet")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -109,6 +117,30 @@ public partial class App : Application
     /// <summary>Alle Kulissen mit Figur, Licht und Schatten (je 3/4-Ansicht und Rückansicht).</summary>
     /// <summary>Alle Objekte × Haltungen: Ganzkörper 3/4-Ansicht und Nahaufnahme der Haupthand.</summary>
     /// <summary>Vier Figuren (ähnlich dem Beispiel aus dem anima_3dpose-Repo) als ControlNet-Bilder und normales Bild.</summary>
+    /// <summary>Nahaufnahmen der Hüfte in Sitzposen (Prüfung der Gelenkübergänge).</summary>
+    private static void SittingTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var names = new[] { "Sitzen (Stuhl)", "Sitzen am Boden (Knie angezogen)", "Schneidersitz", "Hocke" };
+        var m = new Mannequin();
+        m.SetFigure(FigureStyle.Female, false, new Proportions { HeightCm = 168 });
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < names.Length; i++)
+            {
+                m.SetPose(Presets.All.First(p => p.Name == names[i]).ToPose()); m.GroundToFloor();
+                var pel = m.PelvisWorld;
+                for (int v = 0; v < 2; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = v == 0 ? 40 : 110, Pitch = 12, Distance = 1.9, Target = new System.Windows.Media.Media3D.Point3D(pel.X, pel.Y - 0.05, pel.Z + 0.1) };
+                    dc.DrawImage(SceneFactory.RenderControl(new[] { m }, cam, SceneFactory.ControlMode.Pose3D, 400, 400), new Rect(v * 400, i * 400, 400, 400));
+                }
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(800, 1600, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "sitting.jpg"), 90);
+    }
+
     private static void ControlNetTest(string folder)
     {
         Directory.CreateDirectory(folder);

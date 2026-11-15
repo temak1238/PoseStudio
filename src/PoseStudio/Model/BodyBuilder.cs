@@ -55,8 +55,8 @@ internal sealed class BodyBuilder
         // Sie wird über die Kette Becken → Bauch → Brust → Hals → Kopf weich gebogen (Skinning in Mannequin).
         double waist = female ? 0.86 : 1.0;
         _add("pelvis", Loft(
-            (-0.13, 0.095 * hip, 0.07, 0.0),
-            (-0.07, 0.155 * hip, 0.095, -0.005),
+            (-0.115, 0.085 * hip, 0.064, 0.0),
+            (-0.07, 0.15 * hip, 0.092, -0.005),
             (0.00, 0.158 * hip, 0.096, 0.0),
             (0.06, 0.145 * (female ? 1.02 : 1), 0.088, 0.005),
             (0.12, 0.135 * (female ? 0.9 : 1), 0.085, 0.008),
@@ -71,8 +71,9 @@ internal sealed class BodyBuilder
             (0.59, 0.052 * w, 0.05 * w, 0.0),
             (0.65, 0.046 * w, 0.046 * w, 0.006),
             (0.69, 0.045 * w, 0.045 * w, 0.012)), MaterialKind.Body);
+        // Gesäß hängt am Oberschenkel (geht beim Sitzen anteilig mit, siehe Skinning)
         foreach (var s in new[] { 1, -1 })
-            _add("pelvis", MeshFactory.Ellipsoid(P(s * 0.068 * hip, -0.06, -0.045), 0.078 * hip, 0.085, 0.07 * (female ? 1.08 : 1)), MaterialKind.Body);
+            _add("hip" + (s > 0 ? "_l" : "_r"), MeshFactory.Ellipsoid(P(s * (0.058 * hip - 0.09), -0.015, -0.045), 0.066 * hip, 0.082, 0.07 * (female ? 1.08 : 1)), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
                 _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
@@ -99,8 +100,8 @@ internal sealed class BodyBuilder
 
             // ---- Bein als eine Form (Hüfte → Knie → Knöchel), mit Kniescheibe und Wade
             _add("hip" + sfx, Loft(
-                (0.04, 0.072, 0.072, 0.0),
-                (-0.04, 0.088 * (female ? 1.04 : 1), 0.09, 0.005),
+                (0.015, 0.066, 0.066, 0.0),
+                (-0.04, 0.086 * (female ? 1.04 : 1), 0.088, 0.005),
                 (-0.20, 0.075, 0.078, 0.008),
                 (-0.36, 0.058 * w, 0.06 * w, 0.005),
                 (-0.44, 0.051 * w, 0.055 * w, 0.006),
@@ -110,7 +111,7 @@ internal sealed class BodyBuilder
                 (-0.86, 0.03 * w, 0.03 * w, 0.0)), MaterialKind.Body);
             // ---- Fuß
             double f = female ? 0.92 : 1.0;
-            _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.033 * f), MaterialKind.Body, true);
+            _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f), MaterialKind.Body, true);
             _add("ankle" + sfx, MeshFactory.LoftZ(
                 (-0.05 * f, 0.032 * f, 0.03 * f, -0.04),
                 (-0.01 * f, 0.04 * f, 0.04 * f, -0.035),
@@ -163,7 +164,7 @@ internal sealed class BodyBuilder
         if (grip) { BuildGripHand(joint, s, k); return; }
         // Handfläche zeigt zum Körper (-s·X), Daumen nach vorne (+Z).
         Point3D Q(double x, double y, double z) => new(x * k, y * k, z * k);
-        _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.026 * k), MaterialKind.Body, true);
+        _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.021 * k), MaterialKind.Body, true);
         _add(joint, MeshFactory.LoftY(k,
             (0.0, 0.018, 0.03, 0.0),
             (-0.03, 0.017, 0.04, 0.002),
@@ -195,7 +196,7 @@ internal sealed class BodyBuilder
     private void BuildGripHand(string joint, int s, double k)
     {
         Point3D Q(double x, double y, double z) => new(x * k, y * k, z * k);
-        _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.026 * k), MaterialKind.Body, true);
+        _add(joint, MeshFactory.Sphere(P(0, 0, 0), 0.021 * k), MaterialKind.Body, true);
         _add(joint, MeshFactory.LoftY(k,
             (0.0, 0.018, 0.03, 0.0),
             (-0.03, 0.017, 0.04, 0.002),
