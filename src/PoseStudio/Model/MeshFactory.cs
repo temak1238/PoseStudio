@@ -148,6 +148,24 @@ public static class MeshFactory
         return Loft(rings, slices, 1.0);
     }
 
+    /// <summary>Rechteckige Bodenfläche; Textur-u läuft mit X, Textur-v mit Z (v = 0 bei minZ).</summary>
+    public static MeshGeometry3D RectQuad(double minX, double maxX, double minZ, double maxZ, double y)
+    {
+        var mesh = new MeshGeometry3D();
+        mesh.Positions.Add(new Point3D(minX, y, maxZ));
+        mesh.Positions.Add(new Point3D(maxX, y, maxZ));
+        mesh.Positions.Add(new Point3D(maxX, y, minZ));
+        mesh.Positions.Add(new Point3D(minX, y, minZ));
+        for (int i = 0; i < 4; i++) mesh.Normals.Add(new Vector3D(0, 1, 0));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(0, 1));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(1, 1));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(1, 0));
+        mesh.TextureCoordinates.Add(new System.Windows.Point(0, 0));
+        foreach (var idx in new[] { 0, 1, 2, 0, 2, 3 }) mesh.TriangleIndices.Add(idx);
+        mesh.Freeze();
+        return mesh;
+    }
+
     /// <summary>Horizontale Fläche (XZ) auf Höhe y, Texturkoordinaten 0..1.</summary>
     public static MeshGeometry3D FloorQuad(double cx, double cz, double halfSize, double y)
     {

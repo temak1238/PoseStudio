@@ -106,7 +106,8 @@
                         Rechte Maustaste ziehen: Kamera verschieben<LineBreak />
                         Mausrad: Entfernung<LineBreak />
                         Strg + ziehen: Gelenk beugen / seitlich<LineBreak />
-                        Umschalt + ziehen: Gelenk drehen
+                        Umschalt + ziehen: Gelenk drehen<LineBreak />
+                        Alt + ziehen: Licht bewegen
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
@@ -156,6 +157,24 @@
                                 <Button Content="Ganz" Click="CamFull_Click" ToolTip="Ganze Figur einpassen" />
                                 <Button Content="Porträt" Click="CamPortrait_Click" ToolTip="Kopf und Oberkörper" />
                             </UniformGrid>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Licht &amp; Schatten">
+                        <StackPanel>
+                            <ItemsControl x:Name="LightItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                            <UniformGrid Columns="4" Margin="0,4,0,2">
+                                <Button Content="Vorne" Click="LightPreset_Click" Tag="20,45" ToolTip="Licht von vorne-seitlich" />
+                                <Button Content="Seite" Click="LightPreset_Click" Tag="90,30" ToolTip="Seitenlicht" />
+                                <Button Content="Gegenlicht" Click="LightPreset_Click" Tag="180,35" ToolTip="Licht von hinten" />
+                                <Button Content="Mittag" Click="LightPreset_Click" Tag="30,80" ToolTip="Licht von oben" />
+                            </UniformGrid>
+                            <CheckBox x:Name="CastShadowCheck" Content="Schattenwurf (sonst nur weicher Bodenschatten)" Margin="0,2"
+                                      Checked="Light_Changed" Unchecked="Light_Changed" />
+                            <CheckBox x:Name="LightFollowCheck" Content="Licht dreht mit der Kamera mit" Margin="0,2"
+                                      Checked="Light_Changed" Unchecked="Light_Changed" />
+                            <CheckBox x:Name="ShowLightCheck" Content="Lichtquelle in der Vorschau zeigen (Alt + ziehen)" Margin="0,2"
+                                      Checked="Light_Changed" Unchecked="Light_Changed" />
                         </StackPanel>
                     </GroupBox>
 

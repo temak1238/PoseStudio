@@ -33,6 +33,10 @@ public partial class MainWindow : Window
     private bool _ready;
     private bool _suppressFigure;
     private BitmapSource? _bgImage;
+    private LightSettings _light = new();
+    private readonly ObservableCollection<AxisViewModel> _lightAxes = new();
+    private readonly Model3DGroup _lightMarker = new();
+    private bool _floorPending, _lightDrag;
     private string? _bgImagePath;
 
     private static readonly (FigureStyle Style, string Name)[] Styles =
@@ -83,6 +87,9 @@ public partial class MainWindow : Window
         BuildPositionAxes();
         BuildCameraAxes();
         BuildProportionAxes();
+        BuildLightAxes();
+        LightItems.ItemsSource = _lightAxes;
+        _scene.Children.Add(_lightMarker);
         BuildColorPresets();
         LoadSettings();
 
@@ -92,6 +99,9 @@ public partial class MainWindow : Window
         foreach (var f in _exportFormats) f.PropertyChanged += (_, _) => DrawGuides();
 
         CustomWBox.LostFocus += CustomSize_LostFocus;
+        // Alt allein soll nicht das Systemmenü aktivieren (Alt + ziehen bewegt das Licht).
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
+        PreviewKeyUp += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
         Closing += (_, _) => SaveSettings();
         Loaded += (_, _) => { UpdateFrameSize(); RefreshAll(); };
     }
@@ -142,6 +152,79 @@ public partial class MainWindow : Window
         Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
         Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
         Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+    }
+
+    // =================================================================== Licht
+
+    private void BuildLightAxes()
+    {
+        _lightAxes.Clear();
+        void Add(string label, double min, double max, Func<double> get, Action<double> set) =>
+            _lightAxes.Add(new AxisViewModel(label, min, max, get, v => { set(v); LightChanged(); }));
+        Add("Richtung (°)", -180, 180, () => NormalizeAngle(_light.Azimuth), v => _light.Azimuth = v);
+        Add("Höhe (°)", 5, 90, () => _light.Elevation, v => _light.Elevation = v);
+        Add("Helligkeit (%)", 0, 200, () => _light.Intensity, v => _light.Intensity = v);
+        Add("Umgebungslicht (%)", 0, 100, () => _light.Ambient, v => _light.Ambient = v);
+        Add("Schattenstärke (%)", 0, 100, () => _light.ShadowStrength, v => _light.ShadowStrength = v);
+        Add("Schattenweichheit (%)", 0, 100, () => _light.Softness, v => _light.Softness = v);
+    }
+
+    private bool _suppressLight;
+
+    private void ShowLight(LightSettings l)
+    {
+        _suppressLight = true;
+        _light = l.Clone();
+        _light.Clamp();
+        CastShadowCheck.IsChecked = _light.CastShadow;
+        LightFollowCheck.IsChecked = _light.FollowCamera;
+        ShowLightCheck.IsChecked = _light.ShowSource;
+        _suppressLight = false;
+        LightChanged();
+    }
+
+    private void LightChanged()
+    {
+        foreach (var a in _lightAxes) a.Refresh();
+        if (!_ready) return;
+        _lights.Children.Clear();
+        _lights.Children.Add(SceneFactory.CreateLights(_cam, _light));
+        UpdateLightMarker();
+        RebuildFloor();
+    }
+
+    private void Light_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressLight) return;
+        _light.CastShadow = CastShadowCheck.IsChecked == true;
+        _light.FollowCamera = LightFollowCheck.IsChecked == true;
+        _light.ShowSource = ShowLightCheck.IsChecked == true;
+        LightChanged();
+    }
+
+    private void LightPreset_Click(object sender, RoutedEventArgs e)
+    {
+        var parts = ((string)((Button)sender).Tag).Split(',');
+        _light.Azimuth = double.Parse(parts[0], CultureInfo.InvariantCulture) + (_light.FollowCamera ? 0 : _cam.Yaw);
+        _light.Azimuth = NormalizeAngle(_light.Azimuth);
+        _light.Elevation = double.Parse(parts[1], CultureInfo.InvariantCulture);
+        LightChanged();
+    }
+
+    /// <summary>Gelbe Kugel mit Strahl zeigt in der Vorschau, woher das Licht kommt (nicht im Export).</summary>
+    private void UpdateLightMarker()
+    {
+        _lightMarker.Children.Clear();
+        if (!_ready || !_light.ShowSource) return;
+        var from = _light.FromDirection(_cam);
+        var pel = _figure.PelvisWorld;
+        var center = new Point3D(pel.X, Math.Max(0.5, pel.Y), pel.Z);
+        var sun = center + from * 1.05;
+        var glow = new MaterialGroup();
+        glow.Children.Add(new DiffuseMaterial(Brushes.Black));
+        glow.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromRgb(0xFF, 0xD2, 0x30))));
+        _lightMarker.Children.Add(new GeometryModel3D(MeshFactory.Sphere(sun, 0.06), glow));
+        _lightMarker.Children.Add(new GeometryModel3D(MeshFactory.Tube(sun - from * 0.08, center + from * 0.45, 0.009, 0.004), glow));
     }
 
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
@@ -248,6 +331,7 @@ public partial class MainWindow : Window
         BgStretchCombo.SelectedIndex = Math.Max(0, Array.FindIndex(StretchModes, m => m.Mode.ToString() == s.BackgroundStretch));
         if (!string.IsNullOrEmpty(s.BackgroundImage) && File.Exists(s.BackgroundImage)) LoadBackgroundImage(s.BackgroundImage, quiet: true);
         ShowFigure(s.Figure ?? new FigureData());
+        ShowLight(s.Light ?? new LightSettings());
     }
 
     private void SaveSettings()
@@ -272,6 +356,7 @@ public partial class MainWindow : Window
         s.BackgroundImage = _bgImagePath;
         s.BackgroundStretch = StretchModes[Math.Max(0, BgStretchCombo.SelectedIndex)].Mode.ToString();
         s.Figure = _figure.GetFigure();
+        s.Light = _light.Clone();
         s.Save();
     }
 
@@ -300,21 +385,33 @@ public partial class MainWindow : Window
         if (!_ready) return;
         _cam.ApplyTo(ViewCamera, CurrentPreviewAspect());
         _lights.Children.Clear();
-        _lights.Children.Add(SceneFactory.CreateLights(_cam));
+        _lights.Children.Add(SceneFactory.CreateLights(_cam, _light));
         foreach (var a in _cameraAxes) a.Refresh();
+        UpdateLightMarker();
+        if (_light.FollowCamera) RebuildFloor();
     }
 
+    /// <summary>Boden/Schatten neu aufbauen – mehrere Aufrufe kurz hintereinander werden zusammengefasst,
+    /// damit das Ziehen von Gelenken flüssig bleibt (Schattenwurf kostet etwas Rechenzeit).</summary>
     private void RebuildFloor()
     {
-        if (!_ready) return;
+        if (!_ready || _floorPending) return;
+        _floorPending = true;
+        Dispatcher.BeginInvoke(() => { _floorPending = false; RebuildFloorNow(); }, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void RebuildFloorNow()
+    {
         _floor.Children.Clear();
         var o = new SceneOptions
         {
             Background = _background,
             Floor = FloorPreviewCheck.IsChecked == true,
-            Shadow = ShadowPreviewCheck.IsChecked == true
+            Shadow = ShadowPreviewCheck.IsChecked == true,
+            Light = _light,
+            ShadowResolution = 640
         };
-        if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figure.PelvisWorld));
+        if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figure, _cam));
     }
 
     /// <summary>Nach jeder Änderung an der Pose: ggf. auf den Boden stellen, Schatten nachführen, Regler aktualisieren.</summary>
@@ -460,6 +557,7 @@ public partial class MainWindow : Window
         var pose = _figure.GetPose();
         pose.Camera = _cam.ToData();
         pose.Figure = _figure.GetFigure();
+        pose.Light = _light.Clone();
         pose.Save(dlg.FileName);
         StatusText.Text = $"Pose gespeichert: {dlg.FileName}";
     }
@@ -473,6 +571,7 @@ public partial class MainWindow : Window
             var pose = PoseData.Load(dlg.FileName);
             PushUndo();
             if (pose.Figure != null) ShowFigure(pose.Figure);
+            if (pose.Light != null) ShowLight(pose.Light);
             _figure.SetPose(pose);
             if (pose.Camera != null) _cam.FromData(pose.Camera);
             PoseChanged();
@@ -711,7 +810,8 @@ public partial class MainWindow : Window
         _leftDown = true;
         _dragging = false;
         _pressedPart = HitPart(_mouseStart);
-        bool mod = Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        _lightDrag = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
+        bool mod = !_lightDrag && (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         _jointDrag = false;
         if (mod)
         {
@@ -734,6 +834,7 @@ public partial class MainWindow : Window
         }
         _leftDown = false;
         _jointDrag = false;
+        _lightDrag = false;
         if (!_rightDown) Frame.ReleaseMouseCapture();
     }
 
@@ -759,7 +860,13 @@ public partial class MainWindow : Window
             if (!_dragging && (p - _mouseStart).Length > 3) _dragging = true;
             if (_dragging)
             {
-                if (_jointDrag && _figure.Selected is { } j) DragJoint(j, d);
+                if (_lightDrag)
+                {
+                    _light.Azimuth = NormalizeAngle(_light.Azimuth + d.X * 0.5);
+                    _light.Elevation = Math.Clamp(_light.Elevation - d.Y * 0.4, 5, 90);
+                    LightChanged();
+                }
+                else if (_jointDrag && _figure.Selected is { } j) DragJoint(j, d);
                 else
                 {
                     _cam.Yaw -= d.X * 0.4;
@@ -917,7 +1024,9 @@ public partial class MainWindow : Window
             Floor = FloorExportCheck.IsChecked == true,
             Shadow = ShadowExportCheck.IsChecked == true,
             BackgroundImage = _bgImage,
-            BackgroundStretch = CurrentStretch
+            BackgroundStretch = CurrentStretch,
+            Light = _light,
+            ShadowResolution = 2048
         };
         string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         string prefix = SafeFileName(PrefixBox.Text);

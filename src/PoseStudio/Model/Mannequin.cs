@@ -308,6 +308,10 @@ public sealed class Mannequin
         }
     }
 
+    /// <summary>Alle Meshes mit ihrer aktuellen Welt-Transformation (für Schattenwurf).</summary>
+    public IEnumerable<(MeshGeometry3D Mesh, Matrix3D Transform)> WorldMeshes() =>
+        _parts.Values.Select(p => ((MeshGeometry3D)p.Model.Geometry, ((MatrixTransform3D)p.Model.Transform).Matrix));
+
     public double ComputeMinY() => AllWorldPoints().Min(p => p.Y);
     public double ComputeMaxY() => AllWorldPoints().Max(p => p.Y);
 

@@ -13,6 +13,7 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 - Mausrad: Entfernung ändern
 - **Strg + ziehen**: ausgewähltes Gelenk beugen (hoch/runter) bzw. seitlich bewegen (links/rechts)
 - **Umschalt + ziehen**: ausgewähltes Gelenk um die eigene Achse drehen
+- **Alt + ziehen**: Lichtquelle bewegen (links/rechts = Richtung, hoch/runter = Höhe)
 - Strg+Z: Rückgängig
 
 **Links – Figur:** Gliederpuppe oder Mensch (männlich/weiblich, mit Gesicht, Fingern, Haaren). Proportionen: Körpergröße, Arm- und Beinlänge, Oberkörper, Schulterbreite, Kopfgröße, Körperbau. Posen bleiben beim Wechsel erhalten.
@@ -20,6 +21,8 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 **Links – Pose:** Vorlagen (Stehen, T-Pose, Gehen, Laufen, Sitzen, Knien, Winken, Jubeln, Hände in den Hüften, Kontrapost), Regler je Gelenk, Position der Figur, Spiegeln, Pose speichern/laden (`.pose.json`, inkl. Kamera).
 
 **Rechts – Kamera:** Entfernung, Brennweite (14–200 mm), Blickhöhe, Drehung, Neigung, Schnellansichten (Vorne, 3/4, Seite, Hinten, Oben, Unten, Ganz, Porträt).
+
+**Rechts – Licht & Schatten:** Hauptlicht mit Richtung, Höhe, Helligkeit, Umgebungslicht. Echter **Schattenwurf** auf den Boden (auch über einem Hintergrundbild), Stärke und Weichheit einstellbar. Schnellwahl Vorne/Seite/Gegenlicht/Mittag, Licht wahlweise an der Kamera mitdrehen. Die gelbe Kugel in der Vorschau zeigt die Lichtquelle (nicht im Export).
 
 **Rechts – Darstellung:** Hintergrundfarbe (Farbwähler, Hex oder Schnellfarben inkl. Greenscreen), Figur-/Hautfarbe, Haarfarbe, **Hintergrundbild** (Füllen/Einpassen/Strecken), Boden/Raster und Schatten getrennt für Vorschau und Export.
 

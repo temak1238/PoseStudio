@@ -24,6 +24,7 @@ public sealed class AppSettings
     public string? BackgroundImage { get; set; }
     public string BackgroundStretch { get; set; } = "UniformToFill";
     public PoseStudio.Model.FigureData Figure { get; set; } = new();
+    public PoseStudio.Rendering.LightSettings Light { get; set; } = new();
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

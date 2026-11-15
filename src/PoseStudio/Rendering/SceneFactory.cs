@@ -13,36 +13,41 @@ public sealed class SceneOptions
     public Color Background { get; set; } = Color.FromRgb(0xE6, 0xE6, 0xE6);
     public bool Floor { get; set; } = true;
     public bool Shadow { get; set; } = true;
+    public LightSettings Light { get; set; } = new();
+    /// <summary>Auflösung der Schattentextur (Vorschau kleiner, Export größer).</summary>
+    public int ShadowResolution { get; set; } = 1024;
     public ImageSource? BackgroundImage { get; set; }
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
 }
 
 public static class SceneFactory
 {
-    /// <summary>Licht hängt an der Kamera, damit die Figur aus jeder Richtung gleich gut ausgeleuchtet ist.</summary>
-    public static Model3DGroup CreateLights(OrbitCamera cam)
+    /// <summary>Hauptlicht aus der eingestellten Richtung (wirft den Schatten), dazu ein schwaches
+    /// Aufhelllicht von der Kamera aus und ein Kantenlicht, damit Schattenseiten nicht schwarz werden.</summary>
+    public static Model3DGroup CreateLights(OrbitCamera cam, LightSettings l)
     {
         var look = cam.LookDirection;
         var right = cam.Right;
         var up = cam.Up;
-        var key = look + right * 0.6 - up * 0.9;
+        var key = -l.FromDirection(cam);
         var fill = look - right * 0.9 + up * 0.1;
         var rim = -look - up * 0.5;
+        byte Gray(double v) => (byte)Math.Clamp(v, 0, 255);
+        byte k = Gray(225 * l.Intensity / 100), a = Gray(2.2 * l.Ambient);
         var g = new Model3DGroup();
-        g.Children.Add(new AmbientLight(Color.FromRgb(0x50, 0x50, 0x50)));
-        g.Children.Add(new DirectionalLight(Color.FromRgb(0xD8, 0xD8, 0xD8), key));
-        g.Children.Add(new DirectionalLight(Color.FromRgb(0x48, 0x48, 0x50), fill));
-        g.Children.Add(new DirectionalLight(Color.FromRgb(0x30, 0x30, 0x30), rim));
+        g.Children.Add(new AmbientLight(Color.FromRgb(a, a, a)));
+        g.Children.Add(new DirectionalLight(Color.FromRgb(k, k, k), key));
+        g.Children.Add(new DirectionalLight(Color.FromRgb(0x38, 0x38, 0x40), fill));
+        g.Children.Add(new DirectionalLight(Color.FromRgb(0x28, 0x28, 0x28), rim));
         return g;
     }
-
     private static Color Shade(Color c, double f) =>
         Color.FromRgb((byte)Math.Clamp(c.R * f, 0, 255), (byte)Math.Clamp(c.G * f, 0, 255), (byte)Math.Clamp(c.B * f, 0, 255));
 
     private static Color Lighten(Color c, int d) =>
         Color.FromRgb((byte)Math.Min(255, c.R + d), (byte)Math.Min(255, c.G + d), (byte)Math.Min(255, c.B + d));
 
-    public static Model3DGroup CreateFloor(SceneOptions o, Point3D pelvis)
+    public static Model3DGroup CreateFloor(SceneOptions o, Mannequin figure, OrbitCamera cam)
     {
         var g = new Model3DGroup();
         if (o.Floor)
@@ -67,10 +72,19 @@ public static class SceneFactory
         }
         if (o.Shadow)
         {
+            var pelvis = figure.PelvisWorld;
+            double blob = 1.0;
+            if (o.Light.CastShadow)
+            {
+                var cast = ShadowCaster.Create(figure, o.Light.FromDirection(cam), o.Light.ShadowStrength, o.Light.Softness, o.ShadowResolution);
+                if (cast != null) g.Children.Add(cast);
+                blob = 0.45; // nur noch leichter Kontaktschatten unter der Figur
+            }
             var rg = new RadialGradientBrush();
             rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x70, 0, 0, 0), 0));
             rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x30, 0, 0, 0), 0.55));
             rg.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0, 0, 0), 1));
+            rg.Opacity = blob;
             var mat = new DiffuseMaterial(rg);
             g.Children.Add(new GeometryModel3D(MeshFactory.FloorQuad(pelvis.X, pelvis.Z, 0.45, 0.004), mat) { BackMaterial = mat });
         }
@@ -84,8 +98,8 @@ public static class SceneFactory
         int rw = width * ss, rh = height * ss;
 
         var scene = new Model3DGroup();
-        scene.Children.Add(CreateLights(cam));
-        if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figure.PelvisWorld));
+        scene.Children.Add(CreateLights(cam, o.Light));
+        if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figure, cam));
         scene.Children.Add(figure.CreateSnapshot());
 
         var vp = new Viewport3D { Camera = cam.CreateCamera((double)width / height), Width = rw, Height = rh, ClipToBounds = true };
