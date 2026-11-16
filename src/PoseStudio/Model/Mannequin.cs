@@ -1074,17 +1074,31 @@ public sealed class Mannequin
     /// <summary>Pose aus 33 erkannten Punkten (MediaPipe-Reihenfolge) übernehmen. Die Punkte müssen bereits
     /// in den Achsen dieser Szene liegen (X = linke Seite der Figur, Y oben, Z zur Kamera); verwendet werden nur Richtungen.
     /// Position der Figur bleibt erhalten, gehaltene Objekte steuern weiterhin ihre Hand.</summary>
-    public void FitLandmarks(Vector3D[] P)
+    public List<string> FitLandmarks(Vector3D[] P, bool[]? visible = null)
     {
+        // Nicht sichtbare Körperteile (außerhalb des Fotos oder unsicher) behalten ihre bisherige Haltung.
+        bool V(int i) => visible == null || visible[i];
+        var before = GetPose();
+        var prevUp = Axis(this["pelvis"].World, new Vector3D(0, 1, 0));
+        var kept = new List<string>();
+        void Restore(params string[] ids)
+        {
+            foreach (var id in ids)
+                if (before.Joints.TryGetValue(id, out var v)) { var j = this[id]; j.BendValue = v[0]; j.SideValue = v[1]; j.TwistValue = v[2]; }
+        }
+        bool hipsVis = V(23) && V(24), shVis = V(11) && V(12);
+        if (!hipsVis && !shVis) { kept.Add("alles (Schultern und Hüften nicht sichtbar)"); return kept; }
+
         foreach (var j in Joints) j.BendValue = j.SideValue = j.TwistValue = 0;
         _ikEnabled = false;
         Update();
 
-        // ---- Becken, Bauch, Brust
+        // ---- Becken, Bauch, Brust (ohne Hüften: Becken aufrecht wie bisher, Drehung aus den Schultern)
         var pelvis = this["pelvis"]; var spine = this["spine"]; var chest = this["chest"];
-        var hipAcross = Dir(P[24], P[23]);
-        var shAcross = Dir(P[12], P[11]);
-        var torsoUp = Dir(Mid(P[23], P[24]), Mid(P[11], P[12]));
+        var shAcross = shVis ? Dir(P[12], P[11]) : Dir(P[24], P[23]);
+        var hipAcross = hipsVis ? Dir(P[24], P[23]) : shAcross;
+        var torsoUp = hipsVis && shVis ? Dir(Mid(P[23], P[24]), Mid(P[11], P[12])) : prevUp;
+        if (!hipsVis) kept.Add("Becken (Hüften nicht sichtbar)");
         var torsoDefs = new[] { pelvis.Bend!, pelvis.Side!, pelvis.Twist!, spine.Bend!, spine.Side!, spine.Twist!, chest.Bend!, chest.Side!, chest.Twist! };
         double[] TorsoRes(double[] q)
         {
@@ -1119,6 +1133,7 @@ public sealed class Mannequin
 
         // ---- Hals und Kopf
         var neck = this["neck"]; var head = this["head"];
+        bool headVis = V(0) && (V(7) || V(8));
         var earAcross = Dir(P[8], P[7]);
         var faceFwd = Dir(Mid(P[7], P[8]), P[0]);
         var cwFix = chest.World;
@@ -1136,19 +1151,40 @@ public sealed class Mannequin
                 wr * (q[0] - q[3]), wr * (q[1] - q[4]), wr * (q[2] - q[5])
             };
         }
-        var hq = SolveDls(HeadRes, new double[6], headDefs);
-        (neck.BendValue, neck.SideValue, neck.TwistValue) = (hq[0], hq[1], hq[2]);
-        (head.BendValue, head.SideValue, head.TwistValue) = (hq[3], hq[4], hq[5]);
+        if (headVis)
+        {
+            var hq = SolveDls(HeadRes, new double[6], headDefs);
+            (neck.BendValue, neck.SideValue, neck.TwistValue) = (hq[0], hq[1], hq[2]);
+            (head.BendValue, head.SideValue, head.TwistValue) = (hq[3], hq[4], hq[5]);
+        }
+        else { Restore("neck", "head"); kept.Add("Kopf"); }
         ComputeWorlds();
 
-        // ---- Arme und Beine
-        FitLimb("shoulder_l", "elbow_l", "wrist_l", P[11], P[13], P[15], Mid(P[17], P[19]), hand: true);
-        FitLimb("shoulder_r", "elbow_r", "wrist_r", P[12], P[14], P[16], Mid(P[18], P[20]), hand: true);
-        FitLimb("hip_l", "knee_l", "ankle_l", P[23], P[25], P[27], P[31], hand: false, heel: P[29]);
-        FitLimb("hip_r", "knee_r", "ankle_r", P[24], P[26], P[28], P[32], hand: false, heel: P[30]);
+        // ---- Arme und Beine: nur wenn das ganze Glied zu sehen ist
+        foreach (var (s, a, b, c, t1, t2) in new[] { ("_l", 11, 13, 15, 17, 19), ("_r", 12, 14, 16, 18, 20) })
+        {
+            if (V(a) && V(b) && V(c))
+            {
+                FitLimb("shoulder" + s, "elbow" + s, "wrist" + s, P[a], P[b], P[c], Mid(P[t1], P[t2]), hand: true);
+                if (!V(t1) && !V(t2)) Restore("wrist" + s);
+            }
+            else { Restore("shoulder" + s, "elbow" + s, "wrist" + s); kept.Add(s == "_l" ? "linker Arm" : "rechter Arm"); }
+        }
+        foreach (var (s, a, b, c, toe, heel) in new[] { ("_l", 23, 25, 27, 31, 29), ("_r", 24, 26, 28, 32, 30) })
+        {
+            if (V(a) && V(b) && V(c))
+            {
+                FitLimb("hip" + s, "knee" + s, "ankle" + s, P[a], P[b], P[c], P[toe], hand: false, heel: P[heel]);
+                if (!V(toe)) Restore("ankle" + s);
+            }
+            else { Restore("hip" + s, "knee" + s, "ankle" + s); kept.Add(s == "_l" ? "linkes Bein" : "rechtes Bein"); }
+        }
+        // Finger übernimmt die Erkennung getrennt (FitHand); bis dahin bleiben sie, wie sie waren
+        Restore(Joints.Where(j => j.IsFinger).Select(j => j.Id).ToArray());
 
         _ikEnabled = true;
         Update();
+        return kept;
     }
 
     /// <summary>Ein Glied anpassen: mittleres Gelenk und Endgelenk auf die erkannten Richtungen (mit eigenen Knochenlängen),

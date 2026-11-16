@@ -107,6 +107,23 @@ public sealed class PoseDetector : IDisposable
     /// so, als wäre das Foto mit der aktuellen Kamera aufgenommen.</summary>
     public static Vector3D[] ToScene(DetectedPose pose, Rendering.OrbitCamera cam) => ToScene(pose.World, cam);
 
+    /// <summary>Welche der 33 Punkte (MediaPipe-Reihenfolge) wirklich im Foto zu sehen sind: innerhalb des Bildes
+    /// (kleiner Rand) und sicher erkannt. Modelle liefern auch für abgeschnittene Körperteile geratene Punkte.</summary>
+    public static bool[] Visible33(DetectedPose pose, int imageW, int imageH, bool fromWhole)
+    {
+        int[] map = { 0, 1, 1, 1, 2, 2, 2, 3, 4, 0, 0, 5, 6, 7, 8, 9, 10, 108, 129, 96, 117, 92, 113, 11, 12, 13, 14, 15, 16, 19, 22, 17, 20 };
+        double mx = imageW * 0.01, my = imageH * 0.01;
+        bool Inside(Point p) => p.X >= -mx && p.Y >= -my && p.X <= imageW + mx && p.Y <= imageH + my;
+        // RTMW3D-Werte sind dafür verlässlicher (MediaPipe ist sich auch bei erfundenen Beinen sicher und
+        // stuft verdeckte, aber im Bild liegende Arme als unsicher ein) – daher bevorzugt, wenn vorhanden.
+        var v = new bool[33];
+        for (int i = 0; i < 33; i++)
+            v[i] = pose.Whole is { } wb
+                ? wb.Score[map[i]] >= 0.3 && Inside(wb.Image[map[i]])
+                : pose.Visibility[i] >= 0.5 && Inside(pose.Image[i]);
+        return v;
+    }
+
     public static Vector3D[] ToScene(IEnumerable<Vector3D> world, Rendering.OrbitCamera cam)
     {
         var right = cam.Right; var up = cam.Up; var look = cam.LookDirection;
@@ -348,13 +365,14 @@ public sealed class PoseDetector : IDisposable
     {
         if (RunWhole(px, box) is not { } r) return null;
         var (img, inp, score, k) = r;
+        bool InImage(Point p) => p.X >= 0 && p.Y >= 0 && p.X <= px.W && p.Y <= px.H;
         // Maßstab Bildpixel ↔ Meter aus Knochenlängen (Bildlänge + Tiefenunterschied ergeben die echte Länge)
         var bones = new (int a, int b, double len)[] { (5, 7, 0.29), (6, 8, 0.29), (7, 9, 0.26), (8, 10, 0.26), (11, 13, 0.44), (12, 14, 0.44),
                                                         (13, 15, 0.42), (14, 16, 0.42), (5, 11, 0.50), (6, 12, 0.50), (5, 6, 0.36), (11, 12, 0.21) };
         var est = new List<double>();
         foreach (var (a, b, len) in bones)
         {
-            if (score[a] < 0.3 || score[b] < 0.3) continue;
+            if (score[a] < 0.3 || score[b] < 0.3 || !InImage(img[a]) || !InImage(img[b])) continue; // nur sichtbare Knochen
             double d2 = (img[a] - img[b]).Length;
             double dz = inp[a].Z - inp[b].Z;
             est.Add(d2 / Math.Sqrt(Math.Max(len * len - dz * dz, 0.09 * len * len)));

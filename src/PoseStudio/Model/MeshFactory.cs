@@ -148,8 +148,11 @@ public static class MeshFactory
     }
 
     /// <summary>Loft entlang Y: (y, Radius X, Radius Z, Versatz Z).</summary>
-    public static MeshGeometry3D LoftY(double k, params (double y, double rx, double rz, double cz)[] p) =>
-        Loft(p.Select(q => new Ring(new Point3D(0, q.y * k, q.cz * k), new Vector3D(q.rx * k, 0, 0), new Vector3D(0, 0, q.rz * k))).ToList());
+    public static MeshGeometry3D LoftY(double k, params (double y, double rx, double rz, double cz)[] p) => LoftY(k, 0.8, p);
+
+    /// <summary>Wie LoftY, mit eigener Kappenhöhe (Anteil des Endradius).</summary>
+    public static MeshGeometry3D LoftY(double k, double cap, params (double y, double rx, double rz, double cz)[] p) =>
+        Loft(p.Select(q => new Ring(new Point3D(0, q.y * k, q.cz * k), new Vector3D(q.rx * k, 0, 0), new Vector3D(0, 0, q.rz * k))).ToList(), 28, cap);
 
     /// <summary>Loft entlang Z (z. B. Fuß): (z, Radius X, Radius Y, Versatz Y).</summary>
     public static MeshGeometry3D LoftZ(params (double z, double rx, double ry, double cy)[] p) =>

@@ -76,6 +76,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--pelvis")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PelvisTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--hands")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -420,14 +428,26 @@ public partial class App : Application
                 }
                 // Figur aus MediaPipe (nur Körper)
                 var fMp = new Mannequin(); fMp.SetFigure(FigureStyle.Female, true, new Proportions { HeightCm = 165 });
-                fMp.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(pose, cam)); fMp.GroundToFloor();
+                var kept = fMp.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(pose, cam), PoseStudio.Detection.PoseDetector.Visible33(pose, bi.PixelWidth, bi.PixelHeight, false));
+                fMp.GroundToFloor();
                 var opts = new SceneOptions { Floor = true, Shadow = false };
-                dc.DrawImage(SceneFactory.Render(fMp, cam, opts, PW, H), new Rect(2 * PW, y0, PW, H));
-                Label(dc, "Figur aus MediaPipe", 2 * PW, y0);
+                // Kamera an das Foto anpassen, Figur halbtransparent über dem Foto
+                var cfit = new OrbitCamera { Yaw = cam.Yaw, Pitch = cam.Pitch, Distance = cam.Distance, Target = cam.Target, FocalLength = cam.FocalLength };
+                var camErr = CameraFit.Fit(cfit, PW, H, CameraFit.Pairs(fMp, pose, bi.PixelWidth, bi.PixelHeight, PW, H));
+                dc.DrawImage(bi, new Rect(2 * PW + ox, y0, bi.PixelWidth * sc, bi.PixelHeight * sc));
+                dc.PushOpacity(0.6);
+                dc.DrawImage(SceneFactory.Render(fMp, cfit, new SceneOptions { Floor = false, Shadow = false, Transparent = true }, PW, H), new Rect(2 * PW, y0, PW, H));
+                dc.Pop();
+                Label(dc, $"MediaPipe, Kamera angepasst ({camErr:F0} px)", 2 * PW, y0);
+                log.AppendLine($"{name}: beibehalten: {string.Join(", ", kept)}; Kamera-Abweichung {camErr:F1} px");
+                var wbi = new[] { 0, 0, 0, 0, 0, 0, 0, 3, 4, 0, 0, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 11, 12, 13, 14, 15, 16, 19, 22, 17, 20 };
+                foreach (var k in new[] { 0, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28 })
+                    log.AppendLine($"   {k}: MP vis {pose.Visibility[k]:F2} @ {pose.Image[k].X:F0},{pose.Image[k].Y:F0}" +
+                                   (wb != null ? $" | RTM {wb.Score[wbi[k]]:F2} @ {wb.Image[wbi[k]].X:F0},{wb.Image[wbi[k]].Y:F0}" : ""));
                 if (wb == null) continue;
                 // Figur aus RTMW3D mit Fingern
                 var fWb = new Mannequin(); fWb.SetFigure(FigureStyle.Female, true, new Proportions { HeightCm = 165 });
-                fWb.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(wb.ToMediaPipe33(), cam));
+                fWb.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(wb.ToMediaPipe33(), cam), PoseStudio.Detection.PoseDetector.Visible33(pose, bi.PixelWidth, bi.PixelHeight, true));
                 var sceneAll = PoseStudio.Detection.PoseDetector.ToScene(wb.World, cam);
                 int nl = fWb.FitHand(1, sceneAll.Skip(91).Take(21).ToArray(), wb.Score.Skip(91).Take(21).ToArray());
                 int nr = fWb.FitHand(-1, sceneAll.Skip(112).Take(21).ToArray(), wb.Score.Skip(112).Take(21).ToArray());
@@ -468,6 +488,34 @@ public partial class App : Application
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "photos.jpg"), 88);
         File.WriteAllText(Path.Combine(folder, "photos.txt"), det.ModelInfo + "\n" + log);
+    }
+
+    /// <summary>Testmodus --pelvis: Beckenbereich nah (vorne, schräg, seitlich, hinten) in mehreren Posen, je Figurenstil.</summary>
+    private static void PelvisTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var poses = new[] { "Neutral stehen (A-Pose)", "Gehen", "Sitzen (Stuhl)", "Ausfallschritt" };
+        var yaws = new[] { 0.0, 35.0, 90.0, 180.0 };
+        const int W = 260;
+        foreach (var style in new[] { FigureStyle.Female, FigureStyle.Male })
+        {
+            var dv = new System.Windows.Media.DrawingVisual();
+            using (var dc = dv.RenderOpen())
+                for (int i = 0; i < poses.Length; i++)
+                {
+                    var m = new Mannequin(); m.SetFigure(style, true, new Proportions());
+                    m.SetPose(Presets.All.First(p => p.Name == poses[i]).ToPose()); m.GroundToFloor();
+                    var pel = m.PelvisWorld;
+                    for (int v = 0; v < yaws.Length; v++)
+                    {
+                        var cam = new OrbitCamera { Yaw = yaws[v], Pitch = 5, Distance = 1.3, Target = new P3(pel.X, pel.Y - 0.08, pel.Z) };
+                        dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = true }, W, W), new Rect(v * W, i * W, W, W));
+                    }
+                }
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * yaws.Length, W * poses.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"pelvis-{style}.jpg"), 88);
+        }
     }
 
     /// <summary>Testmodus --hands: alle Handhaltungen als Nahaufnahme, Griff um ein Objekt, Prüfwerte in hands.txt.</summary>

@@ -1420,20 +1420,23 @@ public partial class MainWindow : Window
             var root = _figure.RootPosition;
             var wb = pose.Whole;
             bool rtmBody = PhotoBodyCombo.SelectedIndex == 1 && wb != null;
-            _figure.FitLandmarks(rtmBody
+            var vis = PoseStudio.Detection.PoseDetector.Visible33(pose, _refBitmap.PixelWidth, _refBitmap.PixelHeight, rtmBody);
+            var kept = _figure.FitLandmarks(rtmBody
                 ? PoseStudio.Detection.PoseDetector.ToScene(wb!.ToMediaPipe33(), _cam)
-                : PoseStudio.Detection.PoseDetector.ToScene(pose, _cam));
-            string fingers = "";
+                : PoseStudio.Detection.PoseDetector.ToScene(pose, _cam), vis);
+            string fingers = kept.Count > 0 ? $" Nicht im Bild, Haltung beibehalten: {string.Join(", ", kept)}." : "";
             if (PhotoFingersCheck.IsChecked == true)
             {
                 if (wb == null)
-                    fingers = _detector.HasWholeBody ? " Hände nicht erkannt." : " Für Finger fehlt das RTMW3D-Modell im Ordner Models.";
+                    fingers += _detector.HasWholeBody ? " Hände nicht erkannt." : " Für Finger fehlt das RTMW3D-Modell im Ordner Models.";
                 else
                 {
                     var all = PoseStudio.Detection.PoseDetector.ToScene(wb.World, _cam);
-                    int Fit(int s, int off) => _figure.FitHand(s, all.Skip(off).Take(21).ToArray(), wb.Score.Skip(off).Take(21).ToArray());
+                    int iw = _refBitmap.PixelWidth, ih = _refBitmap.PixelHeight;
+                    double Sc(int i) => wb.Image[i].X < 0 || wb.Image[i].Y < 0 || wb.Image[i].X > iw || wb.Image[i].Y > ih ? 0 : wb.Score[i]; // Hand außerhalb des Fotos: nicht übernehmen
+                    int Fit(int s, int off) => _figure.FitHand(s, all.Skip(off).Take(21).ToArray(), Enumerable.Range(off, 21).Select(Sc).ToArray());
                     int nl = Fit(1, PoseStudio.Detection.WholeBodyPose.LeftHand), nr = Fit(-1, PoseStudio.Detection.WholeBodyPose.RightHand);
-                    fingers = $" Finger: links {nl}/5, rechts {nr}/5 übernommen.";
+                    fingers += $" Finger: links {nl}/5, rechts {nr}/5 übernommen.";
                 }
             }
             _figure.RootPosition = root;
@@ -1451,6 +1454,30 @@ public partial class MainWindow : Window
         {
             Mouse.OverrideCursor = null;
         }
+    }
+
+    /// <summary>Kamera (Zielpunkt quer zur Blickrichtung und Abstand; Blickwinkel bleibt) so einstellen, dass die sichtbaren
+    /// Gelenke der aktiven Figur auf den erkannten Punkten im Referenzfoto liegen.</summary>
+    private void CameraToPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refBitmap == null || !_refDetections.TryGetValue(_figure, out var pose))
+        {
+            StatusText.Text = "Erst ein Foto laden und „Pose übernehmen“ – dann passt die Kamera die Figur ans Foto an.";
+            return;
+        }
+        var r = FitCameraToPhoto(pose);
+        if (r == null) { StatusText.Text = "Zu wenige sichtbare Gelenke im Foto, um die Kamera anzupassen."; return; }
+        CameraChanged();
+        DrawGuides();
+        StatusText.Text = $"Kamera an das Foto angepasst (mittlere Abweichung {r.Value:F0} Pixel).";
+    }
+
+    internal double? FitCameraToPhoto(PoseStudio.Detection.DetectedPose pose)
+    {
+        if (_refBitmap == null) return null;
+        double W = View.ActualWidth, H = View.ActualHeight;
+        var pairs = PoseStudio.Rendering.CameraFit.Pairs(_figure, pose, _refBitmap.PixelWidth, _refBitmap.PixelHeight, W, H);
+        return PoseStudio.Rendering.CameraFit.Fit(_cam, W, H, pairs);
     }
 
     /// <summary>Erkanntes Skelett über dem Referenzbild einzeichnen (gleiche Einpassung wie das Bild).</summary>

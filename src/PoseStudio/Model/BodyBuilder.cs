@@ -54,10 +54,15 @@ internal sealed class BodyBuilder
         // ---- Rumpf als eine durchgehende Form von Schritt bis Hals (im Becken-System).
         // Sie wird über die Kette Becken → Bauch → Brust → Hals → Kopf weich gebogen (Skinning in Mannequin).
         double waist = female ? 0.86 : 1.0;
-        _add("pelvis", Loft(
-            (-0.115, 0.085 * hip, 0.064, 0.0),
-            (-0.07, 0.15 * hip, 0.092, -0.005),
-            (0.00, 0.158 * hip, 0.096, 0.0),
+        // Unterleib geschlossen und glatt (Schaufensterpuppe): schmaler, flacher Schritt mit kleiner Kappe,
+        // Gesäß als nach hinten verschobener, vollerer Querschnitt (bleibt beim Sitzen am Becken).
+        double glute = female ? 1.08 : 1.0;
+        _add("pelvis", MeshFactory.LoftY(1.0, 0.35,
+            (-0.135, 0.03, 0.026, -0.004),
+            (-0.112, 0.072 * hip, 0.058, -0.012),
+            (-0.075, 0.138 * hip, 0.088 * glute, -0.022 * glute),
+            (-0.025, 0.157 * hip, 0.1 * glute, -0.02 * glute),
+            (0.025, 0.155 * hip, 0.095, -0.01),
             (0.06, 0.145 * (female ? 1.02 : 1), 0.088, 0.005),
             (0.12, 0.135 * (female ? 0.9 : 1), 0.085, 0.008),
             (0.19, 0.13 * waist, 0.084, 0.008),
@@ -71,9 +76,6 @@ internal sealed class BodyBuilder
             (0.59, 0.052 * w, 0.05 * w, 0.0),
             (0.65, 0.046 * w, 0.046 * w, 0.006),
             (0.69, 0.045 * w, 0.045 * w, 0.012)), MaterialKind.Body);
-        // Gesäß hängt am Oberschenkel (geht beim Sitzen anteilig mit, siehe Skinning)
-        foreach (var s in new[] { 1, -1 })
-            _add("hip" + (s > 0 ? "_l" : "_r"), MeshFactory.Ellipsoid(P(s * (0.058 * hip - 0.09), -0.015, -0.045), 0.066 * hip, 0.082, 0.07 * (female ? 1.08 : 1)), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
                 _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);

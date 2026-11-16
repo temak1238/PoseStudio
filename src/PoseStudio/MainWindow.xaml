@@ -115,6 +115,8 @@
                                 <Button Content="Pose übernehmen" Click="PoseFromPhoto_Click" FontWeight="SemiBold" ToolTip="Pose der Person im Foto erkennen und auf die aktive Figur übertragen" />
                                 <Button Content="Entfernen" Click="RemoveRefImage_Click" />
                             </UniformGrid>
+                            <Button Content="Kamera an Foto anpassen" Click="CameraToPhoto_Click" Margin="0,2,0,0"
+                                    ToolTip="Kamera so verschieben und Abstand so wählen, dass die aktive Figur deckungsgleich unter der Person im Foto liegt (nach „Pose übernehmen“)" />
                             <DockPanel Margin="0,4,0,0">
                                 <TextBlock Text="Deckkraft" Width="60" VerticalAlignment="Center" />
                                 <Slider x:Name="RefOpacitySlider" Minimum="10" Maximum="90" Value="50" VerticalAlignment="Center" ValueChanged="RefOpacity_Changed" />
