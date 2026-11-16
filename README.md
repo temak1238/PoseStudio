@@ -11,8 +11,8 @@ Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als
 - Linke Maustaste ziehen: Kamera um die Figur drehen
 - Rechte Maustaste ziehen: Kamera verschieben
 - Mausrad: Entfernung ändern
-- **Strg + ziehen**: ausgewähltes Gelenk beugen (hoch/runter) bzw. seitlich bewegen (links/rechts) – bei **Hand oder Fuß** folgt der ganze Arm bzw. das ganze Bein (IK)
-- **Umschalt + ziehen**: ausgewähltes Gelenk um die eigene Achse drehen
+- **Strg + ziehen**: ausgewähltes Gelenk beugen (hoch/runter) bzw. seitlich bewegen (links/rechts) – bei **Hand oder Fuß** folgt der ganze Arm bzw. das ganze Bein (IK: Ellbogen/Knie behalten ihre Richtung, Arme weichen dem Rumpf aus, die Hand behält ihre Ausrichtung)
+- **Umschalt + ziehen**: ausgewähltes Gelenk um die eigene Achse drehen – an **Arm oder Bein** (Hand, Unter-/Oberarm, Fuß, Knie, Hüfte): Ellbogen bzw. Knie um die Achse Schulter–Hand schwenken, die Hand bleibt stehen
 - **Strg + ziehen am Becken**: ganze Figur auf dem Boden verschieben (folgt der Maus) · **Umschalt + ziehen am Becken**: Figur drehen
 - **Alt + ziehen**: Lichtquelle bewegen (links/rechts = Richtung, hoch/runter = Höhe)
 - Strg+Z: Rückgängig

@@ -1699,6 +1699,16 @@ public partial class MainWindow : Window
         {
             DragLimbEnd(j, d);
         }
+        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && _figure.IsLimbJoint(j))
+        {
+            // Arm/Bein: Ellbogen bzw. Knie um die Achse Schulter–Hand schwenken, Hand/Fuß bleiben stehen
+            if (j.Id.StartsWith("wrist") || j.Id.StartsWith("elbow") || j.Id.StartsWith("shoulder"))
+            {
+                var wrist = _figure["wrist" + j.Id[^2..]];
+                if (_figure.HandHoldsProp(wrist)) { StatusText.Text = "Diese Hand hält ein Objekt – das Objekt steuert den Arm."; return; }
+            }
+            _figure.SwivelLimb(j, d.X * 0.6);
+        }
         else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
             if (j.Twist != null) j.TwistValue = Math.Clamp(Math.Round(j.TwistValue + d.X * 0.5, 1), j.Twist.Min, j.Twist.Max);

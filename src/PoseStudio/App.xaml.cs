@@ -33,6 +33,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--ik")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            IkTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--detect")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -127,6 +135,55 @@ public partial class App : Application
     /// <summary>Vier Figuren (ähnlich dem Beispiel aus dem anima_3dpose-Repo) als ControlNet-Bilder und normales Bild.</summary>
     /// <summary>Nahaufnahmen der Hüfte in Sitzposen (Prüfung der Gelenkübergänge).</summary>
     /// <summary>Selbsttest der Posenerkennung: eigene Renderings erkennen, auf neue Figur übertragen, vergleichen.</summary>
+    /// <summary>IK-Test: rechte Hand schrittweise von der Hüfte an den Kopf, dann Ellbogen schwenken.</summary>
+    private static void IkTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        var m = new Mannequin();
+        m.SetFigure(FigureStyle.Male, true, new Proportions());
+        m.SetPose(Presets.All[0].ToPose()); m.GroundToFloor();
+        var wrist = m["wrist_r"];
+        var start = wrist.World.Transform(new System.Windows.Media.Media3D.Point3D());
+        var head = m["head"].World.Transform(new System.Windows.Media.Media3D.Point3D(-0.09, 0.08, 0.02)); // rechte Kopfseite
+        var cams = new[] { new OrbitCamera { Yaw = 0, Pitch = 5, Distance = 2.6, Target = new System.Windows.Media.Media3D.Point3D(0, 1.3, 0) },
+                           new OrbitCamera { Yaw = -70, Pitch = 10, Distance = 2.6, Target = new System.Windows.Media.Media3D.Point3D(0, 1.3, 0) } };
+        const int W = 300, H = 360, steps = 5;
+        var frames = new List<(string label, System.Windows.Media.Imaging.BitmapSource a, System.Windows.Media.Imaging.BitmapSource b)>();
+        void Snap(string label) => frames.Add((label, SceneFactory.RenderControl(new[] { m }, cams[0], SceneFactory.ControlMode.Pose3D, W, H),
+                                                      SceneFactory.RenderControl(new[] { m }, cams[1], SceneFactory.ControlMode.Pose3D, W, H)));
+        Snap("Start");
+        for (int s = 1; s <= 30; s++)
+        {
+            double tt = s / 30.0;
+            // leicht nach vorne gebogener Weg (wie eine Mausbewegung vor dem Körper)
+            var p = start + (head - start) * tt + new System.Windows.Media.Media3D.Vector3D(0, 0, 0.18 * Math.Sin(Math.PI * tt));
+            double err = m.ReachTo(wrist, p);
+            if (s % (30 / steps) == 0) { Snap($"Schritt {s}"); log.AppendLine($"Schritt {s}: Abstand Hand-Ziel {err * 100:F1} cm"); }
+        }
+        foreach (var sw in new[] { 40, 40 })
+        {
+            var before = wrist.World.Transform(new System.Windows.Media.Media3D.Point3D());
+            m.SwivelLimb(m["elbow_r"], sw);
+            var after = wrist.World.Transform(new System.Windows.Media.Media3D.Point3D());
+            log.AppendLine($"Schwenken {sw}°: Hand bewegt um {(after - before).Length * 100:F2} cm – {m.LastLimbDebug}");
+            Snap($"Ellbogen +{sw}°");
+        }
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < frames.Count; i++)
+            {
+                dc.DrawImage(frames[i].a, new Rect(i * W, 0, W, H));
+                dc.DrawImage(frames[i].b, new Rect(i * W, H, W, H));
+                dc.DrawText(new System.Windows.Media.FormattedText(frames[i].label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                    new System.Windows.Media.Typeface("Segoe UI"), 13, System.Windows.Media.Brushes.White, 1.0), new Point(i * W + 6, 4));
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * frames.Count, H * 2, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "ik.jpg"), 88);
+        File.WriteAllText(Path.Combine(folder, "ik.txt"), log.ToString());
+    }
+
     private static void DetectTest(string folder)
     {
         Directory.CreateDirectory(folder);

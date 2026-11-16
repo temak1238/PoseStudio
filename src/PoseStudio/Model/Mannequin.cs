@@ -200,7 +200,7 @@ public sealed class Mannequin
             string sfx = s > 0 ? "_l" : "_r", other = s > 0 ? "_r" : "_l", side = s > 0 ? "links" : "rechts";
             var sh = AddJoint("shoulder" + sfx, "Oberarm " + side, chest, new Vector3D(s * 0.19, 0.25, 0),
                 new AxisDef("Vor/zurück heben", -60, 180, -1),
-                new AxisDef("Seitlich heben", -30, 180, s),
+                new AxisDef("Seitlich heben", -45, 180, s),
                 new AxisDef("Drehen", -90, 90, s), "shoulder" + other);
             var el = AddJoint("elbow" + sfx, "Unterarm " + side, sh, new Vector3D(0, -0.29, 0),
                 new AxisDef("Ellbogen beugen", 0, 150, -1),
@@ -603,68 +603,212 @@ public sealed class Mannequin
     public bool HandHoldsProp(Joint wrist) =>
         _prop.Active && wrist.Id.StartsWith("wrist") && (_prop.TwoHanded || (_prop.MainSide > 0) == wrist.Id.EndsWith("_l"));
 
-    /// <summary>Hand (Handgelenk) oder Fuß (Knöchel) an einen Zielpunkt führen – Arm bzw. Bein folgen per IK.
-    /// Freiheitsgrade: Schulter/Hüfte (beugen, seitlich, drehen) und Ellbogen/Knie (beugen, drehen).
-    /// Rückgabe: verbleibender Abstand zum Ziel in Metern.</summary>
-    public double ReachTo(Joint end, Point3D target)
+    // ------------------------------------------------------------------ Arm-/Bein-IK (Zweigelenk mit Ellbogen-/Kniestellung)
+
+    private (Joint Upper, Joint Lower, Joint End, bool Arm)? LimbOf(Joint j)
     {
-        string sfx = end.Id[^2..];
-        Joint upper, lower;
-        if (end.Id.StartsWith("wrist")) { upper = this["shoulder" + sfx]; lower = this["elbow" + sfx]; }
-        else if (end.Id.StartsWith("ankle")) { upper = this["hip" + sfx]; lower = this["knee" + sfx]; }
-        else return double.NaN;
-
-        var parentW = upper.Parent!.World;
-        var defs = new[] { upper.Bend!, upper.Side!, upper.Twist!, lower.Bend!, lower.Twist! };
-        const int n = 5, rows = 6;
-        double[] Residual(double[] q)
-        {
-            var wu = LocalMatrix(upper, q[0], q[1], q[2]) * parentW;
-            var wl = LocalMatrix(lower, q[3], 0, q[4]) * wu;
-            var p = wl.Transform((Point3D)end.Offset);
-            const double wPref = 0.0005;
-            return new[] { target.X - p.X, target.Y - p.Y, target.Z - p.Z, -wPref * q[2], -wPref * q[4], -wPref * Math.Max(0, Math.Abs(q[1]) - 30) };
-        }
-        static double Norm(double[] r) => Math.Sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
-
-        var q = new[] { upper.BendValue, upper.SideValue, upper.TwistValue, lower.BendValue, lower.TwistValue };
-        for (int it = 0; it < 40; it++)
-        {
-            var r = Residual(q);
-            if (Norm(r) < 0.001) break;
-            var J = new double[rows, n];
-            for (int k = 0; k < n; k++)
-            {
-                var qq = (double[])q.Clone();
-                qq[k] += 0.5;
-                var r2 = Residual(qq);
-                for (int i = 0; i < rows; i++) J[i, k] = (r2[i] - r[i]) / 0.5;
-            }
-            var A = new double[n, n + 1];
-            for (int a = 0; a < n; a++)
-            {
-                for (int b = 0; b < n; b++)
-                {
-                    double sum = 0;
-                    for (int i = 0; i < rows; i++) sum += J[i, a] * J[i, b];
-                    A[a, b] = sum + (a == b ? 3e-6 : 0);
-                }
-                double rb = 0;
-                for (int i = 0; i < rows; i++) rb += J[i, a] * r[i];
-                A[a, n] = -rb;
-            }
-            var d = GaussSolve(A, n);
-            if (d == null) break;
-            for (int k = 0; k < n; k++)
-                q[k] = Math.Clamp(q[k] + Math.Clamp(d[k], -10, 10), defs[k].Min, defs[k].Max);
-        }
-        upper.BendValue = q[0]; upper.SideValue = q[1]; upper.TwistValue = q[2];
-        lower.BendValue = q[3]; lower.TwistValue = q[4];
-        double err = Norm(Residual(q));
-        Update();
-        return err;
+        if (j.Id.Length < 3) return null;
+        string sfx = j.Id[^2..];
+        if (j.Id.StartsWith("wrist") || j.Id.StartsWith("elbow") || j.Id.StartsWith("shoulder"))
+            return (this["shoulder" + sfx], this["elbow" + sfx], this["wrist" + sfx], true);
+        if (j.Id.StartsWith("ankle") || j.Id.StartsWith("knee") || j.Id.StartsWith("hip"))
+            return (this["hip" + sfx], this["knee" + sfx], this["ankle" + sfx], false);
+        return null;
     }
 
+    /// <summary>Gehört das Gelenk zu Arm oder Bein (für das Schwenken von Ellbogen/Knie)?</summary>
+    public bool IsLimbJoint(Joint j) => LimbOf(j) != null;
+
+    private static Point3D Origin(Joint j) => j.World.Transform(new Point3D());
+
+    private static Vector3D RotateAbout(Vector3D v, Vector3D axis, double deg)
+    {
+        var m = Matrix3D.Identity;
+        m.Rotate(new Quaternion(axis, deg));
+        return m.Transform(v);
+    }
+
+    private static double DistToSegment(Point3D p, Point3D a, Point3D b, out Point3D closest)
+    {
+        var ab = b - a;
+        double t = Math.Clamp(Vector3D.DotProduct(p - a, ab) / Math.Max(ab.LengthSquared, 1e-9), 0, 1);
+        closest = a + ab * t;
+        return (p - closest).Length;
+    }
+
+    /// <summary>Rumpf als Kapsel (Becken bis obere Brust) für die Kollisionsprüfung der Arme.</summary>
+    private (Point3D A, Point3D B, double R) TorsoCapsule()
+    {
+        var chest = this["chest"];
+        var a = Origin(this["pelvis"]);
+        var b = chest.World.Transform(new Point3D(0, 0.22, 0));
+        double r = 0.12 * _globalScale * chest.SegScale.X * (Style == FigureStyle.Mannequin ? 1.15 : 1.0);
+        return (a, b, r);
+    }
+
+    public string LastLimbDebug { get; private set; } = "";
+
+    /// <summary>Hand (Handgelenk) oder Fuß (Knöchel) an einen Zielpunkt führen – Arm bzw. Bein folgen.
+    /// Rückgabe: verbleibender Abstand zum Ziel in Metern.</summary>
+    public double ReachTo(Joint end, Point3D target) => SolveLimb(end, target, 0);
+
+    /// <summary>Ellbogen bzw. Knie um die Achse Schulter–Hand (Hüfte–Fuß) schwenken; Hand/Fuß bleiben stehen.</summary>
+    public double SwivelLimb(Joint anyLimbJoint, double degrees)
+    {
+        if (LimbOf(anyLimbJoint) is not { } limb) return double.NaN;
+        return SolveLimb(limb.End, Origin(limb.End), degrees);
+    }
+
+    /// <summary>Zweigelenk-IK wie in Animationsprogrammen:
+    /// 1. Ellbogen/Knie liegt auf dem Kreis, der sich aus Ober-/Unterarmlänge ergibt; seine Richtung bleibt die bisherige
+    ///    (kein Springen), optional um 'swivel' Grad geschwenkt.
+    /// 2. Arme: Ellbogen und Unterarm weichen dem Rumpf aus, ein Handziel im Rumpf wird an die Oberfläche geschoben.
+    /// 3. Gelenkwinkel werden so gelöst, dass Ellbogen und Hand exakt dort liegen.
+    /// 4. Hand bzw. Fuß behalten ihre Ausrichtung im Raum (Unterarmdrehung und Handgelenk gleichen aus).</summary>
+    private double SolveLimb(Joint end, Point3D target, double swivel)
+    {
+        if (LimbOf(end) is not { } limb) return double.NaN;
+        var (upper, lower, _, arm) = limb;
+        ComputeWorlds();
+        var S = Origin(upper); var E0 = Origin(lower); var W0 = Origin(end);
+        double l1 = (E0 - S).Length, l2 = (W0 - E0).Length;
+        var endX0 = Axis(end.World, new Vector3D(1, 0, 0));
+        var endY0 = Axis(end.World, new Vector3D(0, 1, 0));
+
+        // Ziel aus dem Rumpf schieben (Hand liegt dann auf dem Körper statt darin)
+        var cap = TorsoCapsule();
+        if (arm && DistToSegment(target, cap.A, cap.B, out var cp) < cap.R + 0.04)
+        {
+            var outDir = target - cp;
+            if (outDir.LengthSquared < 1e-8) outDir = Axis(this["chest"].World, new Vector3D(0, 0, 1));
+            outDir.Normalize();
+            target = cp + outDir * (cap.R + 0.04);
+        }
+
+        var D = target - S;
+        double d = Math.Clamp(D.Length, Math.Abs(l1 - l2) + 0.01, l1 + l2 - 0.002);
+        var a = D.LengthSquared > 1e-10 ? D / D.Length : new Vector3D(0, -1, 0);
+        var T = S + a * d;
+
+        // bisherige Ellbogenrichtung (senkrecht zur Achse) beibehalten
+        var u = E0 - S;
+        u -= a * Vector3D.DotProduct(u, a);
+        if (u.Length < 1e-4)
+        {
+            var pole = arm
+                ? -Axis(this["chest"].World, new Vector3D(0, 1, 0)) - Axis(this["chest"].World, new Vector3D(0, 0, 1)) * 0.3
+                : Axis(this["pelvis"].World, new Vector3D(0, 0, 1));
+            u = pole - a * Vector3D.DotProduct(pole, a);
+        }
+        u.Normalize();
+        if (swivel != 0) u = RotateAbout(u, a, swivel);
+
+        double cosA = Math.Clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1);
+        double sinA = Math.Sqrt(1 - cosA * cosA);
+        Point3D Elbow(Vector3D dir) => S + a * (l1 * cosA) + dir * (l1 * sinA);
+        bool Clear(Point3D e) => !arm ||
+            (DistToSegment(e, cap.A, cap.B, out _) > cap.R + 0.035 &&
+             DistToSegment(e + (T - e) * 0.5, cap.A, cap.B, out _) > cap.R + 0.02);
+
+        var E = Elbow(u);
+        if (!Clear(E))
+        {
+            // nächstgelegene freie Ellbogenstellung suchen
+            for (int k = 1; k <= 18; k++)
+            {
+                bool found = false;
+                foreach (var sgn in new[] { 1, -1 })
+                {
+                    var cand = RotateAbout(u, a, sgn * k * 10);
+                    if (Clear(Elbow(cand))) { u = cand; E = Elbow(cand); found = true; break; }
+                }
+                if (found) break;
+            }
+        }
+
+        // Gelenkwinkel für Ellbogen- und Handposition
+        var parentW = upper.Parent!.World;
+        double keepTwist = lower.TwistValue;
+        var posDefs = new[] { upper.Bend!, upper.Side!, upper.Twist!, lower.Bend! };
+        var startQ = new[] { upper.BendValue, upper.SideValue, upper.TwistValue, lower.BendValue };
+        Point3D eTarget = E;
+        double[] PosRes(double[] q)
+        {
+            var wu = LocalMatrix(upper, q[0], q[1], q[2]) * parentW;
+            var wl = LocalMatrix(lower, q[3], 0, keepTwist) * wu;
+            var e = wl.Transform(new Point3D());
+            var w = wl.Transform((Point3D)end.Offset);
+            // Hand/Fuß hat Vorrang (Gewicht 4): bleibt exakt stehen, der Ellbogen folgt so gut es die Gelenke erlauben
+            return new[] { eTarget.X - e.X, eTarget.Y - e.Y, eTarget.Z - e.Z, 4 * (T.X - w.X), 4 * (T.Y - w.Y), 4 * (T.Z - w.Z) };
+        }
+        double HandErr(double[] q) { var r = PosRes(q); return Math.Sqrt(r[3] * r[3] + r[4] * r[4] + r[5] * r[5]) / 4; }
+        (double[] q, double hand) SolveFor(Vector3D dir)
+        {
+            eTarget = Elbow(dir);
+            var best = SolveDls(PosRes, startQ, posDefs, 60);
+            if (HandErr(best) > 0.005)
+                foreach (var seed in new[] { new double[] { 40, 20, 40, 60 }, new double[] { 40, 20, -40, 60 }, new double[] { 90, 30, 0, 90 }, new double[] { 0, 60, 60, 90 } })
+                {
+                    var alt = SolveDls(PosRes, seed, posDefs, 60);
+                    if (SqErr(PosRes(alt)) < SqErr(PosRes(best))) best = alt;
+                }
+            return (best, HandErr(best));
+        }
+
+        var sol = SolveFor(u);
+        if (sol.hand > 0.005)
+        {
+            if (swivel != 0)
+            {
+                // gewünschter Schwenk ist anatomisch nicht erreichbar: größten möglichen Schwenk suchen (Hand bleibt stehen)
+                var u0 = RotateAbout(u, a, -swivel);
+                double lo = 0, hi = 1;
+                var bestSol = SolveFor(u0);
+                for (int i = 0; i < 7; i++)
+                {
+                    double mid = (lo + hi) / 2;
+                    var trial = SolveFor(RotateAbout(u0, a, swivel * mid));
+                    if (trial.hand <= 0.005) { lo = mid; bestSol = trial; } else hi = mid;
+                }
+                sol = bestSol;
+            }
+            else
+            {
+                // Hand ziehen: nächstgelegene erreichbare Ellbogenstellung suchen
+                for (int k = 1; k <= 18 && sol.hand > 0.005; k++)
+                    foreach (var sgn in new[] { 1, -1 })
+                    {
+                        var cand = RotateAbout(u, a, sgn * k * 10);
+                        if (!Clear(Elbow(cand))) continue;
+                        var trial = SolveFor(cand);
+                        if (trial.hand < sol.hand) sol = trial;
+                        if (sol.hand <= 0.005) break;
+                    }
+            }
+        }
+        var q = sol.q;
+        (upper.BendValue, upper.SideValue, upper.TwistValue, lower.BendValue) = (q[0], q[1], q[2], q[3]);
+        var rr = PosRes(q);
+        LastLimbDebug = $"Ellbogen {Math.Sqrt(rr[0] * rr[0] + rr[1] * rr[1] + rr[2] * rr[2]) * 100:F1} cm, Hand {HandErr(q) * 100:F1} cm, " +
+                        $"Schulter b/s/t {q[0]:F0}/{q[1]:F0}/{q[2]:F0}, Ellbogen {q[3]:F0}";
+        ComputeWorlds();
+        // Ausrichtung von Hand/Fuß wiederherstellen (Unterarm-/Unterschenkeldrehung + Hand-/Fußgelenk)
+        var upperW = upper.World;
+        var oriDefs = new[] { lower.Twist!, end.Bend!, end.Side! };
+        double[] OriRes(double[] p)
+        {
+            var wl = LocalMatrix(lower, lower.BendValue, 0, p[0]) * upperW;
+            var we = LocalMatrix(end, p[1], p[2], 0) * wl;
+            var x = Axis(we, new Vector3D(1, 0, 0)); var y = Axis(we, new Vector3D(0, 1, 0));
+            return new[] { x.X - endX0.X, x.Y - endX0.Y, x.Z - endX0.Z, y.X - endY0.X, y.Y - endY0.Y, y.Z - endY0.Z,
+                           0.0015 * p[1], 0.0015 * p[2] };
+        }
+        var o = SolveDls(OriRes, new[] { lower.TwistValue, end.BendValue, end.SideValue }, oriDefs, 40);
+        (lower.TwistValue, end.BendValue, end.SideValue) = (o[0], o[1], o[2]);
+
+        Update();
+        return (Origin(end) - target).Length;
+    }
     // ------------------------------------------------------------------ Pose aus erkannten 3D-Punkten
 
     /// <summary>Gedämpfte Gauß-Newton-Iteration mit numerischer Jacobi-Matrix und Gelenkgrenzen.</summary>
