@@ -33,6 +33,15 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--uitest-library")
+        {
+            // Hauptfenster erzeugen, aber nicht anzeigen und nicht schließen (keine Einstellungen schreiben)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var mw = new MainWindow();
+            File.WriteAllText(e.Args[1], mw.SelfTestApplyLibrary());
+            Environment.Exit(0);
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--ik")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

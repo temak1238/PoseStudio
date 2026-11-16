@@ -967,6 +967,12 @@ public partial class MainWindow : Window
     {
         if (_library is { IsVisible: true }) { _library.Activate(); return; }
         _library = new PoseLibraryWindow(() => _figure.GetFigure(), () => _figure.BodyColor, ApplyLibraryEntry, SaveTemplate, GetVersion()) { Owner = this };
+        // links am Hauptfenster über dem Bedienbereich platzieren, damit die 3D-Ansicht sichtbar bleibt
+        var tl = WindowState == WindowState.Maximized ? new Point(0, 0) : new Point(Left, Top);
+        var area = SystemParameters.WorkArea;
+        _library.Left = Math.Max(area.Left, tl.X + 8);
+        _library.Top = Math.Max(area.Top, tl.Y + 60);
+        _library.Height = Math.Min(Math.Max(400, ActualHeight - 100), area.Height - 20);
         _library.Show();
     }
 
@@ -982,6 +988,22 @@ public partial class MainWindow : Window
         PoseChanged();
         RefreshFigureList();
         StatusText.Text = $"Vorlage „{entry.Name}“ angewendet.";
+    }
+
+    /// <summary>Selbsttest (ohne sichtbares Fenster): Vorlage anwenden und prüfen, ob sich die Pose ändert.</summary>
+    internal string SelfTestApplyLibrary()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var name in new[] { "T-Pose", "Winken", "Neutral stehen (A-Pose)" })
+        {
+            var entry = PoseLibrary.BuiltIn().First(e => e.Name == name);
+            double before = _figure["shoulder_l"].SideValue;
+            var rootBefore = _figure.RootPosition;
+            ApplyLibraryEntry(entry);
+            double after = _figure["shoulder_l"].SideValue;
+            sb.AppendLine($"{name}: Oberarm links seitlich {before:F0}° → {after:F0}°, Position X {rootBefore.X:F2} → {_figure.RootPosition.X:F2}, Status: {StatusText.Text}");
+        }
+        return sb.ToString();
     }
 
     private void SaveTemplate_Click(object sender, RoutedEventArgs e)

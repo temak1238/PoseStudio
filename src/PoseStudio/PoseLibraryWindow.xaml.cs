@@ -70,9 +70,21 @@ public partial class PoseLibraryWindow : Window
 
     private void Filter_Changed(object sender, RoutedEventArgs e) => ApplyFilter();
 
-    private void Tiles_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void Tiles_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        ApplyButton.IsEnabled = Tiles.SelectedItem is LibraryEntry;
+
+    /// <summary>Doppelklick: Pose übernehmen und Bibliothek schließen.</summary>
+    private void Tiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is LibraryEntry entry) _apply(entry);
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not LibraryEntry entry) return;
+        _apply(entry);
+        Close();
+    }
+
+    /// <summary>Ausgewählte Pose übernehmen, Bibliothek bleibt offen (zum Durchprobieren).</summary>
+    private void Apply_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tiles.SelectedItem is LibraryEntry entry) _apply(entry);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
