@@ -1,3 +1,5 @@
+using P3 = System.Windows.Media.Media3D.Point3D;
+using V3 = System.Windows.Media.Media3D.Vector3D;
 using System.IO;
 using System.Windows;
 using PoseStudio.Model;
@@ -54,6 +56,22 @@ public partial class App : Application
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             DetectTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length >= 2 && e.Args[0] == "--rtmw3d")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Rtmw3dTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length >= 3 && e.Args[0] == "--photos")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PhotosTest(e.Args[1], e.Args[2]);
             Shutdown();
             return;
         }
@@ -234,6 +252,222 @@ public partial class App : Application
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "detect.jpg"), 88);
         File.WriteAllText(Path.Combine(folder, "detect.txt"), log.ToString());
+    }
+
+    /// <summary>Testmodus --rtmw3d: gerenderte Figuren mit bekannter Pose erkennen; Winkelfehler der Knochen-/Fingerrichtungen
+    /// (Kamera-System) für MediaPipe und RTMW3D, je Einstellung (Tiefen-Vorzeichen, Farbreihenfolge).</summary>
+    private static void Rtmw3dTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        using var det = new PoseStudio.Detection.PoseDetector(Path.Combine(AppContext.BaseDirectory, "Models"));
+        var names = new[] { "Winken", "Zeigen", "Arme hoch (Jubeln)", "Telefonieren", "Kampfhaltung (Boxen)", "Heldenpose", "Laufen", "Nachdenken (Hand am Kinn)" };
+        const int W = 640, H = 960;
+        var cases = new List<(System.Windows.Media.Imaging.BitmapSource img, Mannequin m, OrbitCamera cam, string name)>();
+        int gi = 0;
+        foreach (var name in names)
+            foreach (var yaw in new[] { 15.0, -40.0 })
+            {
+                var m = new Mannequin(); m.SetFigure(FigureStyle.Male, true, new Proportions());
+                m.SetPose(Presets.All.First(p => p.Name == name).ToPose());
+                var gs = HandGesture.All;
+                m.ApplyGesture(1, gs[(gi * 2 + 1) % gs.Count]); m.ApplyGesture(-1, gs[(gi * 2 + 2) % gs.Count]); gi++;
+                m.Update(); m.GroundToFloor();
+                var cam = new OrbitCamera { Yaw = yaw, Pitch = 5, Distance = 3.6, Target = new P3(0, 0.95, 0) };
+                cases.Add((SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false }, W, H), m, cam, name));
+            }
+
+        static V3 CamDir(OrbitCamera cam, P3 a, P3 b)
+        {
+            var d = b - a;
+            var v = new V3(V3.DotProduct(d, cam.Right), -V3.DotProduct(d, cam.Up), V3.DotProduct(d, cam.LookDirection));
+            v.Normalize(); return v;
+        }
+        static double Ang(V3 a, V3 b)
+        {
+            if (a.LengthSquared < 1e-12 || b.LengthSquared < 1e-12) return 90;
+            a.Normalize(); b.Normalize();
+            return Math.Acos(Math.Clamp(V3.DotProduct(a, b), -1, 1)) * 180 / Math.PI;
+        }
+        static P3 O(Mannequin m, string id) => m[id].World.Transform(new P3());
+        static P3 Tip(Mannequin m, string id) => m[id].World.Transform(new P3(0, -m[id].BoneLength * m[id].UniformScale, 0));
+
+        var body = new (string a, string b, int mpA, int mpB, int wbA, int wbB)[]
+        {
+            ("shoulder_l", "elbow_l", 11, 13, 5, 7), ("shoulder_r", "elbow_r", 12, 14, 6, 8), ("elbow_l", "wrist_l", 13, 15, 7, 9), ("elbow_r", "wrist_r", 14, 16, 8, 10),
+            ("hip_l", "knee_l", 23, 25, 11, 13), ("hip_r", "knee_r", 24, 26, 12, 14), ("knee_l", "ankle_l", 25, 27, 13, 15), ("knee_r", "ankle_r", 26, 28, 14, 16),
+        };
+        foreach (var (vname, boxes) in new[] { ("RTMW3D mit MediaPipe-Rahmen", PoseStudio.Detection.PoseDetector.BoxSource.MediaPipe), ("RTMW3D mit YOLOX-Rahmen", PoseStudio.Detection.PoseDetector.BoxSource.Yolox) })
+        {
+            PoseStudio.Detection.PoseDetector.Boxes = boxes;
+            double mpErr = 0, wbErr = 0, mpZ = 0, wbZ = 0, handErr = 0, handErr2 = 0, handScore = 0; int nb = 0, nh = 0, nhs = 0;
+            var scaleRatios = new List<double>();
+            foreach (var (img, m, cam, name) in cases)
+            {
+                var pose = det.Detect(img);
+                if (pose?.Whole == null) { log.AppendLine($"  {name}: nichts erkannt"); continue; }
+                var wb = pose.Whole;
+                foreach (var (a, b, ma, mb, wa, wbb) in body)
+                {
+                    var t = CamDir(cam, O(m, a), O(m, b));
+                    mpErr += Ang(pose.World[mb] - pose.World[ma], t);
+                    wbErr += Ang(wb.World[wbb] - wb.World[wa], t);
+                    mpZ += Math.Sign((pose.World[mb] - pose.World[ma]).Z) == Math.Sign(t.Z) ? 1 : 0;
+                    wbZ += Math.Sign((wb.World[wbb] - wb.World[wa]).Z) == Math.Sign(t.Z) ? 1 : 0;
+                    nb++;
+                    scaleRatios.Add((wb.World[wbb] - wb.World[wa]).Length / (O(m, b) - O(m, a)).Length);
+                }
+                foreach (var (sfx, off) in new[] { ("_l", 91), ("_r", 112) })
+                {
+                    handScore += wb.HandScore(sfx == "_l"); nhs++;
+                    for (int f = 0; f < 5; f++)
+                    {
+                        var id = HandGeometry.Ids[f];
+                        var pts = new[] { O(m, id + "1" + sfx), O(m, id + "2" + sfx), O(m, id + "3" + sfx), Tip(m, id + "3" + sfx) };
+                        for (int k = 0; k < 3; k++)
+                        {
+                            int i0 = off + 1 + f * 4 + k;
+                            var dd = wb.World[i0 + 1] - wb.World[i0]; var tt = CamDir(cam, pts[k], pts[k + 1]);
+                            handErr += Ang(dd, tt);
+                            handErr2 += Ang(new V3(dd.X, dd.Y, 0), new V3(tt.X, tt.Y, 0));
+                            nh++;
+                        }
+                    }
+                }
+            }
+            scaleRatios.Sort();
+            log.AppendLine($"{vname}: Körper MediaPipe {mpErr / nb:F1}° (Tiefe richtig {mpZ / nb:P0}), RTMW3D {wbErr / nb:F1}° (Tiefe richtig {wbZ / nb:P0}), " +
+                           $"Längen RTMW3D/echt Median {scaleRatios[scaleRatios.Count / 2]:F2}; Finger 3D {handErr / Math.Max(1, nh):F1}°, 2D {handErr2 / Math.Max(1, nh):F1}°, Hand-Sicherheit {handScore / Math.Max(1, nhs):F2}");
+        }
+        PoseStudio.Detection.PoseDetector.Boxes = PoseStudio.Detection.PoseDetector.BoxSource.Yolox;
+
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int i = 0; i < 4; i++)
+            {
+                var img = cases[i].img;
+                dc.DrawImage(img, new Rect(i * W, 0, W, H));
+                var pose = det.Detect(img);
+                if (pose?.Whole == null) continue;
+                for (int k = 0; k < pose.Whole.Image.Length; k++)
+                {
+                    if (k >= 23 && k <= 90) continue;
+                    var p = pose.Whole.Image[k];
+                    var br = k >= 91 ? System.Windows.Media.Brushes.Blue : System.Windows.Media.Brushes.Red;
+                    dc.DrawEllipse(br, null, new Point(i * W + p.X, p.Y), k >= 91 ? 2 : 4, k >= 91 ? 2 : 4);
+                }
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * 4, H, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "rtmw3d.jpg"), 88);
+        File.WriteAllText(Path.Combine(folder, "rtmw3d.txt"), det.ModelInfo + "\n" + log);
+    }
+
+    /// <summary>Testmodus --photos: Beispielfotos mit MediaPipe und RTMW3D (YOLOX-Rahmen) erkennen; je Foto eine Zeile:
+    /// Foto + MediaPipe-Skelett, Foto + RTMW3D-Punkte, Figur aus MediaPipe, Figur aus RTMW3D mit Fingern, Hände nah.</summary>
+    private static void PhotosTest(string inDir, string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        using var det = new PoseStudio.Detection.PoseDetector(Path.Combine(AppContext.BaseDirectory, "Models"));
+        PoseStudio.Detection.PoseDetector.Boxes = PoseStudio.Detection.PoseDetector.BoxSource.Yolox;
+        var files = Directory.GetFiles(inDir).Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f).ToList();
+        const int H = 720, PW = 480, HW = 360;
+        int rowW = PW * 4 + HW * 2;
+        var dv = new System.Windows.Media.DrawingVisual();
+        var cam = new OrbitCamera { Yaw = 0, Pitch = 0, Distance = 3.3, Target = new P3(0, 0.9, 0) };
+        var mpPen = new System.Windows.Media.Pen(System.Windows.Media.Brushes.LimeGreen, 3);
+        var wbPen = new System.Windows.Media.Pen(System.Windows.Media.Brushes.OrangeRed, 3);
+        var hPen = new System.Windows.Media.Pen(System.Windows.Media.Brushes.DeepSkyBlue, 1.6);
+        var body17 = new (int, int)[] { (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (5, 11), (6, 12), (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (15, 17), (15, 19), (16, 20), (16, 22), (0, 3), (0, 4) };
+        void Label(System.Windows.Media.DrawingContext dc, string t, double x, double y) =>
+            dc.DrawText(new System.Windows.Media.FormattedText(t, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new System.Windows.Media.Typeface("Segoe UI Semibold"), 15, System.Windows.Media.Brushes.Black, 1.0), new Point(x + 6, y + 4));
+        using (var dc = dv.RenderOpen())
+            for (int row = 0; row < files.Count; row++)
+            {
+                var bi = new System.Windows.Media.Imaging.BitmapImage();
+                bi.BeginInit(); bi.UriSource = new Uri(files[row]); bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; bi.EndInit(); bi.Freeze();
+                double y0 = row * H;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var pose = det.Detect(bi);
+                long ms = sw.ElapsedMilliseconds;
+                sw.Restart();
+                var all = det.DetectAll(bi);
+                long msAll = sw.ElapsedMilliseconds;
+                double sc = Math.Min(PW / (double)bi.PixelWidth, H / (double)bi.PixelHeight);
+                double ox = (PW - bi.PixelWidth * sc) / 2;
+                Point M(Point p, int panel) => new(panel * PW + ox + p.X * sc, y0 + p.Y * sc);
+                for (int panel = 0; panel < 2; panel++)
+                    dc.DrawImage(bi, new Rect(panel * PW + ox, y0, bi.PixelWidth * sc, bi.PixelHeight * sc));
+                var name = Path.GetFileName(files[row]);
+                if (pose == null) { log.AppendLine($"{name}: keine Person"); continue; }
+                foreach (var (a, b) in PoseStudio.Detection.PoseDetector.Bones) dc.DrawLine(mpPen, M(pose.Image[a], 0), M(pose.Image[b], 0));
+                Label(dc, "MediaPipe", 0, y0);
+                var wb = pose.Whole;
+                if (wb != null)
+                {
+                    foreach (var (a, b) in body17)
+                        if (wb.Score[a] > 0.3 && wb.Score[b] > 0.3) dc.DrawLine(wbPen, M(wb.Image[a], 1), M(wb.Image[b], 1));
+                    foreach (var off in new[] { 91, 112 })
+                        for (int f = 0; f < 5; f++)
+                            for (int k = 0; k < 4; k++)
+                            {
+                                int a = k == 0 ? off : off + 1 + f * 4 + k - 1, b = off + 1 + f * 4 + k;
+                                dc.DrawLine(hPen, M(wb.Image[a], 1), M(wb.Image[b], 1));
+                            }
+                    Label(dc, $"RTMW3D ({all.Count} Person{(all.Count == 1 ? "" : "en")})", PW, y0);
+                }
+                // Figur aus MediaPipe (nur Körper)
+                var fMp = new Mannequin(); fMp.SetFigure(FigureStyle.Female, true, new Proportions { HeightCm = 165 });
+                fMp.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(pose, cam)); fMp.GroundToFloor();
+                var opts = new SceneOptions { Floor = true, Shadow = false };
+                dc.DrawImage(SceneFactory.Render(fMp, cam, opts, PW, H), new Rect(2 * PW, y0, PW, H));
+                Label(dc, "Figur aus MediaPipe", 2 * PW, y0);
+                if (wb == null) continue;
+                // Figur aus RTMW3D mit Fingern
+                var fWb = new Mannequin(); fWb.SetFigure(FigureStyle.Female, true, new Proportions { HeightCm = 165 });
+                fWb.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(wb.ToMediaPipe33(), cam));
+                var sceneAll = PoseStudio.Detection.PoseDetector.ToScene(wb.World, cam);
+                int nl = fWb.FitHand(1, sceneAll.Skip(91).Take(21).ToArray(), wb.Score.Skip(91).Take(21).ToArray());
+                int nr = fWb.FitHand(-1, sceneAll.Skip(112).Take(21).ToArray(), wb.Score.Skip(112).Take(21).ToArray());
+                fWb.GroundToFloor();
+                dc.DrawImage(SceneFactory.Render(fWb, cam, opts, PW, H), new Rect(3 * PW, y0, PW, H));
+                Label(dc, "Figur aus RTMW3D + Finger", 3 * PW, y0);
+                // Hände nah (Kamera wie im Foto)
+                int i = 0;
+                foreach (var sfx in new[] { "_r", "_l" })
+                {
+                    var c = fWb["wrist" + sfx].World.Transform(new P3(0, -0.07, 0));
+                    var hc = new OrbitCamera { Yaw = 0, Pitch = 0, Distance = 0.7, Target = c };
+                    dc.DrawImage(SceneFactory.Render(fWb, hc, new SceneOptions { Floor = false, Shadow = false }, HW, H / 2), new Rect(4 * PW + i * HW, y0, HW, H / 2));
+                    Label(dc, sfx == "_r" ? "rechte Hand" : "linke Hand", 4 * PW + i * HW, y0);
+                    // Ausschnitt aus dem Foto um dieselbe Hand
+                    int off = sfx == "_l" ? 91 : 112;
+                    var hp = Enumerable.Range(off, 21).Select(k => wb.Image[k]).ToList();
+                    double cx = hp.Average(p => p.X), cy = hp.Average(p => p.Y);
+                    double size = Math.Max(hp.Max(p => p.X) - hp.Min(p => p.X), hp.Max(p => p.Y) - hp.Min(p => p.Y)) * 1.8 + 20;
+                    double s2 = Math.Min(HW, H / 2) / size;
+                    dc.PushClip(new System.Windows.Media.RectangleGeometry(new Rect(4 * PW + i * HW, y0 + H / 2, HW, H / 2)));
+                    double bx = 4 * PW + i * HW + HW / 2 - cx * s2, by = y0 + H * 0.75 - cy * s2;
+                    dc.DrawImage(bi, new Rect(bx, by, bi.PixelWidth * s2, bi.PixelHeight * s2));
+                    for (int f = 0; f < 5; f++)
+                        for (int k = 0; k < 4; k++)
+                        {
+                            int a = k == 0 ? off : off + 1 + f * 4 + k - 1, b = off + 1 + f * 4 + k;
+                            dc.DrawLine(hPen, new Point(bx + wb.Image[a].X * s2, by + wb.Image[a].Y * s2), new Point(bx + wb.Image[b].X * s2, by + wb.Image[b].Y * s2));
+                        }
+                    dc.Pop();
+                    i++;
+                }
+                log.AppendLine($"{name}: MediaPipe {pose.Confidence:F2}, RTMW3D Körper {Enumerable.Range(0, 17).Average(k => wb.Score[k]):F2}, " +
+                               $"Hand links {wb.HandScore(true):F2} ({nl} Finger), rechts {wb.HandScore(false):F2} ({nr} Finger), " +
+                               $"Personen (YOLOX) {all.Count}; Zeit {ms} ms (alle: {msAll} ms)");
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(rowW, H * Math.Max(1, files.Count), 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "photos.jpg"), 88);
+        File.WriteAllText(Path.Combine(folder, "photos.txt"), det.ModelInfo + "\n" + log);
     }
 
     /// <summary>Testmodus --hands: alle Handhaltungen als Nahaufnahme, Griff um ein Objekt, Prüfwerte in hands.txt.</summary>

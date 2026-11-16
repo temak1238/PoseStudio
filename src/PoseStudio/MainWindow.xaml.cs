@@ -728,6 +728,8 @@ public partial class MainWindow : Window
         CnOnlyCheck.IsChecked = s.ControlNetOnly;
         ClickSelectsFigureCheck.IsChecked = s.ClickSelectsFigure;
         RefOpacitySlider.Value = Math.Clamp(s.ReferenceOpacity, 10, 90);
+        PhotoBodyCombo.SelectedIndex = s.PhotoBodyRtmw3d ? 1 : 0;
+        PhotoFingersCheck.IsChecked = s.PhotoFingers;
         if (s.Figures is { Count: > 0 })
         {
             try { RestoreFigures(s.Figures, s.ActiveFigure); return true; }
@@ -784,6 +786,8 @@ public partial class MainWindow : Window
         s.ClickSelectsFigure = ClickSelectsFigureCheck.IsChecked == true;
         s.ReferenceImage = null; // Referenzfotos stehen jetzt je Figur in s.Figures
         s.ReferenceOpacity = RefOpacitySlider.Value;
+        s.PhotoBodyRtmw3d = PhotoBodyCombo.SelectedIndex == 1;
+        s.PhotoFingers = PhotoFingersCheck.IsChecked == true;
         s.Save();
     }
 
@@ -1414,13 +1418,30 @@ public partial class MainWindow : Window
             }
             PushUndo();
             var root = _figure.RootPosition;
-            _figure.FitLandmarks(PoseStudio.Detection.PoseDetector.ToScene(pose, _cam));
+            var wb = pose.Whole;
+            bool rtmBody = PhotoBodyCombo.SelectedIndex == 1 && wb != null;
+            _figure.FitLandmarks(rtmBody
+                ? PoseStudio.Detection.PoseDetector.ToScene(wb!.ToMediaPipe33(), _cam)
+                : PoseStudio.Detection.PoseDetector.ToScene(pose, _cam));
+            string fingers = "";
+            if (PhotoFingersCheck.IsChecked == true)
+            {
+                if (wb == null)
+                    fingers = _detector.HasWholeBody ? " Hände nicht erkannt." : " Für Finger fehlt das RTMW3D-Modell im Ordner Models.";
+                else
+                {
+                    var all = PoseStudio.Detection.PoseDetector.ToScene(wb.World, _cam);
+                    int Fit(int s, int off) => _figure.FitHand(s, all.Skip(off).Take(21).ToArray(), wb.Score.Skip(off).Take(21).ToArray());
+                    int nl = Fit(1, PoseStudio.Detection.WholeBodyPose.LeftHand), nr = Fit(-1, PoseStudio.Detection.WholeBodyPose.RightHand);
+                    fingers = $" Finger: links {nl}/5, rechts {nr}/5 übernommen.";
+                }
+            }
             _figure.RootPosition = root;
             _figure.GroundToFloor();
             PoseChanged();
             ShowProp();
             DrawGuides();
-            StatusText.Text = $"Pose erkannt (Sicherheit {pose.Confidence:P0}) und übernommen – bei Bedarf nachkorrigieren (Strg+Z macht es rückgängig).";
+            StatusText.Text = $"Pose erkannt ({(rtmBody ? "RTMW3D" : "MediaPipe")}, Sicherheit {pose.Confidence:P0}) und übernommen.{fingers} Strg+Z macht es rückgängig.";
         }
         catch (Exception ex)
         {
@@ -1444,6 +1465,21 @@ public partial class MainWindow : Window
         {
             var p1 = Map(a); var p2 = Map(b);
             GuideCanvas.Children.Add(new System.Windows.Shapes.Line { X1 = p1.X, Y1 = p1.Y, X2 = p2.X, Y2 = p2.Y, Stroke = line, StrokeThickness = 2 });
+        }
+        if (_lastDetection.Whole is { } wb)
+        {
+            var hand = new SolidColorBrush(Color.FromArgb(0xD0, 0x20, 0xA0, 0xFF));
+            Point MapW(int i) => new(ox + wb.Image[i].X * s, oy + wb.Image[i].Y * s);
+            foreach (var off in new[] { PoseStudio.Detection.WholeBodyPose.LeftHand, PoseStudio.Detection.WholeBodyPose.RightHand })
+            {
+                if (wb.HandScore(off == PoseStudio.Detection.WholeBodyPose.LeftHand) < 0.3) continue;
+                for (int f = 0; f < 5; f++)
+                    for (int k = 0; k < 4; k++)
+                    {
+                        var p1 = MapW(k == 0 ? off : off + f * 4 + k); var p2 = MapW(off + 1 + f * 4 + k);
+                        GuideCanvas.Children.Add(new System.Windows.Shapes.Line { X1 = p1.X, Y1 = p1.Y, X2 = p2.X, Y2 = p2.Y, Stroke = hand, StrokeThickness = 1.5 });
+                    }
+            }
         }
         for (int i = 0; i < 33; i++)
         {

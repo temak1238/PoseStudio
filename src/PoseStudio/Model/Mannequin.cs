@@ -1199,6 +1199,77 @@ public sealed class Mannequin
         ComputeWorlds();
     }
 
+    /// <summary>Hand an 21 erkannte Punkte anpassen (Reihenfolge COCO-WholeBody: 0 Handgelenk, 1–4 Daumen, 5–8 Zeige-, 9–12 Mittel-,
+    /// 13–16 Ring-, 17–20 kleiner Finger; jeweils Basis → Spitze), Punkte in Szenen-Achsen. Erst die Handausrichtung
+    /// (Unterarmdrehung + Handgelenk), dann je Finger Spreizen und Beugen aus den Gliedrichtungen.
+    /// Rückgabe: Anzahl angepasster Finger (0 = Hand zu unsicher oder hält ein Objekt).</summary>
+    public int FitHand(int s, Vector3D[] P, double[] score, double minScore = 0.3)
+    {
+        if (Grips(s) || P.Length < 21 || score.Average() < minScore) return 0;
+        string sfx = s > 0 ? "_l" : "_r";
+        var wr = this["wrist" + sfx]; var el = this["elbow" + sfx];
+        ComputeWorlds();
+
+        // ---- Ausrichtung: −Y zur Mittelfinger-Basis, +Z vom kleinen Finger zum Zeigefinger
+        var yT = -Dir(P[0], P[9]);
+        var zT = Dir(P[17], P[5]);
+        zT -= yT * Vector3D.DotProduct(zT, yT);
+        if (zT.LengthSquared > 1e-8)
+        {
+            zT.Normalize();
+            var upperW = el.Parent!.World;
+            var defs = new[] { el.Twist!, wr.Bend!, wr.Side! };
+            double[] OriRes(double[] q)
+            {
+                var wl = LocalMatrix(el, el.BendValue, 0, q[0]) * upperW;
+                var we = LocalMatrix(wr, q[1], q[2], 0) * wl;
+                var y = Axis(we, new Vector3D(0, 1, 0)); var z = Axis(we, new Vector3D(0, 0, 1));
+                return new[] { y.X - yT.X, y.Y - yT.Y, y.Z - yT.Z, 0.7 * (z.X - zT.X), 0.7 * (z.Y - zT.Y), 0.7 * (z.Z - zT.Z),
+                               0.002 * q[1], 0.002 * q[2] };
+            }
+            var best = SolveDls(OriRes, new[] { el.TwistValue, wr.BendValue, wr.SideValue }, defs, 60);
+            foreach (var seed in new[] { new double[] { 60, 0, 0 }, new double[] { -60, 0, 0 } })
+            {
+                var alt = SolveDls(OriRes, seed, defs, 60);
+                if (SqErr(OriRes(alt)) < SqErr(OriRes(best))) best = alt;
+            }
+            (el.TwistValue, wr.BendValue, wr.SideValue) = (best[0], best[1], best[2]);
+            ComputeWorlds();
+        }
+
+        // ---- Finger: Gliedrichtungen im Handgelenk-System
+        var inv = wr.World; inv.Invert();
+        Vector3D L(int a, int b) { var d = inv.Transform(P[b] - P[a]); if (d.LengthSquared > 1e-14) d.Normalize(); return d; }
+        static Vector3D D(Point3D a, Point3D b) { var d = b - a; if (d.LengthSquared > 1e-14) d.Normalize(); return d; }
+        int fitted = 0;
+        for (int f = 0; f < 5; f++)
+        {
+            int b = 1 + 4 * f;
+            if (Enumerable.Range(b, 4).Min(i => score[i]) < minScore * 0.7) continue;
+            var chain = FingerChain(s, f).ToArray();
+            var t = new[] { L(b, b + 1), L(b + 1, b + 2), L(b + 2, b + 3) };
+            var defs = new[] { chain[0].Bend!, chain[0].Side!, chain[1].Side!, chain[2].Side! };
+            double[] Res(double[] q)
+            {
+                var qq = new[] { q[0], q[1], 0, q[2], 0, q[3] };
+                var p0 = FingerPoint(chain, qq, 0, false); var p1 = FingerPoint(chain, qq, 1, false);
+                var p2 = FingerPoint(chain, qq, 2, false); var p3 = FingerPoint(chain, qq, 2, true);
+                var d = new[] { D(p0, p1), D(p1, p2), D(p2, p3) };
+                var r = new List<double>();
+                for (int k = 0; k < 3; k++) { r.Add(d[k].X - t[k].X); r.Add(d[k].Y - t[k].Y); r.Add(d[k].Z - t[k].Z); }
+                foreach (var v in q) r.Add(0.002 * v);
+                return r.ToArray();
+            }
+            var sol = SolveDls(Res, new[] { chain[0].BendValue, chain[0].SideValue, chain[1].SideValue, chain[2].SideValue }, defs, 60);
+            var alt2 = SolveDls(Res, new double[] { 0, 40, 50, 30 }, defs, 60);
+            if (SqErr(Res(alt2)) < SqErr(Res(sol))) sol = alt2;
+            chain[0].BendValue = sol[0]; chain[0].SideValue = sol[1]; chain[1].SideValue = sol[2]; chain[2].SideValue = sol[3];
+            fitted++;
+        }
+        Update();
+        return fitted;
+    }
+
     /// <summary>Größter Abstand Hand ↔ Griffpunkt der letzten Berechnung (m) – zeigt, ob das Objekt erreichbar ist.</summary>
     public double LastGripError { get; private set; }
 

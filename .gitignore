@@ -3,3 +3,7 @@ obj/
 publish/
 .vs/
 *.user
+
+# große Modelle (nicht im Repo, siehe Models\README-Modelle.txt)
+src/PoseStudio/Models/rtmw3d-x.onnx
+src/PoseStudio/Models/yolox*.onnx

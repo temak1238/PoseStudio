@@ -119,6 +119,16 @@
                                 <TextBlock Text="Deckkraft" Width="60" VerticalAlignment="Center" />
                                 <Slider x:Name="RefOpacitySlider" Minimum="10" Maximum="90" Value="50" VerticalAlignment="Center" ValueChanged="RefOpacity_Changed" />
                             </DockPanel>
+                            <DockPanel Margin="0,4,0,0">
+                                <TextBlock Text="Körper aus" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="PhotoBodyCombo" SelectedIndex="0"
+                                          ToolTip="Welches Modell die Körperhaltung liefert. Beide sind ähnlich gut; bei Problemen das andere probieren.">
+                                    <ComboBoxItem Content="MediaPipe" />
+                                    <ComboBoxItem Content="RTMW3D" />
+                                </ComboBox>
+                            </DockPanel>
+                            <CheckBox x:Name="PhotoFingersCheck" Content="Finger erkennen (RTMW3D)" IsChecked="True" Margin="0,4,0,0"
+                                      ToolTip="Fingerstellung aus dem Foto übernehmen – klappt am besten, wenn die Hände groß und gut sichtbar sind" />
                             <TextBlock x:Name="RefImageText" Margin="0,2,0,0" Foreground="#666" FontSize="11" TextWrapping="Wrap"
                                        Text="Kein Foto. Jede Figur kann ihr eigenes Referenzfoto haben." />
                         </StackPanel>

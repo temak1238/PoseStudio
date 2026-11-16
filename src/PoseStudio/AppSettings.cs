@@ -34,6 +34,9 @@ public sealed class AppSettings
     public bool ControlNet3D { get; set; } = true;
     public string? ReferenceImage { get; set; }
     public double ReferenceOpacity { get; set; } = 50;
+    /// <summary>Pose aus Foto: Körper aus RTMW3D statt MediaPipe; Finger mit RTMW3D erkennen.</summary>
+    public bool PhotoBodyRtmw3d { get; set; }
+    public bool PhotoFingers { get; set; } = true;
     public bool ControlNetRegions { get; set; }
     public bool ControlNetOnly { get; set; }
     public bool ClickSelectsFigure { get; set; }
