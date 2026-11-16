@@ -149,6 +149,31 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox Header="Hände und Finger">
+                        <StackPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Links" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="GestureLeftCombo" SelectionChanged="Gesture_Changed" MaxDropDownHeight="420" />
+                            </DockPanel>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Rechts" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="GestureRightCombo" SelectionChanged="Gesture_Changed" MaxDropDownHeight="420" />
+                            </DockPanel>
+                            <Expander x:Name="FingerExpander" Header="Finger einzeln" Margin="0,2,0,0">
+                                <StackPanel>
+                                    <UniformGrid Columns="2" Margin="0,2">
+                                        <RadioButton x:Name="FingerLeftRadio" Content="Linke Hand" IsChecked="True" Checked="FingerHand_Changed" />
+                                        <RadioButton Content="Rechte Hand" Checked="FingerHand_Changed" />
+                                    </UniformGrid>
+                                    <ItemsControl x:Name="FingerItems" ItemTemplate="{StaticResource AxisTemplate}"
+                                                  PreviewMouseLeftButtonDown="UndoPoint_PreviewMouseDown" />
+                                </StackPanel>
+                            </Expander>
+                            <TextBlock x:Name="HandStatus" Margin="0,4,0,0" TextWrapping="Wrap" FontSize="11" Foreground="#666"
+                                       Text="Einzelne Fingerglieder: Finger in der Ansicht anklicken. Hält eine Hand ein Objekt, formt der Griff die Finger." />
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Gelenke">
                         <ListBox x:Name="JointList" Height="250" DisplayMemberPath="DisplayName"
                                  SelectionChanged="JointList_SelectionChanged" />

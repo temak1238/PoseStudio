@@ -83,11 +83,12 @@ public partial class MainWindow : Window
         // Vorlagen nach Kategorie gruppiert (Reihenfolge der Kategorien wie im ersten Auftreten)
         RefreshPresetCombo();
         PresetCombo.SelectedIndex = 0;
-        JointList.ItemsSource = _figure.Joints;
+        JointList.ItemsSource = _figure.Joints.Where(j => !j.IsFinger).ToList();
         AxisItems.ItemsSource = _axes;
         PositionItems.ItemsSource = _positionAxes;
         CameraItems.ItemsSource = _cameraAxes;
         ProportionItems.ItemsSource = _proportionAxes;
+        InitHands();
         FigureStyleCombo.ItemsSource = Styles.Select(s => s.Name).ToList();
         BgStretchCombo.ItemsSource = StretchModes.Select(s => s.Name).ToList();
 
@@ -236,7 +237,7 @@ public partial class MainWindow : Window
         _figure.Select(null);
         _figure.SelectProp(false);
         _figure = _figures[index];
-        JointList.ItemsSource = _figure.Joints;
+        JointList.ItemsSource = _figure.Joints.Where(j => !j.IsFinger).ToList();
         _axes.Clear();
         SelectedJointText.Text = "– Gelenk anklicken –";
         ShowFigure(_figure.GetFigure());
@@ -853,6 +854,7 @@ public partial class MainWindow : Window
         RebuildFloor();
         foreach (var a in _positionAxes) a.Refresh();
         if (refreshJointAxes) foreach (var a in _axes) a.Refresh();
+        foreach (var a in _fingerAxes) a.Refresh();
     }
 
     private double CurrentPreviewAspect()
@@ -880,6 +882,70 @@ public partial class MainWindow : Window
     private void PreviewFormat_Changed(object sender, SelectionChangedEventArgs e) { if (_ready) UpdateFrameSize(); }
     private void CustomSize_LostFocus(object sender, RoutedEventArgs e) { if (_ready) UpdateFrameSize(); }
     private void Display_Changed(object sender, RoutedEventArgs e) => RebuildFloor();
+
+    // =================================================================== Hände und Finger
+
+    private readonly ObservableCollection<AxisViewModel> _fingerAxes = new();
+    private int _fingerSide = 1;
+    private bool _gestureReset;
+    private const string GesturePlaceholder = "– Handhaltung wählen –";
+
+    private void InitHands()
+    {
+        foreach (var combo in new[] { GestureLeftCombo, GestureRightCombo })
+        {
+            var items = new List<object> { GesturePlaceholder };
+            items.AddRange(HandGesture.All);
+            combo.ItemsSource = items;
+            combo.SelectedIndex = 0;
+        }
+        FingerItems.ItemsSource = _fingerAxes;
+        BuildFingerAxes();
+    }
+
+    private void BuildFingerAxes()
+    {
+        _fingerAxes.Clear();
+        int s = _fingerSide;
+        for (int f = 0; f < 5; f++)
+        {
+            int fi = f;
+            _fingerAxes.Add(new AxisViewModel(HandGeometry.Names[f] + " beugen", -20, 100,
+                () => _figure.GetFingerCurl(s, fi), v => { _figure.SetFingerCurl(s, fi, v); FingerChanged(s); }));
+            if (f == 0)
+                _fingerAxes.Add(new AxisViewModel("Daumen abspreizen", -40, 100,
+                    () => _figure.GetThumbSpread(s), v => { _figure.SetThumbSpread(s, v); FingerChanged(s); }));
+        }
+        _fingerAxes.Add(new AxisViewModel("Finger spreizen", -60, 100,
+            () => _figure.GetFingerSpread(s), v => { _figure.SetFingerSpread(s, v); FingerChanged(s); }));
+    }
+
+    private void FingerChanged(int s)
+    {
+        PoseChanged();
+        HandStatus.Text = _figure.HandGrips(s)
+            ? "Diese Hand hält ein Objekt – der Griff bestimmt die Finger."
+            : "Einzelne Fingerglieder: Finger in der Ansicht anklicken. Hält eine Hand ein Objekt, formt der Griff die Finger.";
+    }
+
+    private void FingerHand_Changed(object sender, RoutedEventArgs e)
+    {
+        if (FingerItems == null) return;
+        _fingerSide = FingerLeftRadio.IsChecked == true ? 1 : -1;
+        BuildFingerAxes();
+    }
+
+    private void Gesture_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_gestureReset || sender is not ComboBox combo || combo.SelectedItem is not HandGesture g) return;
+        int s = ReferenceEquals(combo, GestureLeftCombo) ? 1 : -1;
+        PushUndo();
+        _figure.ApplyGesture(s, g);
+        FingerChanged(s);
+        StatusText.Text = $"Handhaltung „{g.Name}“ für die {(s > 0 ? "linke" : "rechte")} Hand.";
+        // Auswahl zurücksetzen, damit dieselbe Haltung erneut gewählt werden kann
+        Dispatcher.BeginInvoke(() => { _gestureReset = true; combo.SelectedIndex = 0; _gestureReset = false; });
+    }
 
     // =================================================================== Gelenkauswahl
 
@@ -1791,6 +1857,7 @@ public partial class MainWindow : Window
         if (j.Parent == null) return new Point3D(0, 0.5, 0);
         var child = _figure.Joints.FirstOrDefault(c => ReferenceEquals(c.Parent, j));
         if (child != null) return (Point3D)child.Offset;
+        if (j.IsFinger) return new Point3D(0, -0.02, 0);
         return j.Id.StartsWith("ankle") ? new Point3D(0, -0.04, 0.15) : new Point3D(0, -0.15, 0); // Hand: Richtung Fingerspitzen
     }
 

@@ -18,6 +18,12 @@ public sealed class Joint
     public AxisDef? Side { get; init; }
     public AxisDef? Twist { get; init; }
     public string? MirrorId { get; init; }
+    /// <summary>Fingergelenk (nicht in der Gelenkliste, Bedienung über „Hände und Finger“ oder Anklicken).</summary>
+    public bool IsFinger { get; init; }
+    /// <summary>Ruhe-Ausrichtung relativ zum Elterngelenk (Finger: natürliche Krümmung, Daumen-Richtung).</summary>
+    internal Matrix3D Rest { get; init; } = Matrix3D.Identity;
+    /// <summary>Länge des Fingerglieds bis zum nächsten Gelenk bzw. zur Spitze (unskaliert).</summary>
+    internal double BoneLength { get; init; }
 
     public double BendValue { get; set; }
     public double SideValue { get; set; }
@@ -164,9 +170,14 @@ public sealed class Mannequin
     // ------------------------------------------------------------------ Skelett
 
     private Joint AddJoint(string id, string name, Joint? parent, Vector3D offset,
-        AxisDef? bend, AxisDef? side, AxisDef? twist, string? mirror = null)
+        AxisDef? bend, AxisDef? side, AxisDef? twist, string? mirror = null,
+        bool finger = false, Matrix3D? rest = null, double boneLength = 0)
     {
-        var j = new Joint { Id = id, Name = name, Parent = parent, BaseOffset = offset, Offset = offset, Bend = bend, Side = side, Twist = twist, MirrorId = mirror };
+        var j = new Joint
+        {
+            Id = id, Name = name, Parent = parent, BaseOffset = offset, Offset = offset, Bend = bend, Side = side, Twist = twist, MirrorId = mirror,
+            IsFinger = finger, Rest = rest ?? Matrix3D.Identity, BoneLength = boneLength
+        };
         Joints.Add(j);
         _byId[id] = j;
         return j;
@@ -226,6 +237,55 @@ public sealed class Mannequin
                 new AxisDef("Heben/senken", -50, 40, -1),
                 new AxisDef("Seitlich kippen", -30, 30, s),
                 null, "ankle" + other);
+        }
+        foreach (var s in new[] { 1, -1 }) BuildHandSkeleton(s);
+    }
+
+    private static Matrix3D Rot(Vector3D axis, double deg)
+    {
+        var m = Matrix3D.Identity;
+        if (deg != 0) m.Rotate(new Quaternion(axis, deg));
+        return m;
+    }
+
+    /// <summary>Je Hand 15 Fingergelenke. Beugen = Drehung um das lokale Z (Spitze zur Handfläche), Spreizen = um das lokale X.
+    /// Wert 0 = entspannte, leicht gekrümmte Ruhehaltung.</summary>
+    private void BuildHandSkeleton(int s)
+    {
+        string sfx = s > 0 ? "_l" : "_r", other = s > 0 ? "_r" : "_l", side = s > 0 ? "links" : "rechts";
+        var wrist = this["wrist" + sfx];
+        var Z = new Vector3D(0, 0, 1); var X = new Vector3D(1, 0, 0);
+        double[] spreadSign = { -1, -1, 1, 1 }; // + = weg vom Mittelfinger (Mittelfinger: Richtung Zeigefinger)
+        string[] seg = { "Grundgelenk", "Mittelgelenk", "Endgelenk" };
+        double[] restCurl = { 12, 18, 10 };
+        (double min, double max)[] curlLim = { (-30, 85), (-20, 100), (-12, 75) };
+        for (int f = 1; f <= 4; f++)
+        {
+            int i = f - 1;
+            string id = HandGeometry.Ids[f], nm = HandGeometry.Names[f];
+            double len = HandGeometry.Length[i];
+            Joint parent = wrist;
+            for (int k = 0; k < 3; k++)
+            {
+                var offset = k == 0 ? new Vector3D(0, HandGeometry.BaseY[i], HandGeometry.BaseZ[i])
+                                    : new Vector3D(0, -len * HandGeometry.SegFrac[k - 1], 0);
+                var rest = Rot(Z, -s * restCurl[k]) * (k == 0 ? Rot(X, -HandGeometry.Fan[i]) : Matrix3D.Identity);
+                parent = AddJoint($"{id}{k + 1}{sfx}", $"{nm} {side} – {seg[k]}", parent, offset,
+                    k == 0 ? new AxisDef("Spreizen", -15, 25, spreadSign[i]) : null,
+                    new AxisDef("Beugen", curlLim[k].min, curlLim[k].max, -s),
+                    null, $"{id}{k + 1}{other}", true, rest, len * HandGeometry.SegFrac[k]);
+            }
+        }
+        string[] tseg = { "Sattelgelenk", "Grundgelenk", "Endgelenk" };
+        Joint tp = wrist;
+        for (int k = 0; k < 3; k++)
+        {
+            var offset = k == 0 ? HandGeometry.ThumbBase(s) : new Vector3D(0, -HandGeometry.ThumbLen[k - 1], 0);
+            var rest = k == 0 ? HandGeometry.ThumbRest(s) : Rot(Z, -s * (k == 1 ? 8 : 10));
+            tp = AddJoint($"thumb{k + 1}{sfx}", $"Daumen {side} – {tseg[k]}", tp, offset,
+                k == 0 ? new AxisDef("Abspreizen", -30, 60, -1) : null,
+                new AxisDef(k == 0 ? "Zur Handfläche" : "Beugen", k == 0 ? -25 : -20, k == 0 ? 60 : (k == 1 ? 70 : 85), -s),
+                null, $"thumb{k + 1}{other}", true, rest, HandGeometry.ThumbLen[k]);
         }
     }
 
@@ -314,6 +374,18 @@ public sealed class Mannequin
             var ps = j.Parent.SegScale;
             j.Offset = new Vector3D(j.BaseOffset.X * ps.X, j.BaseOffset.Y * ps.Y, j.BaseOffset.Z * ps.Z);
         }
+        // Finger: Hand wird gleichmäßig skaliert (Armlänge, Frauenhand etwas kleiner)
+        foreach (var sfx in new[] { "_l", "_r" })
+        {
+            double hs = HandScale(sfx);
+            foreach (var j in Joints.Where(j => j.IsFinger && j.Id.EndsWith(sfx)))
+            {
+                j.SegScale = new Vector3D(1, 1, 1);
+                j.UniformScale = hs;
+                j.Offset = j.BaseOffset * hs;
+            }
+        }
+        _gripCache.Clear();
 
         // Körpergröße: unskalierte Höhe in Grundstellung messen
         var pose = GetPose();
@@ -340,12 +412,17 @@ public sealed class Mannequin
         if (j.Twist != null && twist != 0) m.Rotate(new Quaternion(new Vector3D(0, 1, 0), j.Twist.Sign * twist));
         if (j.Side != null && side != 0) m.Rotate(new Quaternion(new Vector3D(0, 0, 1), j.Side.Sign * side));
         if (j.Bend != null && bend != 0) m.Rotate(new Quaternion(new Vector3D(1, 0, 0), j.Bend.Sign * bend));
+        if (j.IsFinger) m.Append(j.Rest);
         m.Translate(j.Parent == null ? j.Offset + RootPosition : j.Offset);
         return m;
     }
 
+    /// <summary>Skalierung der Hand (Handfläche ist im Mesh bereits mit dem Stilfaktor gebaut, Finger nicht).</summary>
+    internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * (Style == FigureStyle.Female ? 0.9 : 1.0);
+
     public void Update()
     {
+        if (_prop.Active) ApplyGripFingers();
         ComputeWorlds();
         if (_prop.Active && _ikEnabled)
         {
@@ -484,8 +561,12 @@ public sealed class Mannequin
     public void SetProp(PropSettings p, bool update = true)
     {
         var old = _prop;
+        bool[] gripped = { Grips(1), Grips(-1) };
         _prop = p.Clone();
         _prop.Clamp();
+        // Hand lässt los: Finger wieder entspannt
+        if (gripped[0] && !Grips(1)) ApplyGesture(1, HandGesture.All[0]);
+        if (gripped[1] && !Grips(-1)) ApplyGesture(-1, HandGesture.All[0]);
         if (old.Type != _prop.Type || old.Hold != _prop.Hold) BuildParts();
         if (update) Update();
     }
@@ -516,8 +597,10 @@ public sealed class Mannequin
         string sfx = s > 0 ? "_l" : "_r";
         var sh = this["shoulder" + sfx]; var el = this["elbow" + sfx]; var wr = this["wrist" + sfx];
         var chestW = sh.Parent!.World;
-        double u = wr.UniformScale;
-        var grip = Style == FigureStyle.Mannequin ? new Point3D(-s * 0.028 * u, -0.088 * u, 0) : new Point3D(-s * 0.03 * u, -0.092 * u, 0);
+
+        double hk = HandScale(sfx);
+        var g0 = HandGeometry.Grip(s);
+        var grip = new Point3D(g0.X * hk, g0.Y * hk, 0);
         var defs = new[] { sh.Bend!, sh.Side!, sh.Twist!, el.Bend!, el.Twist!, wr.Bend!, wr.Side! };
         const int n = 7, rows = 11;
 
@@ -602,6 +685,133 @@ public sealed class Mannequin
     /// <summary>Hält die Hand dieser Seite gerade ein Objekt (dann steuert das Objekt den Arm)?</summary>
     public bool HandHoldsProp(Joint wrist) =>
         _prop.Active && wrist.Id.StartsWith("wrist") && (_prop.TwoHanded || (_prop.MainSide > 0) == wrist.Id.EndsWith("_l"));
+
+    // ------------------------------------------------------------------ Hände und Finger
+
+    private bool Grips(int s) => _prop.Active && (_prop.TwoHanded || _prop.MainSide == s);
+
+    private readonly Dictionary<string, (double Bend, double Side)> _gripCache = new();
+
+    /// <summary>Greifende Hände: Finger legen sich im Bogen um den Griff, der Daumen darüber.</summary>
+    private void ApplyGripFingers()
+    {
+        foreach (var s in new[] { 1, -1 })
+        {
+            if (!Grips(s)) continue;
+            string sfx = s > 0 ? "_l" : "_r";
+            if (!_gripCache.ContainsKey("index1" + sfx)) ComputeGrip(s);
+            foreach (var j in Joints)
+                if (j.IsFinger && _gripCache.TryGetValue(j.Id, out var v)) { j.BendValue = v.Bend; j.SideValue = v.Side; j.TwistValue = 0; }
+        }
+    }
+
+    /// <summary>Lage eines Fingerpunktes im Handgelenk-System (Kette ab dem Handgelenk, Werte q je Kettengelenk als (Spreizen, Beugen)).</summary>
+    private static Point3D FingerPoint(Joint[] chain, double[] q, int upTo, bool tip)
+    {
+        var m = Matrix3D.Identity;
+        int n = Math.Min(upTo, chain.Length - 1);
+        Matrix3D last = Matrix3D.Identity;
+        for (int k = 0; k <= n; k++)
+        {
+            var j = chain[k];
+            var l = Matrix3D.Identity;
+            if (j.Side != null && q[2 * k + 1] != 0) l.Rotate(new Quaternion(new Vector3D(0, 0, 1), j.Side.Sign * q[2 * k + 1]));
+            if (j.Bend != null && q[2 * k] != 0) l.Rotate(new Quaternion(new Vector3D(1, 0, 0), j.Bend.Sign * q[2 * k]));
+            l.Append(j.Rest);
+            l.Translate(j.Offset);
+            m = l * m;
+            last = m;
+        }
+        return tip ? last.Transform(new Point3D(0, -chain[n].BoneLength * chain[n].UniformScale, 0)) : last.Transform(new Point3D());
+    }
+
+    private void ComputeGrip(int s)
+    {
+        string sfx = s > 0 ? "_l" : "_r";
+        double hs = HandScale(sfx);
+        var c = HandGeometry.Grip(s);
+        double cx = c.X * hs, cy = c.Y * hs, R = HandGeometry.GripRadius * hs;
+        for (int f = 1; f <= 4; f++)
+        {
+            var chain = Enumerable.Range(1, 3).Select(k => this[$"{HandGeometry.Ids[f]}{k}{sfx}"]).ToArray();
+            var defs = chain.Select(j => j.Side!).ToArray();
+            double[] Res(double[] cur)
+            {
+                var q = new double[] { 0, cur[0], 0, cur[1], 0, cur[2] };
+                var r = new List<double>();
+                foreach (var (k, tip) in new[] { (1, false), (2, false), (2, true) })
+                {
+                    var p = FingerPoint(chain, q, k, tip);
+                    r.Add((Math.Sqrt((p.X - cx) * (p.X - cx) + (p.Y - cy) * (p.Y - cy)) - R) / hs);
+                }
+                r.Add(0.0004 * (cur[0] - cur[1]));
+                return r.ToArray();
+            }
+            var sol = SolveDls(Res, new double[] { 50, 60, 40 }, defs, 80);
+            for (int k = 0; k < 3; k++) _gripCache[chain[k].Id] = (0, sol[k]);
+        }
+        // Daumen über die Finger
+        var th = Enumerable.Range(1, 3).Select(k => this[$"thumb{k}{sfx}"]).ToArray();
+        var t1 = new Point3D(-s * 0.033 * hs, -0.054 * hs, 0.043 * hs);
+        var t2 = new Point3D(-s * 0.057 * hs, -0.08 * hs, 0.022 * hs);
+        var tdefs = new[] { th[0].Bend!, th[0].Side!, th[1].Side!, th[2].Side! };
+        double[] TRes(double[] cur)
+        {
+            var q = new double[] { cur[0], cur[1], 0, cur[2], 0, cur[3] };
+            var a = FingerPoint(th, q, 1, false); var b = FingerPoint(th, q, 2, true);
+            return new[] { (a.X - t1.X) / hs, (a.Y - t1.Y) / hs, (a.Z - t1.Z) / hs, (b.X - t2.X) / hs, (b.Y - t2.Y) / hs, (b.Z - t2.Z) / hs,
+                           0.0003 * cur[2], 0.0003 * cur[3] };
+        }
+        var ts = SolveDls(TRes, new double[] { 10, 30, 30, 30 }, tdefs, 80);
+        _gripCache[th[0].Id] = (ts[0], ts[1]);
+        _gripCache[th[1].Id] = (0, ts[2]);
+        _gripCache[th[2].Id] = (0, ts[3]);
+    }
+
+    private IEnumerable<Joint> FingerChain(int s, int finger) =>
+        Enumerable.Range(1, 3).Select(k => this[$"{HandGeometry.Ids[finger]}{k}{(s > 0 ? "_l" : "_r")}"]);
+
+    private static readonly double[] CurlFactor = { 0.85, 0.95, 0.65 };
+    private static readonly double[] ThumbCurlFactor = { 0.45, 0.6, 0.8 };
+    private static readonly double[] SpreadFactor = { 0.15, 0.03, 0.10, 0.20 };
+
+    /// <summary>Krümmung eines Fingers in Prozent (0 = entspannt, 100 = eingerollt, negativ = gestreckt).</summary>
+    public double GetFingerCurl(int s, int finger)
+    {
+        var ch = FingerChain(s, finger).ToArray();
+        return finger == 0 ? ch[2].SideValue / ThumbCurlFactor[2] : ch[1].SideValue / CurlFactor[1];
+    }
+
+    public void SetFingerCurl(int s, int finger, double percent)
+    {
+        var f = finger == 0 ? ThumbCurlFactor : CurlFactor;
+        int k = 0;
+        foreach (var j in FingerChain(s, finger)) { j.SideValue = Clamp(j.Side, percent * f[k]); k++; }
+    }
+
+    /// <summary>Daumen abspreizen in Prozent (100 = 60°).</summary>
+    public double GetThumbSpread(int s) => FingerChain(s, 0).First().BendValue / 0.6;
+    public void SetThumbSpread(int s, double percent) { var j = FingerChain(s, 0).First(); j.BendValue = Clamp(j.Bend, percent * 0.6); }
+
+    /// <summary>Finger spreizen in Prozent (negativ = zusammen).</summary>
+    public double GetFingerSpread(int s) => FingerChain(s, 1).First().BendValue / SpreadFactor[0];
+    public void SetFingerSpread(int s, double percent)
+    {
+        for (int f = 1; f <= 4; f++) { var j = FingerChain(s, f).First(); j.BendValue = Clamp(j.Bend, percent * SpreadFactor[f - 1]); }
+    }
+
+    /// <summary>Handhaltung auf eine Hand anwenden (s = 1 links, −1 rechts).</summary>
+    public void ApplyGesture(int s, HandGesture g)
+    {
+        for (int f = 0; f < 5; f++)
+            foreach (var j in FingerChain(s, f)) j.BendValue = j.SideValue = j.TwistValue = 0;
+        for (int f = 0; f < 5; f++) SetFingerCurl(s, f, g.Curl(f));
+        SetThumbSpread(s, g.ThumbSpread);
+        SetFingerSpread(s, g.Spread);
+    }
+
+    /// <summary>Hält diese Hand ein Objekt (dann formt der Griff die Finger)?</summary>
+    public bool HandGrips(int s) => Grips(s);
 
     // ------------------------------------------------------------------ Arm-/Bein-IK (Zweigelenk mit Ellbogen-/Kniestellung)
 
@@ -1129,8 +1339,8 @@ public sealed class Mannequin
 
     public void SetPose(PoseData pose)
     {
+        if (pose.Prop != null) SetProp(pose.Prop, false); // zuerst: Loslassen setzt sonst die geladenen Finger zurück
         SetPoseValues(pose);
-        if (pose.Prop != null) SetProp(pose.Prop, false);
         Update();
     }
 

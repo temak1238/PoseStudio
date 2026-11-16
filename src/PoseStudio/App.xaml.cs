@@ -58,6 +58,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--hands")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            foreach (var st in new[] { FigureStyle.Male, FigureStyle.Female, FigureStyle.Mannequin }) HandsTest(e.Args[1], st);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--sitting")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -226,6 +234,87 @@ public partial class App : Application
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "detect.jpg"), 88);
         File.WriteAllText(Path.Combine(folder, "detect.txt"), log.ToString());
+    }
+
+    /// <summary>Testmodus --hands: alle Handhaltungen als Nahaufnahme, Griff um ein Objekt, Prüfwerte in hands.txt.</summary>
+    private static void HandsTest(string folder, FigureStyle style)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        var m = new Mannequin();
+        m.SetFigure(style, true, new Proportions { HeightCm = 178 });
+        var basePose = new PoseData();
+        basePose.Joints["shoulder_l"] = new double[] { 70, 20, 0 };
+        basePose.Joints["elbow_l"] = new double[] { 30, 0, 0 };
+        basePose.Joints["shoulder_r"] = new double[] { 70, 20, 0 };
+        basePose.Joints["elbow_r"] = new double[] { 30, 0, 0 };
+        var opts = new SceneOptions { Floor = false, Shadow = false };
+        var gestures = HandGesture.All;
+        const int W = 300;
+        int cols = 4, rows = (gestures.Count + 1) / 2 + 1;
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            for (int i = 0; i < gestures.Count; i++)
+            {
+                m.SetPose(basePose);
+                m.ApplyGesture(1, gestures[i]);
+                m.ApplyGesture(-1, gestures[i]);
+                m.Update();
+                var w = m["wrist_l"].World;
+                var c = w.Transform(new System.Windows.Media.Media3D.Point3D(0, -0.07, 0));
+                for (int v = 0; v < 2; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = v == 0 ? -60 : 120, Pitch = 15, Distance = 0.55, Target = c };
+                    var rect = new Rect(((i % 2) * 2 + v) * W, (i / 2) * W, W, W);
+                    dc.DrawImage(SceneFactory.Render(m, cam, opts, W, W), rect);
+                }
+                dc.DrawText(new System.Windows.Media.FormattedText(gestures[i].Name, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                    new System.Windows.Media.Typeface("Segoe UI"), 16, System.Windows.Media.Brushes.Black, 1.0), new Point((i % 2) * 2 * W + 6, (i / 2) * W + 4));
+                // Spiegelgleichheit links/rechts: Fingerspitzen relativ zum Handgelenk
+                double asym = 0;
+                foreach (var f in new[] { "thumb3", "index3", "pinky3" })
+                {
+                    var pl = m[f + "_l"].World.Transform(new System.Windows.Media.Media3D.Point3D()) - m["wrist_l"].World.Transform(new System.Windows.Media.Media3D.Point3D());
+                    var pr = m[f + "_r"].World.Transform(new System.Windows.Media.Media3D.Point3D()) - m["wrist_r"].World.Transform(new System.Windows.Media.Media3D.Point3D());
+                    asym = Math.Max(asym, Math.Abs(pl.Length - pr.Length));
+                }
+                log.AppendLine($"{gestures[i].Name}: Asymmetrie {asym * 1000:F2} mm");
+            }
+            // Griff um ein Schwert (rechte Hand) und Stab beidhändig
+            int gi = gestures.Count;
+            foreach (var (type, hold, k) in new[] { (PropType.Sword, HoldMode.Right, 0), (PropType.Staff, HoldMode.BothRightTop, 1) })
+            {
+                m.SetPose(basePose);
+                var p = new PropSettings { Type = type, Hold = hold };
+                p.ApplyDefaultPlacement();
+                m.SetProp(p);
+                m.Update();
+                var c = m["wrist_r"].World.Transform(new System.Windows.Media.Media3D.Point3D(0, -0.07, 0));
+                for (int v = 0; v < 2; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = v == 0 ? 60 : -120, Pitch = 15, Distance = 0.6, Target = c };
+                    dc.DrawImage(SceneFactory.Render(m, cam, opts, W, W), new Rect((k * 2 + v) * W, ((gi + 1) / 2) * W, W, W));
+                }
+                log.AppendLine($"Griff {type}: Abstand Hand–Griff {m.LastGripError * 1000:F1} mm, Zeigefinger-Beugen {m["index1_r"].SideValue:F0}/{m["index2_r"].SideValue:F0}/{m["index3_r"].SideValue:F0}, Daumen {m["thumb1_r"].BendValue:F0}/{m["thumb1_r"].SideValue:F0}/{m["thumb2_r"].SideValue:F0}/{m["thumb3_r"].SideValue:F0}");
+            }
+            m.SetProp(new PropSettings());
+            log.AppendLine($"Nach Loslassen: Zeigefinger {m["index2_r"].SideValue:F0}");
+        }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(cols * W, rows * W, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"hands-{style}.jpg"), 90);
+
+        // Daumen abspreizen: Spitze soll sich vom Zeigefinger-Grundgelenk entfernen
+        m.SetPose(basePose);
+        double Dist() => (m["thumb3_l"].World.Transform(new System.Windows.Media.Media3D.Point3D()) - m["index1_l"].World.Transform(new System.Windows.Media.Media3D.Point3D())).Length;
+        double d0 = Dist();
+        m.SetThumbSpread(1, 60); m.Update();
+        log.AppendLine($"Daumen abspreizen: Abstand Daumen–Zeigefinger {d0 * 1000:F0} → {Dist() * 1000:F0} mm");
+        // Spiegeln
+        m.SetPose(basePose); m.ApplyGesture(1, gestures.First(g => g.Name == "Zeigen")); m.Mirror();
+        log.AppendLine($"Spiegeln: rechter Zeigefinger {m["index2_r"].SideValue:F0}, Mittelfinger {m["middle2_r"].SideValue:F0}, linker Mittelfinger {m["middle2_l"].SideValue:F0}");
+        File.AppendAllText(Path.Combine(folder, "hands.txt"), $"== {style}\n" + log);
     }
 
     private static void SittingTest(string folder)
