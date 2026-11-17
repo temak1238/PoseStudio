@@ -79,6 +79,30 @@
                                           Checked="Figure_Changed" Unchecked="Figure_Changed" />
                                 <ComboBox x:Name="FigureStyleCombo" SelectionChanged="FigureStyle_Changed" />
                             </DockPanel>
+                            <Expander x:Name="HairExpander" Header="Frisur und Wind" Margin="0,4,0,0" IsExpanded="True">
+                                <StackPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="Frisur" Width="50" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="HairStyleCombo" SelectionChanged="HairStyle_Changed" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <TextBlock Text="Pony" Width="50" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="BangsCombo" SelectionChanged="HairStyle_Changed" />
+                                    </DockPanel>
+                                    <ItemsControl x:Name="HairItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                                    <UniformGrid Columns="5" Margin="0,2">
+                                        <Button Content="Still" Click="HairPreset_Click" Tag="0,0,0" ToolTip="Kein Wind: Haare hängen mit der Schwerkraft" />
+                                        <Button Content="Brise" Click="HairPreset_Click" Tag="25,30,0" ToolTip="Leichter Wind schräg von vorne" />
+                                        <Button Content="Wind" Click="HairPreset_Click" Tag="65,70,0" ToolTip="Kräftiger Wind von der Seite" />
+                                        <Button Content="Sturm" Click="HairPreset_Click" Tag="100,20,10" ToolTip="Sehr starker Wind von vorne" />
+                                        <Button Content="Sprung" Click="HairPreset_Click" Tag="15,0,75" ToolTip="Haare fliegen nach oben und außen (Sprung, Drehung)" />
+                                    </UniformGrid>
+                                    <Button Content="Strähnen neu würfeln" HorizontalAlignment="Left" Margin="0,2" Click="HairReroll_Click"
+                                            ToolTip="Andere zufällige Verteilung und Bewegung der Strähnen (Unordnung)" />
+                                    <TextBlock FontSize="11" Foreground="#666" TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Text="Wehrichtung relativ zur Figur: 0° = nach hinten, 90° = zur linken Seite der Figur, 180° = nach vorne. Haarfarbe unter „Darstellung“." />
+                                </StackPanel>
+                            </Expander>
                             <Expander x:Name="ProportionExpander" Header="Proportionen" Margin="0,4,0,0">
                                 <StackPanel>
                                     <ItemsControl x:Name="ProportionItems" ItemTemplate="{StaticResource AxisTemplate}" />

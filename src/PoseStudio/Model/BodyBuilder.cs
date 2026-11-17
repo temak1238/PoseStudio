@@ -154,23 +154,24 @@ internal sealed class BodyBuilder
         _add(H, E(0, 0.06, 0.088, 0.022, female ? 0.0075 : 0.0065, 0.01), MaterialKind.Lips, true);  // Oberlippe
         _add(H, E(0, 0.049, 0.086, 0.019, female ? 0.008 : 0.007, 0.01), MaterialKind.Lips, true);   // Unterlippe
 
-        if (!hair) return;
-        // Haarkappe: vorne bis zum Haaransatz, hinten tiefer
-        double front = 58 * Math.PI / 180, back = (female ? 150 : 115) * Math.PI / 180;
-        _add(H, MeshFactory.Ellipsoid(P(0, 0.128 * k, -0.01 * k), 0.086 * k, 0.107 * k, 0.105 * k, 40, 24,
-            th => front + (back - front) * (1 - Math.Cos(th)) / 2), MaterialKind.Hair, true);
-        if (female)
-            _add(H, MeshFactory.LoftY(k,
-                (0.13, 0.082, 0.06, -0.035),
-                (0.05, 0.088, 0.055, -0.05),
-                (-0.03, 0.082, 0.04, -0.055),
-                (-0.08, 0.07, 0.028, -0.055)), MaterialKind.Hair, true);
     }
 
     // ================================================================= Anime-Kopf
 
     /// <summary>Wie weit der Anime-Kopf unter den Kopf-Drehpunkt gesetzt ist (unskaliert).</summary>
     public const double AnimeHeadDrop = 0.05;
+
+    /// <summary>Kopfhaut als Ellipsoid im Kopf-System (vor der Kopfskalierung): Ansatz der Haare und Kollision.</summary>
+    public static (Point3D C, Vector3D R) Scalp(bool female, bool anime)
+    {
+        if (anime)
+        {
+            double k = female ? 0.96 : 1.0;
+            return (new Point3D(0, (0.142 - AnimeHeadDrop) * k, -0.004 * k), new Vector3D(0.085 * k, 0.104 * k, 0.093 * k));
+        }
+        double h = female ? 0.95 : 1.0;
+        return (new Point3D(0, 0.125 * h, -0.006 * h), new Vector3D(0.08 * h, 0.1 * h, 0.099 * h));
+    }
 
     /// <summary>Anime-Kopf: großer runder Schädel, schmales Gesicht mit kleinem spitzem Kinn, keine ausmodellierte Nase.
     /// Augen, Brauen und Mund liegen als flache, der Oberfläche angepasste Flächen auf dem Gesicht.</summary>
@@ -225,17 +226,6 @@ internal sealed class BodyBuilder
         if (face.Hit(0, 0.088 * k) is { } nose)
             Add(MeshFactory.Ellipsoid(nose.P - nose.N * 0.001, 0.0032 * k, 0.0055 * k, 0.0035 * k, 14, 8), MaterialKind.Body, true);
 
-        if (!hair) return;
-        // Vorläufige Frisur: Haarkappe mit Pony bis knapp über die Brauen, hinten tief
-        double front = 93 * Math.PI / 180, back = (female ? 150 : 120) * Math.PI / 180;
-        Add(MeshFactory.Ellipsoid(P(0, 0.145 * k, -0.004 * k), 0.091 * k, 0.11 * k, 0.1 * k, 44, 26,
-            th => front + (back - front) * (1 - Math.Cos(th)) / 2), MaterialKind.Hair, true);
-        if (female)
-            Add(MeshFactory.LoftY(k,
-                (0.15, 0.088, 0.06, -0.04),
-                (0.06, 0.094, 0.056, -0.055),
-                (-0.04, 0.088, 0.04, -0.06),
-                (-0.12, 0.074, 0.026, -0.06)), MaterialKind.Hair, true);
     }
 
     /// <summary>Flache Gesichtsdetails, die sich der Kopfoberfläche anpassen: Jeder Punkt wird entlang der Flächennormale

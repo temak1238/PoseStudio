@@ -32,6 +32,9 @@ public partial class MainWindow : Window
     private readonly Stack<PoseData> _undo = new();
     private readonly ObservableCollection<AxisViewModel> _proportionAxes = new();
     private Proportions _props = new();
+    private HairSettings _hair = new();
+    private readonly ObservableCollection<AxisViewModel> _hairAxes = new();
+    private bool _suppressHair;
     private Color _background;
     private bool _ready;
     private bool _suppressFigure;
@@ -98,6 +101,7 @@ public partial class MainWindow : Window
         BuildPositionAxes();
         BuildCameraAxes();
         BuildProportionAxes();
+        InitHair();
         BuildLightAxes();
         InitSetUi();
         InitPropUi();
@@ -611,6 +615,66 @@ public partial class MainWindow : Window
         _lightMarker.Children.Add(new GeometryModel3D(MeshFactory.Tube(sun - from * 0.08, center + from * 0.45, 0.009, 0.004), glow));
     }
 
+    // =================================================================== Haare
+
+    private void InitHair()
+    {
+        HairStyleCombo.ItemsSource = new[] { "Standard (nach Figur)" }.Concat(HairStyleDef.All.Select(s => s.Name)).ToList();
+        BangsCombo.ItemsSource = BangsDef.All.Select(b => b.Name).ToList();
+        HairItems.ItemsSource = _hairAxes;
+        void Add(string label, double min, double max, Func<double> get, Action<double> set) =>
+            _hairAxes.Add(new AxisViewModel(label, min, max, get, v => { set(v); HairChanged(); }));
+        Add("Länge (%)", 40, 180, () => _hair.Length, v => _hair.Length = v);
+        Add("Fülle (%)", 50, 200, () => _hair.Volume, v => _hair.Volume = v);
+        Add("Wind (%)", 0, 100, () => _hair.Wind, v => _hair.Wind = v);
+        Add("Wehrichtung (°)", -180, 180, () => _hair.WindDirection, v => _hair.WindDirection = v);
+        Add("Schwung (%)", 0, 100, () => _hair.Lift, v => _hair.Lift = v);
+        Add("Unordnung (%)", 0, 100, () => _hair.Messiness, v => _hair.Messiness = v);
+    }
+
+    /// <summary>Haar-Bedienelemente auf die Einstellungen der aktiven Figur setzen.</summary>
+    private void ShowHair(HairSettings? h)
+    {
+        _hair = h?.Clone() ?? new HairSettings();
+        _hair.Clamp();
+        _suppressHair = true;
+        HairStyleCombo.SelectedIndex = _hair.Style == "auto" ? 0 : 1 + HairStyleDef.All.ToList().FindIndex(s => s.Id == _hair.Style);
+        BangsCombo.SelectedIndex = Math.Max(0, BangsDef.All.ToList().FindIndex(b => b.Id == _hair.Bangs));
+        _suppressHair = false;
+        foreach (var a in _hairAxes) a.Refresh();
+    }
+
+    private void HairChanged()
+    {
+        if (_suppressHair || !_ready) return;
+        _figure.SetHair(_hair);
+        PoseChanged();
+    }
+
+    private void HairStyle_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressHair) return;
+        int i = HairStyleCombo.SelectedIndex;
+        _hair.Style = i <= 0 ? "auto" : HairStyleDef.All[i - 1].Id;
+        if (BangsCombo.SelectedIndex >= 0) _hair.Bangs = BangsDef.All[BangsCombo.SelectedIndex].Id;
+        HairChanged();
+    }
+
+    /// <summary>Schnellwahl für Wind und Schwung (Tag: Wind, Richtung, Schwung).</summary>
+    private void HairPreset_Click(object sender, RoutedEventArgs e)
+    {
+        var p = ((string)((Button)sender).Tag).Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+        _hair.Wind = p[0]; _hair.WindDirection = p[1]; _hair.Lift = p[2];
+        foreach (var a in _hairAxes) a.Refresh();
+        HairChanged();
+    }
+
+    private void HairReroll_Click(object sender, RoutedEventArgs e)
+    {
+        _hair.Seed = _hair.Seed % 9999 + 1;
+        HairChanged();
+    }
+
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
 
     /// <summary>Überträgt Stil, Haare und Proportionen auf die Figur (Pose bleibt erhalten).</summary>
@@ -618,7 +682,9 @@ public partial class MainWindow : Window
     {
         if (_suppressFigure) return;
         _figure.SetFigure(CurrentStyle, HairCheck.IsChecked == true, _props);
+        _figure.SetHair(_hair);
         HairCheck.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
+        HairExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin && HairCheck.IsChecked == true;
         PoseChanged();
         if (_ready) RefreshFigureList();
     }
@@ -630,6 +696,7 @@ public partial class MainWindow : Window
         _props.Clamp();
         FigureStyleCombo.SelectedIndex = Math.Max(0, Array.FindIndex(Styles, s => s.Style == fd.Style));
         HairCheck.IsChecked = fd.Hair;
+        ShowHair(fd.HairStyle);
         _suppressFigure = false;
         foreach (var a in _proportionAxes) a.Refresh();
         ApplyFigure();
@@ -1069,6 +1136,38 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Selbsttest (ohne sichtbares Fenster): Vorlage anwenden und prüfen, ob sich die Pose ändert.</summary>
+    /// <summary>Testmodus --uitest-hair: Frisur-Bedienelemente durchspielen (Fenster wird nicht angezeigt, nichts gespeichert).</summary>
+    internal string SelfTestHair()
+    {
+        var sb = new System.Text.StringBuilder();
+        FigureStyleCombo.SelectedIndex = Array.FindIndex(Styles, s => s.Style == FigureStyle.AnimeFemale);
+        sb.AppendLine($"Stil: {_figure.Style}, Haare an: {_figure.Hair}, Bedienfeld aktiv: {HairExpander.IsEnabled}, Frisur: {_figure.HairStyle.Style}");
+        double TopY() => _figure.WorldMeshes().Max(m => m.Mesh.Positions.Count == 0 ? double.MinValue : m.Mesh.Positions.Max(p => m.Transform.Transform(p).Y));
+        foreach (var i in new[] { 1, 6, 7 })
+        {
+            HairStyleCombo.SelectedIndex = i;
+            sb.AppendLine($"Auswahl {HairStyleCombo.SelectedItem}: Figur-Frisur {_figure.HairStyle.Style}, Teile {_figure.WorldMeshes().Count()}");
+        }
+        BangsCombo.SelectedIndex = 2;
+        sb.AppendLine($"Pony: {_figure.HairStyle.Bangs}");
+        HairStyleCombo.SelectedIndex = 4; // lang
+        double calm = TopY();
+        HairPreset_Click(new Button { Tag = "0,0,0" }, new RoutedEventArgs());
+        sb.AppendLine($"Still: Wind {_figure.HairStyle.Wind}, Schwung {_figure.HairStyle.Lift}, höchster Punkt {TopY():F3}");
+        HairPreset_Click(new Button { Tag = "15,0,75" }, new RoutedEventArgs());
+        sb.AppendLine($"Sprung: Wind {_figure.HairStyle.Wind}, Schwung {_figure.HairStyle.Lift}, höchster Punkt {TopY():F3} (vorher {calm:F3})");
+        _hairAxes[0].Value = 150;
+        sb.AppendLine($"Länge-Regler 150: Figur {_figure.HairStyle.Length}");
+        int seed = _figure.HairStyle.Seed;
+        HairReroll_Click(this, new RoutedEventArgs());
+        sb.AppendLine($"Neu würfeln: Seed {seed} → {_figure.HairStyle.Seed}");
+        var fd = _figure.GetFigure();
+        sb.AppendLine($"GetFigure: {fd.HairStyle?.Style} / {fd.HairStyle?.Bangs} / Länge {fd.HairStyle?.Length}");
+        HairCheck.IsChecked = false;
+        sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
+        return sb.ToString();
+    }
+
     internal string SelfTestApplyLibrary()
     {
         var sb = new System.Text.StringBuilder();

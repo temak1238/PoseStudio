@@ -44,6 +44,14 @@ public partial class App : Application
             Environment.Exit(0);
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--uitest-hair")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var mw = new MainWindow();
+            File.WriteAllText(e.Args[1], mw.SelfTestHair());
+            Environment.Exit(0);
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--ik")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -72,6 +80,14 @@ public partial class App : Application
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             PhotosTest(e.Args[1], e.Args[2]);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length >= 2 && e.Args[0] == "--hair")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            HairTest(e.Args[1]);
             Shutdown();
             return;
         }
@@ -608,6 +624,73 @@ public partial class App : Application
         var rtb2 = new System.Windows.Media.Imaging.RenderTargetBitmap(W * yaws.Length, W * moves.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         rtb2.Render(dv2);
         SceneFactory.SaveJpeg(rtb2, Path.Combine(folder, "neck-moves.jpg"), 90);
+    }
+
+    /// <summary>Testmodus --hair: alle Frisuren (Anime weiblich, Cel-Shading) bei Windstille, Brise, starkem Wind und Schwung.</summary>
+    private static void HairTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 260;
+        var cols = new (double yaw, double wind, double dir, double lift, string pose)[]
+        {
+            (0, 0, 0, 0, "Neutral stehen (A-Pose)"), (35, 25, 30, 0, "Neutral stehen (A-Pose)"), (90, 70, 0, 0, "Gehen"),
+            (0, 70, 90, 0, "Neutral stehen (A-Pose)"), (160, 25, 30, 0, "Neutral stehen (A-Pose)"), (20, 0, 0, 80, "Neutral stehen (A-Pose)"),
+        };
+        foreach (var bangs in new[] { "gerade", "seitlich", "scheitel", "offen" })
+        {
+            var styles = bangs == "gerade" ? HairStyleDef.All.Select(s => s.Id).ToArray() : new[] { "schulter", "lang" };
+            var sw = System.Diagnostics.Stopwatch.StartNew(); int updates = 0;
+            var dv = new System.Windows.Media.DrawingVisual();
+            using (var dc = dv.RenderOpen())
+                for (int r = 0; r < styles.Length; r++)
+                    for (int c = 0; c < cols.Length; c++)
+                    {
+                        var col = cols[c];
+                        var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                        m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                        m.HairColor = System.Windows.Media.Color.FromRgb(0x6A, 0x4A, 0x36);
+                        m.SetPose(Presets.All.First(p => p.Name == col.pose).ToPose());
+                        m.SetHair(new HairSettings { Style = styles[r], Bangs = bangs, Wind = col.wind, WindDirection = col.dir, Lift = col.lift });
+                        m.GroundToFloor();
+                        var t0 = sw.Elapsed; m.Update(); updates++;
+                        var head = m.NoseWorld;
+                        var cam = new OrbitCamera { Yaw = col.yaw, Pitch = 5, Distance = 2.1, Target = new P3(head.X, head.Y - 0.25, head.Z) };
+                        dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                            new Rect(c * W, r * W, W, W));
+                    }
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * cols.Length, W * styles.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"hair-{bangs}.jpg"), 90);
+        }
+        // Nahaufnahmen der Pony-Varianten (Schulterlang): vorne, schräg, seitlich – Windstille und Brise
+        {
+            var bangsIds = BangsDef.All.Select(b => b.Id).ToArray();
+            var views = new (double yaw, double wind)[] { (0, 0), (35, 0), (90, 0), (0, 40), (35, 40) };
+            var dvb = new System.Windows.Media.DrawingVisual();
+            using (var dc = dvb.RenderOpen())
+                for (int r = 0; r < bangsIds.Length; r++)
+                    for (int c = 0; c < views.Length; c++)
+                    {
+                        var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                        m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                        m.HairColor = System.Windows.Media.Color.FromRgb(0x6A, 0x4A, 0x36);
+                        m.SetPose(Presets.All.First(p => p.Name == "Neutral stehen (A-Pose)").ToPose());
+                        m.SetHair(new HairSettings { Style = "schulter", Bangs = bangsIds[r], Wind = views[c].wind });
+                        var nose = m.NoseWorld;
+                        var cam = new OrbitCamera { Yaw = views[c].yaw, Pitch = 3, Distance = 0.9, Target = new P3(nose.X, nose.Y + 0.01, nose.Z) };
+                        dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                            new Rect(c * W, r * W, W, W));
+                    }
+            var rb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * views.Length, W * bangsIds.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rb.Render(dvb);
+            SceneFactory.SaveJpeg(rb, Path.Combine(folder, "bangs.jpg"), 90);
+        }
+        // Zeitmessung: Update mit Haaren (beim Ziehen von Gelenken)
+        var mt = new Mannequin(); mt.SetFigure(FigureStyle.AnimeFemale, true, new Proportions());
+        mt.SetHair(new HairSettings { Style = "sehrlang" });
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 50; i++) mt.Update();
+        File.WriteAllText(Path.Combine(folder, "hair.txt"), $"Update mit sehr langen Haaren: {watch.Elapsed.TotalMilliseconds / 50:F1} ms\n");
     }
 
     private static void PelvisTest(string folder)

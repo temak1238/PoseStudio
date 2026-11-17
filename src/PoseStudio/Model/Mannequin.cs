@@ -53,6 +53,8 @@ internal sealed record Part(GeometryModel3D Model, Joint Joint, MaterialKind Kin
     public Vector3D[] LocalNrm { get; init; } = Array.Empty<Vector3D>();
     /// <summary>Sehr kleines Teil (z. B. Augenbraue, Nase) – bekommt im Cel-Shading keine Kontur.</summary>
     public bool Small { get; init; }
+    /// <summary>Punkte werden jedes Mal neu berechnet (Haarsträhnen) – keine Gelenk-Transformation.</summary>
+    public bool Dynamic { get; init; }
 }
 
 internal sealed class SkinData
@@ -66,7 +68,7 @@ internal sealed class SkinData
 }
 /// <summary>Posierbare Figur (Gliederpuppe oder Mensch). Koordinaten in Metern, Y nach oben,
 /// Figur schaut nach +Z. Links der Figur = +X.</summary>
-public sealed class Mannequin
+public sealed partial class Mannequin
 {
     private readonly Dictionary<GeometryModel3D, Part> _parts = new();
     private readonly Dictionary<string, Joint> _byId = new();
@@ -367,16 +369,17 @@ public sealed class Mannequin
         // Greifende Hände bekommen eine geschlossene Hand (Faust um den Griff)
         bool gripL = _prop.Active && (_prop.TwoHanded || _prop.MainSide > 0);
         bool gripR = _prop.Active && (_prop.TwoHanded || _prop.MainSide < 0);
-        var builder = new BodyBuilder(AddPart);
+        var builder = new BodyBuilder((id, m, k, u) => AddPart(id, m, k, u));
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
         else builder.BuildHuman(Style.IsFemale(), Hair, Style.IsAnime(), gripL, gripR);
+        BuildHair();
         foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
         _skinDirty = true;
         Select(sel);
         SelectProp(_propSelected);
     }
 
-    private void AddPart(string jointId, MeshGeometry3D mesh, MaterialKind kind, bool uniform = false)
+    private void AddPart(string jointId, MeshGeometry3D mesh, MaterialKind kind, bool uniform = false, bool dynamic = false)
     {
         var j = _byId[jointId];
         // Eigene, veränderbare Kopie mit Texturkoordinaten für den Eigenschatten
@@ -390,7 +393,8 @@ public sealed class Mannequin
         var gm = new GeometryModel3D(m, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
         if (kind == MaterialKind.Hair) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
         var b = mesh.Bounds;
-        var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray(), Small = Math.Max(b.SizeX, Math.Max(b.SizeY, b.SizeZ)) < 0.025 };
+        var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray(), Dynamic = dynamic,
+            Small = !dynamic && Math.Max(b.SizeX, Math.Max(b.SizeY, b.SizeZ)) < 0.025 };
         j.Parts.Add(p);
         _parts[gm] = p;
         Group.Children.Add(gm);
@@ -409,7 +413,7 @@ public sealed class Mannequin
         Update();
     }
 
-    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone() };
+    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone(), HairStyle = HairStyle.Clone() };
 
     /// <summary>Berechnet Segment-Skalierungen und Gelenkabstände aus den Proportionen
     /// und die Gesamtskalierung für die gewünschte Körpergröße.</summary>
@@ -503,6 +507,7 @@ public sealed class Mannequin
         {
             foreach (var p in j.Parts)
             {
+                if (p.Dynamic) continue;
                 if (p.Skin != null) { ApplySkin(p, j); continue; }
                 var sc = p.Uniform ? new Vector3D(j.UniformScale, j.UniformScale, j.UniformScale) : j.SegScale;
                 var m = Matrix3D.Identity;
@@ -512,6 +517,7 @@ public sealed class Mannequin
         }
         var pw = PropWorld;
         foreach (var p in _propJoint.Parts) ((MatrixTransform3D)p.Model.Transform).Matrix = pw;
+        UpdateHair();
     }
 
     // ------------------------------------------------------------------ Weiche Gelenkübergänge (Skinning)
@@ -1403,6 +1409,7 @@ public sealed class Mannequin
         foreach (var p in _parts.Values)
         {
             if (ReferenceEquals(p.Joint, _propJoint)) continue; // Objekt zählt nicht für die Bodenhöhe (Stab darf den Boden berühren)
+            if (p.Dynamic) continue; // Haarsträhnen zählen weder für Körpergröße noch Bodenhöhe
             var m = ((MatrixTransform3D)p.Model.Transform).Matrix;
             var mesh = (MeshGeometry3D)p.Model.Geometry;
             // jeder zweite Punkt genügt für die Bodenhöhe

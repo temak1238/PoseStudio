@@ -63,4 +63,6 @@ public sealed class FigureData
     public FigureStyle Style { get; set; } = FigureStyle.Mannequin;
     public bool Hair { get; set; } = true;
     public Proportions Proportions { get; set; } = new();
+    /// <summary>Frisur (ab 0.16); fehlt bei älteren Dateien.</summary>
+    public HairSettings? HairStyle { get; set; }
 }
