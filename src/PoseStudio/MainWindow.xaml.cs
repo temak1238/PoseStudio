@@ -797,7 +797,8 @@ public partial class MainWindow : Window
         ApplyFigure();
     }
 
-    private void Figure_Changed(object sender, RoutedEventArgs e) => ApplyFigure();
+    // Während InitializeComponent können Haken schon Ereignisse auslösen, bevor alle Bedienelemente existieren
+    private void Figure_Changed(object sender, RoutedEventArgs e) { if (ClothesExpander != null) ApplyFigure(); }
 
     private void ResetProportions_Click(object sender, RoutedEventArgs e)
     {

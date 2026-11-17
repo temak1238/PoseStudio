@@ -46,9 +46,10 @@ public partial class App : Application
 
         if (e.Args.Length >= 2 && e.Args[0] == "--uitest-hair")
         {
+            // Fehler in die Datei schreiben statt als Meldungsfenster (sonst hängt der unsichtbare Test)
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var mw = new MainWindow();
-            File.WriteAllText(e.Args[1], mw.SelfTestHair());
+            try { var mw = new MainWindow(); File.WriteAllText(e.Args[1], mw.SelfTestHair()); }
+            catch (Exception ex) { File.WriteAllText(e.Args[1], "FEHLER: " + ex); }
             Environment.Exit(0);
         }
 
