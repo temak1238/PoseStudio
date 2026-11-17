@@ -102,6 +102,7 @@ public partial class MainWindow : Window
         BuildCameraAxes();
         BuildProportionAxes();
         InitHair();
+        InitClothes();
         BuildLightAxes();
         InitSetUi();
         InitPropUi();
@@ -675,6 +676,81 @@ public partial class MainWindow : Window
         HairChanged();
     }
 
+    // =================================================================== Kleidung
+
+    private ClothingSettings _clothes = new();
+    private readonly ObservableCollection<AxisViewModel> _clothAxes = new();
+    private bool _suppressClothes;
+
+    private void InitClothes()
+    {
+        TopCombo.ItemsSource = TopDef.All.Select(t => t.Name).ToList();
+        BottomCombo.ItemsSource = BottomDef.All.Select(b => b.Name).ToList();
+        ShoeCombo.ItemsSource = ShoeDef.All.Select(s => s.Name).ToList();
+        ClothItems.ItemsSource = _clothAxes;
+        _clothAxes.Add(new AxisViewModel("Weite Rock/Kleid (%)", 40, 220, () => _clothes.Fullness, v => { _clothes.Fullness = v; ClothesChanged(); }));
+    }
+
+    private void ShowClothing(ClothingSettings? c)
+    {
+        _clothes = c?.Clone() ?? new ClothingSettings();
+        _clothes.Clamp();
+        _suppressClothes = true;
+        TopCombo.SelectedIndex = Math.Max(0, TopDef.All.ToList().FindIndex(t => t.Id == _clothes.Top));
+        BottomCombo.SelectedIndex = Math.Max(0, BottomDef.All.ToList().FindIndex(b => b.Id == _clothes.Bottom));
+        ShoeCombo.SelectedIndex = Math.Max(0, ShoeDef.All.ToList().FindIndex(s => s.Id == _clothes.Shoes));
+        _suppressClothes = false;
+        UpdateClothSwatches();
+        foreach (var a in _clothAxes) a.Refresh();
+    }
+
+    private void UpdateClothSwatches()
+    {
+        TopSwatch.Background = new SolidColorBrush(ParseColor(_clothes.TopColor, Colors.White));
+        BottomSwatch.Background = new SolidColorBrush(ParseColor(_clothes.BottomColor, Colors.SteelBlue));
+        ShoeSwatch.Background = new SolidColorBrush(ParseColor(_clothes.ShoeColor, Colors.SaddleBrown));
+    }
+
+    private void ClothesChanged()
+    {
+        if (_suppressClothes || !_ready) return;
+        _figure.SetClothing(_clothes);
+        PoseChanged();
+    }
+
+    private void Clothing_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressClothes) return;
+        if (TopCombo.SelectedIndex >= 0) _clothes.Top = TopDef.All[TopCombo.SelectedIndex].Id;
+        if (BottomCombo.SelectedIndex >= 0) _clothes.Bottom = BottomDef.All[BottomCombo.SelectedIndex].Id;
+        if (ShoeCombo.SelectedIndex >= 0) _clothes.Shoes = ShoeDef.All[ShoeCombo.SelectedIndex].Id;
+        ClothesChanged();
+    }
+
+    private void PickClothColor_Click(object sender, RoutedEventArgs e)
+    {
+        string which = (string)((Button)sender).Tag;
+        string current = which switch { "top" => _clothes.TopColor, "bottom" => _clothes.BottomColor, _ => _clothes.ShoeColor };
+        if (PickColor(ParseColor(current, Colors.Gray)) is not { } c) return;
+        switch (which)
+        {
+            case "top": _clothes.TopColor = ToHex(c); break;
+            case "bottom": _clothes.BottomColor = ToHex(c); break;
+            default: _clothes.ShoeColor = ToHex(c); break;
+        }
+        UpdateClothSwatches();
+        ClothesChanged();
+    }
+
+    /// <summary>Schnellwahl ganzer Outfits (Tag: Oberteil, Unterteil, Schuhe).</summary>
+    private void Outfit_Click(object sender, RoutedEventArgs e)
+    {
+        var p = ((string)((Button)sender).Tag).Split(',');
+        _clothes.Top = p[0]; _clothes.Bottom = p[1]; _clothes.Shoes = p[2];
+        ShowClothing(_clothes);
+        ClothesChanged();
+    }
+
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
 
     /// <summary>Überträgt Stil, Haare und Proportionen auf die Figur (Pose bleibt erhalten).</summary>
@@ -683,8 +759,10 @@ public partial class MainWindow : Window
         if (_suppressFigure) return;
         _figure.SetFigure(CurrentStyle, HairCheck.IsChecked == true, _props);
         _figure.SetHair(_hair);
+        _figure.SetClothing(_clothes);
         HairCheck.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
-        HairExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin && HairCheck.IsChecked == true;
+        HairExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin; // Wind gilt auch für Röcke und Kleider
+        ClothesExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
         PoseChanged();
         if (_ready) RefreshFigureList();
     }
@@ -697,6 +775,7 @@ public partial class MainWindow : Window
         FigureStyleCombo.SelectedIndex = Math.Max(0, Array.FindIndex(Styles, s => s.Style == fd.Style));
         HairCheck.IsChecked = fd.Hair;
         ShowHair(fd.HairStyle);
+        ShowClothing(fd.Clothing);
         _suppressFigure = false;
         foreach (var a in _proportionAxes) a.Refresh();
         ApplyFigure();
@@ -1163,6 +1242,12 @@ public partial class MainWindow : Window
         sb.AppendLine($"Neu würfeln: Seed {seed} → {_figure.HairStyle.Seed}");
         var fd = _figure.GetFigure();
         sb.AppendLine($"GetFigure: {fd.HairStyle?.Style} / {fd.HairStyle?.Bangs} / Länge {fd.HairStyle?.Length}");
+        BottomCombo.SelectedIndex = BottomDef.All.ToList().FindIndex(b => b.Id == "kleid");
+        TopCombo.SelectedIndex = TopDef.All.ToList().FindIndex(t => t.Id == "tshirt");
+        Outfit_Click(new Button { Tag = "tshirt,minirock,socken" }, new RoutedEventArgs());
+        sb.AppendLine($"Kleidung: {_figure.Clothing.Top} / {_figure.Clothing.Bottom} / {_figure.Clothing.Shoes}, Teile {_figure.WorldMeshes().Count()}, GetFigure {_figure.GetFigure().Clothing?.Bottom}");
+        _clothAxes[0].Value = 180;
+        sb.AppendLine($"Weite 180: {_figure.Clothing.Fullness}");
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();

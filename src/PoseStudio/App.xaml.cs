@@ -84,6 +84,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--clothes")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            ClothesTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--hair")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -691,6 +699,73 @@ public partial class App : Application
         var watch = System.Diagnostics.Stopwatch.StartNew();
         for (int i = 0; i < 50; i++) mt.Update();
         File.WriteAllText(Path.Combine(folder, "hair.txt"), $"Update mit sehr langen Haaren: {watch.Elapsed.TotalMilliseconds / 50:F1} ms\n");
+    }
+
+    /// <summary>Testmodus --clothes: Outfits (Anime weiblich, Cel-Shading) in verschiedenen Posen, bei Wind und Schwung.</summary>
+    private static void ClothesTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 260;
+        var outfits = new (string top, string bottom, string shoes, double full)[]
+        {
+            ("tshirt", "shorts", "schuhe", 100), ("langarm", "hose", "stiefel", 100), ("bandeau", "minirock", "socken", 100),
+            ("tanktop", "rock", "schuhe", 100), ("none", "minikleid", "schuhe", 130), ("tshirt", "kleid", "socken", 100),
+            ("langarm", "langkleid", "schuhe", 100), ("none", "langkleid", "none", 200),
+        };
+        var cols = new (double yaw, double wind, double dir, double lift, string pose)[]
+        {
+            (0, 0, 0, 0, "Neutral stehen (A-Pose)"), (35, 25, 30, 0, "Neutral stehen (A-Pose)"), (90, 25, 0, 0, "Gehen"),
+            (35, 0, 0, 0, "Sitzen (Stuhl)"), (0, 70, 90, 0, "Neutral stehen (A-Pose)"), (20, 10, 0, 85, "Neutral stehen (A-Pose)"),
+        };
+        var sw = new System.Diagnostics.Stopwatch();
+        int updates = 0;
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int r = 0; r < outfits.Length; r++)
+                for (int c = 0; c < cols.Length; c++)
+                {
+                    var o = outfits[r]; var col = cols[c];
+                    var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                    m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                    m.HairColor = System.Windows.Media.Color.FromRgb(0x6A, 0x4A, 0x36);
+                    m.SetPose(Presets.All.First(p => p.Name == col.pose).ToPose());
+                    m.SetHair(new HairSettings { Style = "schulter", Wind = col.wind, WindDirection = col.dir, Lift = col.lift });
+                    m.SetClothing(new ClothingSettings { Top = o.top, Bottom = o.bottom, Shoes = o.shoes, Fullness = o.full, TopColor = "#EDE7DA", BottomColor = r % 2 == 0 ? "#3E4C6E" : "#8A3346" });
+                    m.GroundToFloor();
+                    sw.Start(); m.Update(); sw.Stop(); updates++;
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = col.yaw, Pitch = 5, Distance = 3.3, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = true, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                        new Rect(c * W, r * W, W, W));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * cols.Length, W * outfits.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "clothes.jpg"), 90);
+        // Sitzen aus der Nähe (Rock knielang): vorne, schräg, seitlich, von oben, von unten
+        {
+            var views = new (double yaw, double pitch)[] { (0, 5), (45, 10), (90, 5), (20, 70), (0, -40) };
+            var dvs = new System.Windows.Media.DrawingVisual();
+            using (var dc = dvs.RenderOpen())
+                for (int c = 0; c < views.Length; c++)
+                {
+                    var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                    m.SetPose(Presets.All.First(p => p.Name == "Sitzen (Stuhl)").ToPose());
+                    m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = "rock", Shoes = "schuhe", BottomColor = "#8A3346" });
+                    m.GroundToFloor();
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = views[c].yaw, Pitch = views[c].pitch, Distance = 1.6, Target = new P3(pel.X, pel.Y - 0.1, pel.Z + 0.15) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                        new Rect(c * W, 0, W, W));
+                }
+            var rs = new System.Windows.Media.Imaging.RenderTargetBitmap(W * views.Length, W, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rs.Render(dvs);
+            SceneFactory.SaveJpeg(rs, Path.Combine(folder, "sitting.jpg"), 90);
+            var md = new Mannequin(); md.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+            md.SetPose(Presets.All.First(p => p.Name == "Sitzen (Stuhl)").ToPose());
+            md.SetClothing(new ClothingSettings { Bottom = "rock" }); md.GroundToFloor();
+            File.WriteAllText(Path.Combine(folder, "skirt-debug.txt"), md.DebugSkirt());
+        }
+        File.WriteAllText(Path.Combine(folder, "clothes.txt"), $"Update mit Kleidung und Haaren: {sw.Elapsed.TotalMilliseconds / updates:F1} ms\n");
     }
 
     private static void PelvisTest(string folder)

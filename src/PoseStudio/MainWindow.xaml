@@ -103,6 +103,37 @@
                                                Text="Wehrichtung relativ zur Figur: 0° = nach hinten, 90° = zur linken Seite der Figur, 180° = nach vorne. Haarfarbe unter „Darstellung“." />
                                 </StackPanel>
                             </Expander>
+                            <Expander x:Name="ClothesExpander" Header="Kleidung" Margin="0,4,0,0" IsExpanded="True">
+                                <StackPanel>
+                                    <DockPanel Margin="0,2">
+                                        <Button DockPanel.Dock="Right" Content="…" Width="24" Tag="top" Click="PickClothColor_Click" ToolTip="Farbe des Oberteils" />
+                                        <Border x:Name="TopSwatch" DockPanel.Dock="Right" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" Margin="4,0" />
+                                        <TextBlock Text="Oberteil" Width="62" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="TopCombo" SelectionChanged="Clothing_Changed" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <Button DockPanel.Dock="Right" Content="…" Width="24" Tag="bottom" Click="PickClothColor_Click" ToolTip="Farbe von Hose, Rock bzw. ganzem Kleid" />
+                                        <Border x:Name="BottomSwatch" DockPanel.Dock="Right" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" Margin="4,0" />
+                                        <TextBlock Text="Unterteil" Width="62" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="BottomCombo" SelectionChanged="Clothing_Changed" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,2">
+                                        <Button DockPanel.Dock="Right" Content="…" Width="24" Tag="shoes" Click="PickClothColor_Click" ToolTip="Farbe von Schuhen, Stiefeln oder Strümpfen" />
+                                        <Border x:Name="ShoeSwatch" DockPanel.Dock="Right" Width="22" Height="22" BorderBrush="#555" BorderThickness="1" Margin="4,0" />
+                                        <TextBlock Text="Schuhe" Width="62" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="ShoeCombo" SelectionChanged="Clothing_Changed" />
+                                    </DockPanel>
+                                    <ItemsControl x:Name="ClothItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                                    <UniformGrid Columns="4" Margin="0,2">
+                                        <Button Content="Kleid" Click="Outfit_Click" Tag="none,kleid,schuhe" ToolTip="Ärmelloses Kleid, knielang" />
+                                        <Button Content="Schuluniform" Click="Outfit_Click" Tag="tshirt,minirock,socken" ToolTip="T-Shirt, Minirock, Kniestrümpfe" />
+                                        <Button Content="Freizeit" Click="Outfit_Click" Tag="langarm,hose,schuhe" ToolTip="Langarm-Shirt, lange Hose, Schuhe" />
+                                        <Button Content="Ohne" Click="Outfit_Click" Tag="none,none,none" ToolTip="Keine Kleidung" />
+                                    </UniformGrid>
+                                    <TextBlock FontSize="11" Foreground="#666" TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Text="Röcke und Kleider fallen mit der Schwerkraft und reagieren auf Wind und Schwung (Regler unter „Frisur und Wind“). Beim Kleid bestimmt das Oberteil Ausschnitt und Ärmel, die Farbe kommt vom Unterteil." />
+                                </StackPanel>
+                            </Expander>
                             <Expander x:Name="ProportionExpander" Header="Proportionen" Margin="0,4,0,0">
                                 <StackPanel>
                                     <ItemsControl x:Name="ProportionItems" ItemTemplate="{StaticResource AxisTemplate}" />

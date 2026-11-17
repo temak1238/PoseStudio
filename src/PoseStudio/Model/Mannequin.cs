@@ -115,6 +115,7 @@ public sealed partial class Mannequin
         Def(MaterialKind.PropGem, new ShadeBrush(Color.FromRgb(0x4F, 0x9C, 0xE0)), 0xC0);
         Def(MaterialKind.Line, new ShadeBrush(Color.FromRgb(0x2A, 0x1E, 0x1E)), 0x00);
         Def(MaterialKind.Mouth, new ShadeBrush(Color.FromRgb(0x8A, 0x3E, 0x3E)), 0x00);
+        InitClothMaterials(Def);
         _byId["prop"] = _propJoint;
         _highlightMat = MakeMaterial(new ShadeBrush(Color.FromRgb(0xFF, 0x8C, 0x1A)).Brush, 0x40, false);
         BodyColor = _bodyBrush.Color;
@@ -372,6 +373,7 @@ public sealed partial class Mannequin
         var builder = new BodyBuilder((id, m, k, u) => AddPart(id, m, k, u));
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
         else builder.BuildHuman(Style.IsFemale(), Hair, Style.IsAnime(), gripL, gripR);
+        BuildClothes(builder);
         BuildHair();
         foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
         _skinDirty = true;
@@ -391,7 +393,7 @@ public sealed partial class Mannequin
         tc.Add(new System.Windows.Point(0, 0)); tc.Add(new System.Windows.Point(1, 1));
         m.TextureCoordinates = tc;
         var gm = new GeometryModel3D(m, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
-        if (kind == MaterialKind.Hair) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
+        if (kind == MaterialKind.Hair || dynamic) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
         var b = mesh.Bounds;
         var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray(), Dynamic = dynamic,
             Small = !dynamic && Math.Max(b.SizeX, Math.Max(b.SizeY, b.SizeZ)) < 0.025 };
@@ -413,7 +415,7 @@ public sealed partial class Mannequin
         Update();
     }
 
-    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone(), HairStyle = HairStyle.Clone() };
+    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone(), HairStyle = HairStyle.Clone(), Clothing = Clothing.Clone() };
 
     /// <summary>Berechnet Segment-Skalierungen und Gelenkabstände aus den Proportionen
     /// und die Gesamtskalierung für die gewünschte Körpergröße.</summary>
@@ -518,6 +520,7 @@ public sealed partial class Mannequin
         var pw = PropWorld;
         foreach (var p in _propJoint.Parts) ((MatrixTransform3D)p.Model.Transform).Matrix = pw;
         UpdateHair();
+        UpdateSkirt();
     }
 
     // ------------------------------------------------------------------ Weiche Gelenkübergänge (Skinning)
@@ -1485,7 +1488,7 @@ public sealed partial class Mannequin
         var group = new Model3DGroup();
         foreach (var p in _parts.Values)
         {
-            if (p.Kind == MaterialKind.Hair) continue;
+            if (p.Kind == MaterialKind.Hair || IsCloth(p.Kind)) continue; // ControlNet: nackte Puppe wie im Trainingsmaterial
             if (ReferenceEquals(p.Joint, _propJoint) && !includeProps) continue;
             group.Children.Add(new GeometryModel3D(p.Model.Geometry.CloneCurrentValue(), mg)
             {

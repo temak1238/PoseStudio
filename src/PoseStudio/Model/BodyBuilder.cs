@@ -48,39 +48,77 @@ internal sealed class BodyBuilder
     /// <summary>Größe der Hand (Handfläche im Mesh; Finger werden im Skelett mit demselben Faktor skaliert).</summary>
     public static double HandK(bool female, bool anime) => (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
 
+    /// <summary>Querschnitt eines Loft-Körpers: Höhe, halbe Breite, halbe Tiefe, Versatz nach vorne.</summary>
+    public readonly record struct Sec(double Y, double Rx, double Rz, double Cz);
+
+    /// <summary>Rumpf von Schritt bis Hals (Becken-System).</summary>
+    internal static Sec[] TorsoSections(bool female, bool anime)
+    {
+        double w = (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
+        double hip = female ? 1.1 : 1.0, sh = female ? 0.92 : 1.0, waist = female ? 0.86 : 1.0, glute = female ? 1.08 : 1.0;
+        // Unterleib geschlossen und glatt (Schaufensterpuppe): schmaler, flacher Schritt mit kleiner Kappe,
+        // Gesäß als nach hinten verschobener, vollerer Querschnitt (bleibt beim Sitzen am Becken).
+        return new Sec[]
+        {
+            new(-0.135, 0.03, 0.026, -0.004),
+            new(-0.112, 0.072 * hip, 0.058, -0.012),
+            new(-0.075, 0.138 * hip, 0.088 * glute, -0.022 * glute),
+            new(-0.025, 0.157 * hip, 0.1 * glute, -0.02 * glute),
+            new(0.025, 0.155 * hip, 0.095, -0.01),
+            new(0.06, 0.145 * (female ? 1.02 : 1), 0.088, 0.005),
+            new(0.12, 0.135 * (female ? 0.9 : 1), 0.085, 0.008),
+            new(0.19, 0.13 * waist, 0.084, 0.008),
+            new(0.25, 0.138 * (female ? 0.9 : 1), 0.088, 0.006),
+            new(0.31, 0.155 * sh, 0.10, 0.005),
+            new(0.40, 0.17 * sh, 0.105, 0.0),
+            new(0.47, 0.18 * sh, 0.098, -0.005),
+            new(0.51, 0.175 * sh, 0.085, -0.01),
+            new(0.54, 0.14 * sh, 0.068, -0.01),
+            new(0.565, 0.08 * sh, 0.056, -0.006),
+            new(0.59, 0.052 * w, 0.05 * w, 0.0),
+            new(0.65, 0.046 * w, 0.046 * w, 0.006),
+            new(0.69, 0.045 * w, 0.045 * w, 0.012),
+            // Anime: Hals reicht weiter in den (größeren) Kopf, damit unter dem Hinterkopf keine Lücke bleibt
+            new(anime ? 0.72 : 0.70, 0.043 * w, 0.043 * w, anime ? 0.018 : 0.014),
+        };
+    }
+
+    /// <summary>Ober- und Unterarm (Schulter-System, nach unten).</summary>
+    internal static Sec[] ArmSections(double w) => new Sec[]
+    {
+        new(0.00, 0.05 * w, 0.05 * w, 0.0), new(-0.06, 0.052 * w, 0.05 * w, 0.003), new(-0.16, 0.046 * w, 0.047 * w, 0.005),
+        new(-0.25, 0.039 * w, 0.04 * w, 0.0), new(-0.29, 0.036 * w, 0.036 * w, 0.0), new(-0.33, 0.041 * w, 0.038 * w, 0.0),
+        new(-0.43, 0.035 * w, 0.031 * w, 0.0), new(-0.52, 0.026 * w, 0.021 * w, 0.0), new(-0.56, 0.024 * w, 0.019 * w, 0.0),
+    };
+
+    /// <summary>Bein mit Kniescheibe und Wade (Hüft-System, nach unten).</summary>
+    internal static Sec[] LegSections(bool female, double w) => new Sec[]
+    {
+        new(0.015, 0.066, 0.066, 0.0), new(-0.04, 0.086 * (female ? 1.04 : 1), 0.088, 0.005), new(-0.20, 0.075, 0.078, 0.008),
+        new(-0.36, 0.058 * w, 0.06 * w, 0.005), new(-0.44, 0.051 * w, 0.055 * w, 0.006), new(-0.50, 0.05 * w, 0.055 * w, -0.008),
+        new(-0.58, 0.052 * w, 0.06 * w, -0.015), new(-0.74, 0.038 * w, 0.04 * w, -0.005), new(-0.86, 0.03 * w, 0.03 * w, 0.0),
+    };
+
+    /// <summary>Fuß entlang Z (Knöchel-System): (z, halbe Breite, halbe Höhe, Versatz Y).</summary>
+    internal static (double z, double rx, double ry, double cy)[] FootSections(double f) => new[]
+    {
+        (-0.05 * f, 0.032 * f, 0.03 * f, -0.04), (-0.01 * f, 0.04 * f, 0.04 * f, -0.035), (0.05 * f, 0.043 * f, 0.035 * f, -0.045),
+        (0.11 * f, 0.047 * f, 0.025 * f, -0.055), (0.16 * f, 0.042 * f, 0.016 * f, -0.062),
+    };
+
+    internal static double LimbW(bool female, bool anime) => (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
+    private static double FootK(bool female, bool anime) => (female ? 0.92 : 1.0) * (anime ? 0.92 : 1.0);
+
+    private static MeshGeometry3D LoftOf(IEnumerable<Sec> s, double cap = 0.8) =>
+        MeshFactory.LoftY(1.0, cap, s.Select(q => (q.Y, q.Rx, q.Rz, q.Cz)).ToArray());
+
     public void BuildHuman(bool female, bool hair, bool anime = false, bool gripL = false, bool gripR = false)
     {
-        double w = (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);   // Gliedmaßen schlanker
-        double hip = female ? 1.1 : 1.0; // Becken breiter
-        double sh = female ? 0.92 : 1.0; // Brustkorb schmaler
+        double w = LimbW(female, anime);
 
         // ---- Rumpf als eine durchgehende Form von Schritt bis Hals (im Becken-System).
         // Sie wird über die Kette Becken → Bauch → Brust → Hals → Kopf weich gebogen (Skinning in Mannequin).
-        double waist = female ? 0.86 : 1.0;
-        // Unterleib geschlossen und glatt (Schaufensterpuppe): schmaler, flacher Schritt mit kleiner Kappe,
-        // Gesäß als nach hinten verschobener, vollerer Querschnitt (bleibt beim Sitzen am Becken).
-        double glute = female ? 1.08 : 1.0;
-        _add("pelvis", MeshFactory.LoftY(1.0, 0.35,
-            (-0.135, 0.03, 0.026, -0.004),
-            (-0.112, 0.072 * hip, 0.058, -0.012),
-            (-0.075, 0.138 * hip, 0.088 * glute, -0.022 * glute),
-            (-0.025, 0.157 * hip, 0.1 * glute, -0.02 * glute),
-            (0.025, 0.155 * hip, 0.095, -0.01),
-            (0.06, 0.145 * (female ? 1.02 : 1), 0.088, 0.005),
-            (0.12, 0.135 * (female ? 0.9 : 1), 0.085, 0.008),
-            (0.19, 0.13 * waist, 0.084, 0.008),
-            (0.25, 0.138 * (female ? 0.9 : 1), 0.088, 0.006),
-            (0.31, 0.155 * sh, 0.10, 0.005),
-            (0.40, 0.17 * sh, 0.105, 0.0),
-            (0.47, 0.18 * sh, 0.098, -0.005),
-            (0.51, 0.175 * sh, 0.085, -0.01),
-            (0.54, 0.14 * sh, 0.068, -0.01),
-            (0.565, 0.08 * sh, 0.056, -0.006),
-            (0.59, 0.052 * w, 0.05 * w, 0.0),
-            (0.65, 0.046 * w, 0.046 * w, 0.006),
-            (0.69, 0.045 * w, 0.045 * w, 0.012),
-            // Anime: Hals reicht weiter in den (größeren) Kopf, damit unter dem Hinterkopf keine Lücke bleibt
-            (anime ? 0.72 : 0.70, 0.043 * w, 0.043 * w, anime ? 0.018 : 0.014)), MaterialKind.Body);
+        _add("pelvis", LoftOf(TorsoSections(female, anime), 0.35), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
                 _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
@@ -90,42 +128,102 @@ internal sealed class BodyBuilder
         foreach (var s in new[] { 1, -1 })
         {
             string sfx = s > 0 ? "_l" : "_r";
-
-            // ---- Oberarm mit Schulter
+            // ---- Oberarm mit Schulter; Ober- und Unterarm als eine Form (Schulter → Ellbogen → Handgelenk)
             _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w, 0.065, 0.054 * w), MaterialKind.Body);
-            // Ober- und Unterarm als eine Form (Schulter → Ellbogen → Handgelenk)
-            _add("shoulder" + sfx, Loft(
-                (0.00, 0.05 * w, 0.05 * w, 0.0),
-                (-0.06, 0.052 * w, 0.05 * w, 0.003),
-                (-0.16, 0.046 * w, 0.047 * w, 0.005),
-                (-0.25, 0.039 * w, 0.04 * w, 0.0),
-                (-0.29, 0.036 * w, 0.036 * w, 0.0),
-                (-0.33, 0.041 * w, 0.038 * w, 0.0),
-                (-0.43, 0.035 * w, 0.031 * w, 0.0),
-                (-0.52, 0.026 * w, 0.021 * w, 0.0),
-                (-0.56, 0.024 * w, 0.019 * w, 0.0)), MaterialKind.Body);
+            _add("shoulder" + sfx, LoftOf(ArmSections(w)), MaterialKind.Body);
             BuildHand("wrist" + sfx, s, HandK(female, anime));
-
-            // ---- Bein als eine Form (Hüfte → Knie → Knöchel), mit Kniescheibe und Wade
-            _add("hip" + sfx, Loft(
-                (0.015, 0.066, 0.066, 0.0),
-                (-0.04, 0.086 * (female ? 1.04 : 1), 0.088, 0.005),
-                (-0.20, 0.075, 0.078, 0.008),
-                (-0.36, 0.058 * w, 0.06 * w, 0.005),
-                (-0.44, 0.051 * w, 0.055 * w, 0.006),
-                (-0.50, 0.05 * w, 0.055 * w, -0.008),
-                (-0.58, 0.052 * w, 0.06 * w, -0.015),
-                (-0.74, 0.038 * w, 0.04 * w, -0.005),
-                (-0.86, 0.03 * w, 0.03 * w, 0.0)), MaterialKind.Body);
+            // ---- Bein als eine Form (Hüfte → Knie → Knöchel)
+            _add("hip" + sfx, LoftOf(LegSections(female, w)), MaterialKind.Body);
             // ---- Fuß
-            double f = (female ? 0.92 : 1.0) * (anime ? 0.92 : 1.0);
+            double f = FootK(female, anime);
             _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f), MaterialKind.Body, true);
-            _add("ankle" + sfx, MeshFactory.LoftZ(
-                (-0.05 * f, 0.032 * f, 0.03 * f, -0.04),
-                (-0.01 * f, 0.04 * f, 0.04 * f, -0.035),
-                (0.05 * f, 0.043 * f, 0.035 * f, -0.045),
-                (0.11 * f, 0.047 * f, 0.025 * f, -0.055),
-                (0.16 * f, 0.042 * f, 0.016 * f, -0.062)), MaterialKind.Body, true);
+            _add("ankle" + sfx, MeshFactory.LoftZ(FootSections(f)), MaterialKind.Body, true);
+        }
+    }
+
+    // ================================================================= Kleidung (anliegend)
+
+    /// <summary>Querschnitte zwischen y0 und y1 (Reihenfolge wie in der Liste), Enden linear interpoliert, um off
+    /// (am Ende offEnd) aufgeweitet.</summary>
+    internal static List<Sec> Clip(Sec[] s, double y0, double y1, double off, double offEnd = double.NaN)
+    {
+        double lo = Math.Min(y0, y1), hi = Math.Max(y0, y1);
+        Sec At(double y)
+        {
+            for (int i = 0; i + 1 < s.Length; i++)
+            {
+                var a = s[i]; var b = s[i + 1];
+                if ((y - a.Y) * (y - b.Y) <= 0 && a.Y != b.Y)
+                {
+                    double t = (y - a.Y) / (b.Y - a.Y);
+                    return new Sec(y, a.Rx + (b.Rx - a.Rx) * t, a.Rz + (b.Rz - a.Rz) * t, a.Cz + (b.Cz - a.Cz) * t);
+                }
+            }
+            return Math.Abs(y - s[0].Y) < Math.Abs(y - s[^1].Y) ? s[0] with { Y = y } : s[^1] with { Y = y };
+        }
+        bool asc = s[^1].Y > s[0].Y;
+        var list = new List<Sec> { At(asc ? lo : hi) };
+        list.AddRange(s.Where(q => q.Y > lo + 0.005 && q.Y < hi - 0.005));
+        list.Add(At(asc ? hi : lo));
+        if (double.IsNaN(offEnd)) offEnd = off;
+        double first = list[0].Y, span = list[^1].Y - first;
+        return list.Select(q =>
+        {
+            double t = span == 0 ? 0 : (q.Y - first) / span, o = off + (offEnd - off) * t;
+            return new Sec(q.Y, q.Rx + o, q.Rz + o, q.Cz);
+        }).ToList();
+    }
+
+    /// <summary>Anliegende Kleidung als leicht größere Hüllen um Rumpf, Arme, Beine und Füße. Sie hängen an denselben Gelenken
+    /// wie der Körper und biegen sich daher mit (Skinning). Röcke und Kleider (fallender Stoff) berechnet Mannequin.</summary>
+    public void BuildClothes(ClothingSettings c, bool female, bool anime)
+    {
+        var top = TopDef.Find(c.Top) ?? TopDef.All[0];
+        var bottom = BottomDef.Find(c.Bottom) ?? BottomDef.All[0];
+        var shoes = ShoeDef.Find(c.Shoes) ?? ShoeDef.All[0];
+        var torso = TorsoSections(female, anime);
+        double w = LimbW(female, anime);
+        bool dress = bottom.Kind == BottomKind.Dress;
+        // Kleid: Ausschnitt und Ärmel vom Oberteil (mindestens ärmellos), Farbe vom Kleid
+        var bodice = dress && top.Id == "none" ? TopDef.Find("tanktop")! : top;
+        var topKind = dress ? MaterialKind.ClothBottom : MaterialKind.ClothTop;
+
+        if (bodice.Id != "none")
+        {
+            // Unterkante: Kleid ab Taille (dort setzt der Rock an), sonst bis über den Hosenbund
+            double lower = dress ? 0.08 : 0.0;
+            _add("pelvis", LoftOf(Clip(torso, lower, bodice.Upper, 0.006, 0.01), 0.05), topKind);
+            if (female)
+                foreach (var s in new[] { 1, -1 })
+                    _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.058), 0.074, 0.076, 0.055), topKind);
+            if (bodice.Sleeve < 0)
+                foreach (var s in new[] { 1, -1 })
+                {
+                    string sfx = s > 0 ? "_l" : "_r";
+                    _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.045, 0), 0.05 * w + 0.013, 0.082, 0.054 * w + 0.013), topKind);
+                    _add("shoulder" + sfx, LoftOf(Clip(ArmSections(w), 0.0, bodice.Sleeve, 0.009, bodice.Sleeve < -0.3 ? 0.006 : 0.011), 0.05), topKind);
+                }
+        }
+
+        if (bottom.Kind == BottomKind.Pants)
+        {
+            _add("pelvis", LoftOf(Clip(torso, -0.135, 0.11, 0.007), 0.35), MaterialKind.ClothBottom);
+            foreach (var sfx in new[] { "_l", "_r" })
+                _add("hip" + sfx, LoftOf(Clip(LegSections(female, w), 0.015, bottom.Hem, 0.008, bottom.Hem < -0.5 ? 0.014 : 0.012), 0.05), MaterialKind.ClothBottom);
+        }
+
+        if (shoes.Id != "none")
+        {
+            double f = FootK(female, anime), o = shoes.Offset;
+            foreach (var sfx in new[] { "_l", "_r" })
+            {
+                if (shoes.Shaft < 0)
+                    _add("hip" + sfx, LoftOf(Clip(LegSections(female, w), shoes.Shaft, -0.86, o), 0.05), MaterialKind.Shoes);
+                _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f + o), MaterialKind.Shoes, true);
+                var foot = FootSections(f).Select(q => (z: q.z, rx: q.rx + o, ry: q.ry + o + (shoes.Sole ? 0.003 : 0), cy: q.cy - (shoes.Sole ? 0.004 : 0))).ToList();
+                if (shoes.Sole) { var first = foot[0]; foot.Insert(0, (first.z - 0.012, first.rx * 0.9, first.ry * 0.8, first.cy)); }
+                _add("ankle" + sfx, MeshFactory.LoftZ(foot.ToArray()), MaterialKind.Shoes, true);
+            }
         }
     }
 

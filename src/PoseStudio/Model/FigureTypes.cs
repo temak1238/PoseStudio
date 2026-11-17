@@ -30,7 +30,13 @@ public enum MaterialKind
     /// <summary>Dunkle Zeichenlinien im Anime-Gesicht (Wimpernlinie).</summary>
     Line,
     /// <summary>Anime-Mund.</summary>
-    Mouth
+    Mouth,
+    /// <summary>Oberteil.</summary>
+    ClothTop,
+    /// <summary>Hose, Rock oder Kleid.</summary>
+    ClothBottom,
+    /// <summary>Schuhe, Stiefel, Strümpfe.</summary>
+    Shoes
 }
 
 /// <summary>Körperproportionen. Prozentwerte: 100 = Standard.</summary>
@@ -65,4 +71,6 @@ public sealed class FigureData
     public Proportions Proportions { get; set; } = new();
     /// <summary>Frisur (ab 0.16); fehlt bei älteren Dateien.</summary>
     public HairSettings? HairStyle { get; set; }
+    /// <summary>Kleidung (ab 0.17); fehlt bei älteren Dateien.</summary>
+    public ClothingSettings? Clothing { get; set; }
 }
