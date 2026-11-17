@@ -36,7 +36,9 @@ public enum MaterialKind
     /// <summary>Hose, Rock oder Kleid.</summary>
     ClothBottom,
     /// <summary>Schuhe, Stiefel, Strümpfe.</summary>
-    Shoes
+    Shoes,
+    /// <summary>Sitzblock.</summary>
+    Seat
 }
 
 /// <summary>Körperproportionen. Prozentwerte: 100 = Standard.</summary>
@@ -73,4 +75,6 @@ public sealed class FigureData
     public HairSettings? HairStyle { get; set; }
     /// <summary>Kleidung (ab 0.17); fehlt bei älteren Dateien.</summary>
     public ClothingSettings? Clothing { get; set; }
+    /// <summary>Sitzblock automatisch unter sitzenden Figuren (ab 0.18).</summary>
+    public bool SeatBlock { get; set; } = true;
 }

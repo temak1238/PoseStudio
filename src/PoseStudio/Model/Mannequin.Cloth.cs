@@ -27,6 +27,7 @@ public sealed partial class Mannequin
         def(MaterialKind.ClothTop, _topBrush, 0x18);
         def(MaterialKind.ClothBottom, _bottomBrush, 0x18);
         def(MaterialKind.Shoes, _shoeBrush, 0x40);
+        def(MaterialKind.Seat, _seatBrush, 0x10);
     }
 
     /// <summary>Kleidung übernehmen. Andere Teile oder Weite bauen neu auf, Farben wirken sofort.</summary>
@@ -146,6 +147,7 @@ public sealed partial class Mannequin
         double legK = 0.25 + 0.75 * this["hip_l"].SegScale.Y;
         double seg = _skLen * legK * world / rows;
         var cols = ClothColliders(0.008);
+        Point3D Col(Point3D p) => CollideSeat(Collide(p, cols), 0.018);
 
         // Kräfte (wie bei den Haaren): Schwerkraft, Wind relativ zur Figur, Schwung nach oben/außen
         var fwd = Root.World.Transform(new Vector3D(0, 0, 1)); fwd.Y = 0;
@@ -176,13 +178,13 @@ public sealed partial class Mannequin
         var contact = new bool[n, rows + 1];
         Point3D Step(Point3D a, Vector3D d)
         {
-            var q1 = Collide(a + d * (seg * 0.5), cols);
+            var q1 = Col(a + d * (seg * 0.5));
             var d2 = a + d * seg - q1;
             if (d2.LengthSquared < 1e-12) d2 = d;
             d2.Normalize();
-            var q = Collide(q1 + d2 * (seg * 0.5), cols);
+            var q = Col(q1 + d2 * (seg * 0.5));
             var dd = q - a;
-            if (dd.LengthSquared > 1e-12) { dd.Normalize(); q = Collide(a + dd * seg, cols); }
+            if (dd.LengthSquared > 1e-12) { dd.Normalize(); q = Col(a + dd * seg); }
             if (q.Y < 0.003) q.Y = 0.003;
             return q;
         }
@@ -279,7 +281,7 @@ public sealed partial class Mannequin
             for (int j = 0; j < n; j++)
                 for (int i = 1; i <= rows; i++)
                 {
-                    var q = Collide(P[j, i], cols);
+                    var q = Col(P[j, i]);
                     if (q.Y < 0.003) q.Y = 0.003;
                     P[j, i] = q;
                 }

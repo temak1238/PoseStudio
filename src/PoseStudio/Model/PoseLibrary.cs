@@ -105,6 +105,7 @@ public static class PoseLibrary
         var m = new Mannequin();
         m.SetFigure(figure.Style, figure.Hair, figure.Proportions);
         if (figure.Clothing != null) m.SetClothing(figure.Clothing);
+        m.SetSeatBlock(figure.SeatBlock);
         if (figure.HairStyle != null) m.SetHair(figure.HairStyle);
         m.BodyColor = body;
         var p = Clone(pose);

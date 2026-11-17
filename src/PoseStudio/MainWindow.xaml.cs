@@ -760,6 +760,7 @@ public partial class MainWindow : Window
         _figure.SetFigure(CurrentStyle, HairCheck.IsChecked == true, _props);
         _figure.SetHair(_hair);
         _figure.SetClothing(_clothes);
+        _figure.SetSeatBlock(SeatCheck.IsChecked == true);
         HairCheck.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
         HairExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin; // Wind gilt auch für Röcke und Kleider
         ClothesExpander.IsEnabled = CurrentStyle != FigureStyle.Mannequin;
@@ -776,6 +777,7 @@ public partial class MainWindow : Window
         HairCheck.IsChecked = fd.Hair;
         ShowHair(fd.HairStyle);
         ShowClothing(fd.Clothing);
+        SeatCheck.IsChecked = fd.SeatBlock;
         _suppressFigure = false;
         foreach (var a in _proportionAxes) a.Refresh();
         ApplyFigure();

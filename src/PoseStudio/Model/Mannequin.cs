@@ -375,6 +375,7 @@ public sealed partial class Mannequin
         else builder.BuildHuman(Style.IsFemale(), Hair, Style.IsAnime(), gripL, gripR);
         BuildClothes(builder);
         BuildHair();
+        BuildSeat();
         foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
         _skinDirty = true;
         Select(sel);
@@ -415,7 +416,7 @@ public sealed partial class Mannequin
         Update();
     }
 
-    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone(), HairStyle = HairStyle.Clone(), Clothing = Clothing.Clone() };
+    public FigureData GetFigure() => new() { Style = Style, Hair = Hair, Proportions = Proportions.Clone(), HairStyle = HairStyle.Clone(), Clothing = Clothing.Clone(), SeatBlock = SeatBlock };
 
     /// <summary>Berechnet Segment-Skalierungen und Gelenkabstände aus den Proportionen
     /// und die Gesamtskalierung für die gewünschte Körpergröße.</summary>
@@ -519,6 +520,7 @@ public sealed partial class Mannequin
         }
         var pw = PropWorld;
         foreach (var p in _propJoint.Parts) ((MatrixTransform3D)p.Model.Transform).Matrix = pw;
+        UpdateSeat();
         UpdateHair();
         UpdateSkirt();
     }
@@ -1488,7 +1490,7 @@ public sealed partial class Mannequin
         var group = new Model3DGroup();
         foreach (var p in _parts.Values)
         {
-            if (p.Kind == MaterialKind.Hair || IsCloth(p.Kind)) continue; // ControlNet: nackte Puppe wie im Trainingsmaterial
+            if (p.Kind is MaterialKind.Hair or MaterialKind.Seat || IsCloth(p.Kind)) continue; // ControlNet: nackte Puppe wie im Trainingsmaterial
             if (ReferenceEquals(p.Joint, _propJoint) && !includeProps) continue;
             group.Children.Add(new GeometryModel3D(p.Model.Geometry.CloneCurrentValue(), mg)
             {

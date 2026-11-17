@@ -79,6 +79,9 @@
                                           Checked="Figure_Changed" Unchecked="Figure_Changed" />
                                 <ComboBox x:Name="FigureStyleCombo" SelectionChanged="FigureStyle_Changed" />
                             </DockPanel>
+                            <CheckBox x:Name="SeatCheck" Content="Sitzblock unter sitzender Figur" Margin="0,4,0,0" IsChecked="True"
+                                      Checked="Figure_Changed" Unchecked="Figure_Changed"
+                                      ToolTip="Sitzt die Figur (Oberschenkel etwa waagerecht), steht automatisch ein einfacher Block unter dem Gesäß – Höhe und Tiefe passen sich an. Nicht in den ControlNet-Bildern." />
                             <Expander x:Name="HairExpander" Header="Frisur und Wind" Margin="0,4,0,0" IsExpanded="True">
                                 <StackPanel>
                                     <DockPanel Margin="0,2">

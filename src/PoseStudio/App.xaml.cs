@@ -84,6 +84,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--seat")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            SeatTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--clothes")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -766,6 +774,36 @@ public partial class App : Application
             File.WriteAllText(Path.Combine(folder, "skirt-debug.txt"), md.DebugSkirt());
         }
         File.WriteAllText(Path.Combine(folder, "clothes.txt"), $"Update mit Kleidung und Haaren: {sw.Elapsed.TotalMilliseconds / updates:F1} ms\n");
+    }
+
+    /// <summary>Testmodus --seat: Sitzblock bei allen Sitz-/Knie-Vorlagen und beim Stehen (mit und ohne Rock).</summary>
+    private static void SeatTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 260;
+        var poses = new[] { "Sitzen (Stuhl)", "Lässig sitzen (Bein überschlagen)", "Sitzen am Boden (Knie angezogen)", "Schneidersitz", "Fersensitz", "Knien (ein Knie)", "Hocke", "Neutral stehen (A-Pose)" };
+        var rows = new (string bottom, double yaw)[] { ("none", 40), ("kleid", 40), ("langkleid", 90) };
+        var log = new System.Text.StringBuilder();
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int r = 0; r < rows.Length; r++)
+                for (int c = 0; c < poses.Length; c++)
+                {
+                    var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                    m.SetPose(Presets.All.First(p => p.Name == poses[c]).ToPose());
+                    m.SetHair(new HairSettings { Style = "schulter", Wind = 0 });
+                    m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = rows[r].bottom, Shoes = "schuhe", BottomColor = "#8A3346" });
+                    m.GroundToFloor();
+                    if (r == 0) log.AppendLine($"{poses[c]}: Block {(m.HasSeat ? "ja" : "nein")}");
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = rows[r].yaw, Pitch = 8, Distance = 3.0, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = true, Shadow = true, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                        new Rect(c * W, r * W, W, W));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * poses.Length, W * rows.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "seat.jpg"), 90);
+        File.WriteAllText(Path.Combine(folder, "seat.txt"), log.ToString());
     }
 
     private static void PelvisTest(string folder)
