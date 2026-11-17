@@ -28,7 +28,7 @@ public static class CameraFit
         foreach (var (mp, id) in new[] { (11, "shoulder_l"), (12, "shoulder_r"), (13, "elbow_l"), (14, "elbow_r"), (15, "wrist_l"), (16, "wrist_r"),
                                          (23, "hip_l"), (24, "hip_r"), (25, "knee_l"), (26, "knee_r"), (27, "ankle_l"), (28, "ankle_r") })
             Add(mp, fig[id].World.Transform(new Point3D()));
-        Add(0, fig["head"].World.Transform(new Point3D(0, 0.085, 0.1))); // Nasenspitze
+        Add(0, fig.NoseWorld);
         return pairs;
     }
 

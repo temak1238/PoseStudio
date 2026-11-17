@@ -76,6 +76,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--neck")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            NeckTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--anime")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -520,7 +528,7 @@ public partial class App : Application
                     m.HairColor = System.Windows.Media.Color.FromRgb(0x5A, 0x3A, 0x2A);
                     m.SetPose(Presets.All.First(p => p.Name == poses[i]).ToPose()); m.GroundToFloor();
                     double top = m.ComputeMaxY(), bottom = m.ComputeMinY();
-                    var head = m["head"].World.Transform(new P3(0, 0.13, 0.05));
+                    var head = m.NoseWorld + new V3(0, 0.04, -0.04);
                     for (int v = 0; v < cols.Length; v++)
                     {
                         var c = cols[v];
@@ -544,6 +552,62 @@ public partial class App : Application
             rtb.Render(dv);
             SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"anime-{style}.jpg"), 90);
         }
+    }
+
+    /// <summary>Testmodus --neck: Kopf/Hals/Schultern der Anime-Figuren aus mehreren Richtungen (Cel-Shading).</summary>
+    private static void NeckTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 300;
+        var views = new (double yaw, double pitch)[] { (0, 0), (35, 0), (90, 0), (150, 0), (0, 25), (0, -20) };
+        var styles = new[] { FigureStyle.AnimeFemale, FigureStyle.AnimeMale, FigureStyle.Female };
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int si = 0; si < styles.Length; si++)
+            {
+                var m = new Mannequin(); m.SetFigure(styles[si], true, new Proportions { HeightCm = styles[si].IsFemale() ? 160 : 175 });
+                m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                m.HairColor = System.Windows.Media.Color.FromRgb(0x5A, 0x3A, 0x2A);
+                m.SetPose(Presets.All.First(p => p.Name == "Neutral stehen (A-Pose)").ToPose()); m.GroundToFloor();
+                var t = m["neck"].World.Transform(new P3(0, 0.02, 0));
+                for (int v = 0; v < views.Length; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = views[v].yaw, Pitch = views[v].pitch, Distance = 1.0, Target = t };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                        new Rect(v * W, si * W, W, W));
+                }
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * views.Length, W * styles.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "neck.jpg"), 90);
+        // Zweites Blatt: Kopfbewegungen (Hals + Kopf gemeinsam) – vorne, schräg, seitlich
+        var moves = new (string name, double nb, double ns, double nt, double hb, double hs, double ht)[]
+        {
+            ("gerade", 0, 0, 0, 0, 0, 0), ("Kopf drehen", 0, 0, 25, 0, 0, 25), ("nach unten", 15, 0, 0, 20, 0, 0),
+            ("nach oben", -20, 0, 0, -25, 0, 0), ("zur Seite neigen", 0, 12, 0, 0, 15, 0),
+        };
+        var yaws = new[] { 0.0, 40.0, 90.0 };
+        var dv2 = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv2.RenderOpen())
+            for (int r = 0; r < moves.Length; r++)
+            {
+                var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeMale, true, new Proportions { HeightCm = 175 });
+                m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                var pose = Presets.All.First(p => p.Name == "Neutral stehen (A-Pose)").ToPose();
+                var mv = moves[r];
+                pose.Joints["neck"] = new[] { mv.nb, mv.ns, mv.nt }; pose.Joints["head"] = new[] { mv.hb, mv.hs, mv.ht };
+                m.SetPose(pose); m.GroundToFloor();
+                var t = m["neck"].World.Transform(new P3(0, 0.02, 0));
+                for (int v = 0; v < yaws.Length; v++)
+                {
+                    var cam = new OrbitCamera { Yaw = yaws[v], Pitch = 0, Distance = 1.0, Target = t };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                        new Rect(v * W, r * W, W, W));
+                }
+            }
+        var rtb2 = new System.Windows.Media.Imaging.RenderTargetBitmap(W * yaws.Length, W * moves.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb2.Render(dv2);
+        SceneFactory.SaveJpeg(rtb2, Path.Combine(folder, "neck-moves.jpg"), 90);
     }
 
     private static void PelvisTest(string folder)

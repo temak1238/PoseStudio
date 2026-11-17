@@ -418,8 +418,8 @@ public sealed class Mannequin
         var p = Proportions;
         double a = p.Arm / 100, l = p.Leg / 100, t = p.Torso / 100, s = p.Shoulder / 100, h = p.Head / 100, b = p.Build / 100;
         // Anime-Proportionen: größerer Kopf, längere Beine, schmalere Schultern, etwas kürzerer Rumpf
-        double neckLen = 1;
-        if (Style.IsAnime()) { h *= 1.32; l *= 1.06; s *= Style.IsFemale() ? 0.92 : 0.97; t *= 0.96; neckLen = 0.6; }
+        double neckLen = 1, hSeg = h;
+        if (Style.IsAnime()) { h *= 1.32; l *= 1.06; s *= Style.IsFemale() ? 0.92 : 0.97; t *= 0.96; neckLen = 0.85; }
         foreach (var j in Joints)
         {
             (j.SegScale, j.UniformScale) = j.Id switch
@@ -428,7 +428,8 @@ public sealed class Mannequin
                 "spine" => (new Vector3D(b, t, b), b),
                 "chest" => (new Vector3D(s * b, t, b), b),
                 "neck" => (new Vector3D(b, neckLen, b), b),
-                "head" => (new Vector3D(h, h, h), h),
+                // Anime: nur die Kopfteile werden größer, nicht der Halsansatz im Kopf-System (sonst wird der Hals mitgedehnt)
+                "head" => (new Vector3D(hSeg, hSeg, hSeg), h),
                 _ when j.Id.StartsWith("shoulder") || j.Id.StartsWith("elbow") => (new Vector3D(b, a, b), b),
                 _ when j.Id.StartsWith("wrist") => (new Vector3D(1, 1, 1), (a + 1) / 2),
                 _ when j.Id.StartsWith("hip") || j.Id.StartsWith("knee") => (new Vector3D(b, l, b), b),
@@ -1426,6 +1427,11 @@ public sealed class Mannequin
     }
 
     public Point3D PelvisWorld => Root.World.Transform(new Point3D(0, 0, 0));
+
+    /// <summary>Nasenspitze in Weltkoordinaten (Anime-Kopf ist größer und sitzt tiefer auf dem Drehpunkt).</summary>
+    public Point3D NoseWorld => Style.IsAnime()
+        ? this["head"].World.Transform(new Point3D(0, (0.088 - BodyBuilder.AnimeHeadDrop) * this["head"].UniformScale, 0.09 * this["head"].UniformScale))
+        : this["head"].World.Transform(new Point3D(0, 0.085, 0.1));
 
     // ------------------------------------------------------------------ Auswahl
 

@@ -78,7 +78,9 @@ internal sealed class BodyBuilder
             (0.565, 0.08 * sh, 0.056, -0.006),
             (0.59, 0.052 * w, 0.05 * w, 0.0),
             (0.65, 0.046 * w, 0.046 * w, 0.006),
-            (0.69, 0.045 * w, 0.045 * w, 0.012)), MaterialKind.Body);
+            (0.69, 0.045 * w, 0.045 * w, 0.012),
+            // Anime: Hals reicht weiter in den (größeren) Kopf, damit unter dem Hinterkopf keine Lücke bleibt
+            (anime ? 0.72 : 0.70, 0.043 * w, 0.043 * w, anime ? 0.018 : 0.014)), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
                 _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
@@ -167,12 +169,26 @@ internal sealed class BodyBuilder
 
     // ================================================================= Anime-Kopf
 
+    /// <summary>Wie weit der Anime-Kopf unter den Kopf-Drehpunkt gesetzt ist (unskaliert).</summary>
+    public const double AnimeHeadDrop = 0.05;
+
     /// <summary>Anime-Kopf: großer runder Schädel, schmales Gesicht mit kleinem spitzem Kinn, keine ausmodellierte Nase.
     /// Augen, Brauen und Mund liegen als flache, der Oberfläche angepasste Flächen auf dem Gesicht.</summary>
     private void BuildAnimeHead(bool female, bool hair)
     {
         const string H = "head";
         double k = female ? 0.96 : 1.0;
+        // Der ganze Kopf sitzt tiefer auf dem Drehpunkt (etwa Höhe Mund statt Kinnunterkante): kürzerer sichtbarer Hals,
+        // und beim Nicken/Drehen schwingt der große Kopf nicht weit aus.
+        var drop = new TranslateTransform3D(0, -AnimeHeadDrop * k, 0);
+        void Add(MeshGeometry3D m, MaterialKind kind, bool uniform)
+        {
+            var c = m.Clone();
+            var pts = new Point3DCollection(c.Positions.Count);
+            foreach (var p in c.Positions) pts.Add(drop.Transform(p));
+            c.Positions = pts;
+            _add(H, c, kind, uniform);
+        }
         // Querschnitte (Höhe, halbe Breite, halbe Tiefe, Versatz nach vorne)
         var head = MeshFactory.LoftY(k, 0.55,
             (0.034, 0.010, 0.010, 0.052),
@@ -185,37 +201,37 @@ internal sealed class BodyBuilder
             (0.203, 0.073, 0.077, -0.007),
             (0.226, 0.050, 0.054, -0.007),
             (0.238, 0.020, 0.022, -0.006));
-        _add(H, head, MaterialKind.Body, true);
+        Add(head, MaterialKind.Body, true);
         foreach (var s in new[] { 1, -1 })
-            _add(H, MeshFactory.Ellipsoid(P(s * 0.074 * k, 0.112 * k, -0.012 * k), 0.009 * k, 0.019 * k, 0.013 * k, 16, 10), MaterialKind.Body, true); // Ohr
+            Add(MeshFactory.Ellipsoid(P(s * 0.074 * k, 0.112 * k, -0.012 * k), 0.009 * k, 0.019 * k, 0.013 * k, 16, 10), MaterialKind.Body, true); // Ohr
 
         var face = new Decals(head);
         foreach (var s in new[] { 1, -1 })
         {
             double ex = s * 0.031 * k, ey = 0.113 * k, eh = female ? 1.0 : 0.85; // Männer: etwas schmalere Augen
-            _add(H, face.Ellipse(ex, ey, 0.0125 * k, 0.0145 * k * eh, 0, 0.0005), MaterialKind.EyeWhite, true);          // Augenweiß
-            _add(H, face.Ellipse(ex - s * 0.0012 * k, ey - 0.0012 * k, 0.0094 * k, 0.0128 * k * eh, 0, 0.0009), MaterialKind.Iris, true); // Iris
-            _add(H, face.Ellipse(ex + s * 0.0035 * k, ey + 0.0055 * k, 0.0026 * k, 0.0034 * k, 0, 0.0013), MaterialKind.EyeWhite, true); // Glanzpunkt
+            Add(face.Ellipse(ex, ey, 0.0125 * k, 0.0145 * k * eh, 0, 0.0005), MaterialKind.EyeWhite, true);          // Augenweiß
+            Add(face.Ellipse(ex - s * 0.0012 * k, ey - 0.0012 * k, 0.0094 * k, 0.0128 * k * eh, 0, 0.0009), MaterialKind.Iris, true); // Iris
+            Add(face.Ellipse(ex + s * 0.0035 * k, ey + 0.0055 * k, 0.0026 * k, 0.0034 * k, 0, 0.0013), MaterialKind.EyeWhite, true); // Glanzpunkt
             // Obere Wimpernlinie: kräftiger Bogen, außen dicker und leicht nach außen gezogen
-            _add(H, face.Arc(ex, ey - 0.001 * k, 0.0142 * k, 0.0158 * k * eh, s > 0 ? 8 : 172, s > 0 ? 172 : 8, 0.0032 * k, 0.0014 * k, 0.0012), MaterialKind.Line, true);
+            Add(face.Arc(ex, ey - 0.001 * k, 0.0142 * k, 0.0158 * k * eh, s > 0 ? 8 : 172, s > 0 ? 172 : 8, 0.0032 * k, 0.0014 * k, 0.0012), MaterialKind.Line, true);
             // Untere Linie: kurzer, feiner Strich außen
-            _add(H, face.Arc(ex, ey + 0.001 * k, 0.0128 * k, 0.0150 * k * eh, s > 0 ? -20 : 200, s > 0 ? -60 : 240, 0.0012 * k, 0.0006 * k, 0.0012), MaterialKind.Line, true);
+            Add(face.Arc(ex, ey + 0.001 * k, 0.0128 * k, 0.0150 * k * eh, s > 0 ? -20 : 200, s > 0 ? -60 : 240, 0.0012 * k, 0.0006 * k, 0.0012), MaterialKind.Line, true);
             // Augenbraue: dünner, flacher Bogen in Haarfarbe
-            _add(H, face.Arc(s * 0.033 * k, 0.128 * k, 0.017 * k, 0.007 * k, s > 0 ? 25 : 155, s > 0 ? 155 : 25, 0.0018 * k, 0.0009 * k, 0.0008), MaterialKind.Hair, true);
+            Add(face.Arc(s * 0.033 * k, 0.128 * k, 0.017 * k, 0.007 * k, s > 0 ? 25 : 155, s > 0 ? 155 : 25, 0.0018 * k, 0.0009 * k, 0.0008), MaterialKind.Hair, true);
         }
         // Mund: kleiner, leicht lächelnder Strich
-        _add(H, face.Arc(0, 0.068 * k, 0.0085 * k, 0.0035 * k, 200, 340, 0.0013 * k, 0.0008 * k, 0.0008), MaterialKind.Mouth, true);
+        Add(face.Arc(0, 0.068 * k, 0.0085 * k, 0.0035 * k, 200, 340, 0.0013 * k, 0.0008 * k, 0.0008), MaterialKind.Mouth, true);
         // Nase: nur eine winzige Erhebung (wirft im Cel-Shading einen kleinen Schatten)
         if (face.Hit(0, 0.088 * k) is { } nose)
-            _add(H, MeshFactory.Ellipsoid(nose.P - nose.N * 0.001, 0.0032 * k, 0.0055 * k, 0.0035 * k, 14, 8), MaterialKind.Body, true);
+            Add(MeshFactory.Ellipsoid(nose.P - nose.N * 0.001, 0.0032 * k, 0.0055 * k, 0.0035 * k, 14, 8), MaterialKind.Body, true);
 
         if (!hair) return;
         // Vorläufige Frisur: Haarkappe mit Pony bis knapp über die Brauen, hinten tief
         double front = 93 * Math.PI / 180, back = (female ? 150 : 120) * Math.PI / 180;
-        _add(H, MeshFactory.Ellipsoid(P(0, 0.145 * k, -0.004 * k), 0.091 * k, 0.11 * k, 0.1 * k, 44, 26,
+        Add(MeshFactory.Ellipsoid(P(0, 0.145 * k, -0.004 * k), 0.091 * k, 0.11 * k, 0.1 * k, 44, 26,
             th => front + (back - front) * (1 - Math.Cos(th)) / 2), MaterialKind.Hair, true);
         if (female)
-            _add(H, MeshFactory.LoftY(k,
+            Add(MeshFactory.LoftY(k,
                 (0.15, 0.088, 0.06, -0.04),
                 (0.06, 0.094, 0.056, -0.055),
                 (-0.04, 0.088, 0.04, -0.06),
