@@ -122,6 +122,7 @@ public static class SceneFactory
         if (o.Floor || o.Shadow) scene.Children.Add(CreateFloor(o, figures, cam));
         SelfShadow.Apply(figures, cam, o.Light);
         foreach (var fig in figures) scene.Children.Add(fig.CreateSnapshot());
+        if (Outline.Create(figures, cam, o.Light) is { } outline) scene.Children.Add(outline);
 
         Brush back = new SolidColorBrush(o.Background);
         if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;

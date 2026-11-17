@@ -51,6 +51,8 @@ internal sealed record Part(GeometryModel3D Model, Joint Joint, MaterialKind Kin
     /// <summary>Ursprüngliche Punkte/Normalen im Gelenk-System (das Mesh selbst enthält nach dem Skinning Weltkoordinaten).</summary>
     public Point3D[] LocalPos { get; init; } = Array.Empty<Point3D>();
     public Vector3D[] LocalNrm { get; init; } = Array.Empty<Vector3D>();
+    /// <summary>Sehr kleines Teil (z. B. Augenbraue, Nase) – bekommt im Cel-Shading keine Kontur.</summary>
+    public bool Small { get; init; }
 }
 
 internal sealed class SkinData
@@ -98,18 +100,21 @@ public sealed class Mannequin
 
     public Mannequin()
     {
-        _mats[MaterialKind.Body] = MakeMaterial(_bodyBrush.Brush, 0x40);
-        _mats[MaterialKind.Joint] = MakeMaterial(_jointBrush.Brush, 0x40);
-        _mats[MaterialKind.Lips] = MakeMaterial(_lipsBrush.Brush, 0x30);
-        _mats[MaterialKind.EyeWhite] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xF4, 0xF1, 0xEC)).Brush, 0x70);
-        _mats[MaterialKind.Iris] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x3B, 0x2C, 0x22)).Brush, 0x90);
-        _mats[MaterialKind.Hair] = MakeMaterial(_hairBrush.Brush, 0x20);
-        _mats[MaterialKind.PropWood] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x7A, 0x52, 0x32)).Brush, 0x30);
-        _mats[MaterialKind.PropMetal] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xC4, 0xC8, 0xCC)).Brush, 0xC0);
-        _mats[MaterialKind.PropGold] = MakeMaterial(new ShadeBrush(Color.FromRgb(0xC9, 0xA2, 0x3E)).Brush, 0xA0);
-        _mats[MaterialKind.PropGem] = MakeMaterial(new ShadeBrush(Color.FromRgb(0x4F, 0x9C, 0xE0)).Brush, 0xC0);
+        void Def(MaterialKind kind, ShadeBrush b, byte spec) { _shades[kind] = (b, spec); _mats[kind] = MakeMaterial(b.Brush, spec, false); }
+        Def(MaterialKind.Body, _bodyBrush, 0x40);
+        Def(MaterialKind.Joint, _jointBrush, 0x40);
+        Def(MaterialKind.Lips, _lipsBrush, 0x30);
+        Def(MaterialKind.EyeWhite, new ShadeBrush(Color.FromRgb(0xF4, 0xF1, 0xEC)), 0x70);
+        Def(MaterialKind.Iris, new ShadeBrush(Color.FromRgb(0x3B, 0x2C, 0x22)), 0x90);
+        Def(MaterialKind.Hair, _hairBrush, 0x20);
+        Def(MaterialKind.PropWood, new ShadeBrush(Color.FromRgb(0x7A, 0x52, 0x32)), 0x30);
+        Def(MaterialKind.PropMetal, new ShadeBrush(Color.FromRgb(0xC4, 0xC8, 0xCC)), 0xC0);
+        Def(MaterialKind.PropGold, new ShadeBrush(Color.FromRgb(0xC9, 0xA2, 0x3E)), 0xA0);
+        Def(MaterialKind.PropGem, new ShadeBrush(Color.FromRgb(0x4F, 0x9C, 0xE0)), 0xC0);
+        Def(MaterialKind.Line, new ShadeBrush(Color.FromRgb(0x2A, 0x1E, 0x1E)), 0x00);
+        Def(MaterialKind.Mouth, new ShadeBrush(Color.FromRgb(0x8A, 0x3E, 0x3E)), 0x00);
         _byId["prop"] = _propJoint;
-        _highlightMat = MakeMaterial(new ShadeBrush(Color.FromRgb(0xFF, 0x8C, 0x1A)).Brush, 0x40);
+        _highlightMat = MakeMaterial(new ShadeBrush(Color.FromRgb(0xFF, 0x8C, 0x1A)).Brush, 0x40, false);
         BodyColor = _bodyBrush.Color;
         BuildSkeleton();
         BuildParts();
@@ -117,29 +122,88 @@ public sealed class Mannequin
         Update();
     }
 
-    /// <summary>Farbverlauf Grundfarbe → Schwarz. Die Texturkoordinate u (0..1) eines Punktes bestimmt,
-    /// wie stark er abgedunkelt wird – so entstehen die Eigenschatten.</summary>
+    /// <summary>Normal: Farbverlauf Grundfarbe → Schwarz; die Texturkoordinate u (0..1) eines Punktes bestimmt,
+    /// wie stark er abgedunkelt wird – so entstehen die Eigenschatten.
+    /// Cel-Shading: zwei harte Stufen (u &lt; 0,5 = Grundfarbe, sonst Schattenfarbe).</summary>
     private sealed class ShadeBrush
     {
-        private readonly GradientStop _stop;
-        public LinearGradientBrush Brush { get; }
-        public ShadeBrush(Color c)
+        private Color _color;
+        private bool _toon;
+        private double _shadow = 0.74;
+        public LinearGradientBrush Brush { get; } = new() { StartPoint = new System.Windows.Point(0, 0), EndPoint = new System.Windows.Point(1, 0) };
+        public ShadeBrush(Color c) { _color = c; Rebuild(); }
+        public Color Color { get => _color; set { _color = value; Rebuild(); } }
+
+        public void SetToon(bool on, double shadow)
         {
-            _stop = new GradientStop(c, 0);
-            Brush = new LinearGradientBrush { StartPoint = new System.Windows.Point(0, 0), EndPoint = new System.Windows.Point(1, 0) };
-            Brush.GradientStops.Add(_stop);
-            Brush.GradientStops.Add(new GradientStop(Colors.Black, 1));
+            _toon = on; _shadow = shadow;
+            Rebuild();
         }
-        public Color Color { get => _stop.Color; set => _stop.Color = value; }
+
+        private void Rebuild()
+        {
+            var stops = new GradientStopCollection();
+            if (_toon)
+            {
+                // Anime-Schatten: dunkler und leicht ins Rötlich-Violette verschoben
+                byte S(double v) => (byte)Math.Clamp(v, 0, 255);
+                var sh = Color.FromRgb(S(_color.R * _shadow), S(_color.G * _shadow * 0.9), S(_color.B * _shadow * 0.97));
+                stops.Add(new GradientStop(_color, 0)); stops.Add(new GradientStop(_color, 0.5));
+                stops.Add(new GradientStop(sh, 0.5)); stops.Add(new GradientStop(sh, 1));
+            }
+            else
+            {
+                stops.Add(new GradientStop(_color, 0)); stops.Add(new GradientStop(Colors.Black, 1));
+            }
+            Brush.GradientStops = stops;
+        }
     }
 
-    private static Material MakeMaterial(Brush brush, byte specular)
+    private static Material MakeMaterial(Brush brush, byte specular, bool toon)
     {
         var g = new MaterialGroup();
+        if (toon)
+        {
+            // Flache Farbe unabhängig vom Licht; die Schattierung steckt ganz in der Texturkoordinate
+            g.Children.Add(new DiffuseMaterial(Brushes.Black));
+            g.Children.Add(new EmissiveMaterial(brush));
+            return g;
+        }
         g.Children.Add(new DiffuseMaterial(brush));
         g.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(specular, 0xFF, 0xFF, 0xFF)), 40));
         return g;
     }
+
+    /// <summary>Cel-Shading ein/aus. shadow = Helligkeit der Schattenstufe (0..1).</summary>
+    public void SetToon(bool on, double shadow)
+    {
+        if (on == Toon && Math.Abs(shadow - _toonShadow) < 1e-6) return;
+        bool switchMat = on != Toon;
+        Toon = on; _toonShadow = shadow;
+        foreach (var (kind, (brush, spec)) in _shades)
+        {
+            brush.SetToon(on, shadow);
+            if (switchMat) _mats[kind] = MakeMaterial(brush.Brush, spec, on);
+        }
+        if (!switchMat) return;
+        var sel = _selected; bool propSel = _propSelected;
+        Select(null); SelectProp(false);
+        foreach (var p in _parts.Values)
+        {
+            p.Model.Material = _mats[p.Kind];
+            if (p.Model.BackMaterial != null) p.Model.BackMaterial = _mats[p.Kind];
+        }
+        Select(sel); SelectProp(propSel);
+    }
+
+    public bool Toon { get; private set; }
+    private double _toonShadow = 0.74;
+    private readonly Dictionary<MaterialKind, (ShadeBrush Brush, byte Spec)> _shades = new();
+
+    /// <summary>Teile mit Kontur im Cel-Shading: keine Gesichtsdetails und keine sehr kleinen Teile.</summary>
+    public IEnumerable<(MeshGeometry3D Mesh, Matrix3D Transform)> OutlineMeshes() =>
+        _parts.Values.Where(p => p.Kind is not (MaterialKind.EyeWhite or MaterialKind.Iris or MaterialKind.Line or MaterialKind.Mouth or MaterialKind.Lips) && !p.Small)
+            .Select(p => ((MeshGeometry3D)p.Model.Geometry, ((MatrixTransform3D)p.Model.Transform).Matrix));
 
     public Color BodyColor
     {
@@ -305,7 +369,7 @@ public sealed class Mannequin
         bool gripR = _prop.Active && (_prop.TwoHanded || _prop.MainSide < 0);
         var builder = new BodyBuilder(AddPart);
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
-        else builder.BuildHuman(Style == FigureStyle.Female, Hair, gripL, gripR);
+        else builder.BuildHuman(Style.IsFemale(), Hair, Style.IsAnime(), gripL, gripR);
         foreach (var (mesh, kind) in PropBuilder.Build(_prop.Type)) AddPart("prop", mesh, kind, true);
         _skinDirty = true;
         Select(sel);
@@ -325,7 +389,8 @@ public sealed class Mannequin
         m.TextureCoordinates = tc;
         var gm = new GeometryModel3D(m, _mats[kind]) { Transform = new MatrixTransform3D(Matrix3D.Identity) };
         if (kind == MaterialKind.Hair) gm.BackMaterial = _mats[kind]; // offene Haarkappe von innen nicht durchsichtig
-        var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray() };
+        var b = mesh.Bounds;
+        var p = new Part(gm, j, kind, uniform) { LocalPos = m.Positions.ToArray(), LocalNrm = m.Normals.ToArray(), Small = Math.Max(b.SizeX, Math.Max(b.SizeY, b.SizeZ)) < 0.025 };
         j.Parts.Add(p);
         _parts[gm] = p;
         Group.Children.Add(gm);
@@ -352,6 +417,9 @@ public sealed class Mannequin
     {
         var p = Proportions;
         double a = p.Arm / 100, l = p.Leg / 100, t = p.Torso / 100, s = p.Shoulder / 100, h = p.Head / 100, b = p.Build / 100;
+        // Anime-Proportionen: größerer Kopf, längere Beine, schmalere Schultern, etwas kürzerer Rumpf
+        double neckLen = 1;
+        if (Style.IsAnime()) { h *= 1.32; l *= 1.06; s *= Style.IsFemale() ? 0.92 : 0.97; t *= 0.96; neckLen = 0.6; }
         foreach (var j in Joints)
         {
             (j.SegScale, j.UniformScale) = j.Id switch
@@ -359,7 +427,7 @@ public sealed class Mannequin
                 "pelvis" => (new Vector3D(b, 1, b), b),
                 "spine" => (new Vector3D(b, t, b), b),
                 "chest" => (new Vector3D(s * b, t, b), b),
-                "neck" => (new Vector3D(b, 1, b), b),
+                "neck" => (new Vector3D(b, neckLen, b), b),
                 "head" => (new Vector3D(h, h, h), h),
                 _ when j.Id.StartsWith("shoulder") || j.Id.StartsWith("elbow") => (new Vector3D(b, a, b), b),
                 _ when j.Id.StartsWith("wrist") => (new Vector3D(1, 1, 1), (a + 1) / 2),
@@ -418,7 +486,7 @@ public sealed class Mannequin
     }
 
     /// <summary>Skalierung der Hand (Handfläche ist im Mesh bereits mit dem Stilfaktor gebaut, Finger nicht).</summary>
-    internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * (Style == FigureStyle.Female ? 0.9 : 1.0);
+    internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * BodyBuilder.HandK(Style.IsFemale(), Style.IsAnime());
 
     public void Update()
     {

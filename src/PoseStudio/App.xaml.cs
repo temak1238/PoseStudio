@@ -76,6 +76,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--anime")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            AnimeTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--pelvis")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -491,6 +499,53 @@ public partial class App : Application
     }
 
     /// <summary>Testmodus --pelvis: Beckenbereich nah (vorne, schräg, seitlich, hinten) in mehreren Posen, je Figurenstil.</summary>
+    /// <summary>Testmodus --anime: Anime-Figuren (normal und Cel-Shading), ganze Figur und Gesicht.</summary>
+    private static void AnimeTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        var poses = new[] { "Neutral stehen (A-Pose)", "Gehen", "Sitzen (Stuhl)" };
+        const int W = 300;
+        foreach (var style in new[] { FigureStyle.AnimeFemale, FigureStyle.AnimeMale, FigureStyle.Female })
+        {
+            var cols = new (double yaw, double pitch, bool face, bool toon)[]
+            {
+                (0, 5, false, false), (35, 5, false, true), (90, 5, false, true), (0, 0, true, false), (0, 0, true, true), (35, 5, true, true)
+            };
+            var dv = new System.Windows.Media.DrawingVisual();
+            using (var dc = dv.RenderOpen())
+                for (int i = 0; i < poses.Length; i++)
+                {
+                    var m = new Mannequin(); m.SetFigure(style, true, new Proportions { HeightCm = style.IsFemale() ? 160 : 175 });
+                    m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                    m.HairColor = System.Windows.Media.Color.FromRgb(0x5A, 0x3A, 0x2A);
+                    m.SetPose(Presets.All.First(p => p.Name == poses[i]).ToPose()); m.GroundToFloor();
+                    double top = m.ComputeMaxY(), bottom = m.ComputeMinY();
+                    var head = m["head"].World.Transform(new P3(0, 0.13, 0.05));
+                    for (int v = 0; v < cols.Length; v++)
+                    {
+                        var c = cols[v];
+                        var cam = c.face
+                            ? new OrbitCamera { Yaw = c.yaw, Pitch = c.pitch, Distance = 0.75, Target = head }
+                            : new OrbitCamera { Yaw = c.yaw, Pitch = c.pitch, Distance = 3.7, Target = new P3(m.PelvisWorld.X, (top + bottom) / 2, m.PelvisWorld.Z) };
+                        var light = new LightSettings { Toon = c.toon };
+                        dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = !c.face, Light = light, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, W, W),
+                            new Rect(v * W, i * W, W, W));
+                    }
+                    if (i == 0)
+                    {
+                        // Kopfhöhen zählen: Körperhöhe / Kopfhöhe (Kinn bis Scheitel ohne Haare)
+                        m.SetPose(new PoseData()); m.GroundToFloor();
+                        var hj = m["head"].World;
+                        double chin = hj.Transform(new P3(0, 0.03, 0.05)).Y, crown = hj.Transform(new P3(0, 0.245, 0)).Y;
+                        File.AppendAllText(Path.Combine(folder, "anime.txt"), $"{style}: Höhe {m.ComputeMaxY() - m.ComputeMinY():F3} m, Kopf {crown - chin:F3} m, Kopfhöhen {(m.ComputeMaxY() - m.ComputeMinY()) / (crown - chin):F2}\n");
+                    }
+                }
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * cols.Length, W * poses.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"anime-{style}.jpg"), 90);
+        }
+    }
+
     private static void PelvisTest(string folder)
     {
         Directory.CreateDirectory(folder);

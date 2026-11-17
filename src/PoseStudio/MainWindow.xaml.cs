@@ -47,6 +47,8 @@ public partial class MainWindow : Window
         (FigureStyle.Mannequin, "Gliederpuppe"),
         (FigureStyle.Male, "Mensch – männlich"),
         (FigureStyle.Female, "Mensch – weiblich"),
+        (FigureStyle.AnimeFemale, "Anime – weiblich"),
+        (FigureStyle.AnimeMale, "Anime – männlich"),
     };
     private static readonly (Stretch Mode, string Name)[] StretchModes =
     {
@@ -56,6 +58,7 @@ public partial class MainWindow : Window
     };
     private static readonly Color MannequinColor = Color.FromRgb(0xC9, 0xB2, 0x92);
     private static readonly Color SkinColor = Color.FromRgb(0xE3, 0xBE, 0xA2);
+    private static readonly Color AnimeSkinColor = Color.FromRgb(0xF8, 0xE2, 0xD4);
     private static readonly string[] HairPresets = { "#3A2A20", "#151515", "#7A4A25", "#D9B866", "#A33A1E", "#9C9C9C" };
 
     // Maus
@@ -220,7 +223,7 @@ public partial class MainWindow : Window
         _suppressFigureList = true;
         FigureList.ItemsSource = _figures.Select((fg, i) =>
         {
-            string style = fg.Style switch { FigureStyle.Male => "Mann", FigureStyle.Female => "Frau", _ => "Gliederpuppe" };
+            string style = fg.Style switch { FigureStyle.Male => "Mann", FigureStyle.Female => "Frau", FigureStyle.AnimeFemale => "Anime w", FigureStyle.AnimeMale => "Anime m", _ => "Gliederpuppe" };
             string prop = fg.Prop.Active ? " + Objekt" : "";
             return new FigureItem($"Figur {i + 1} – {style}{prop}", new SolidColorBrush(SceneFactory.FigurePalette[i % SceneFactory.FigurePalette.Length]));
         }).ToList();
@@ -545,6 +548,7 @@ public partial class MainWindow : Window
         Add("Umgebungslicht (%)", 0, 100, () => _light.Ambient, v => _light.Ambient = v);
         Add("Schattenstärke (%)", 0, 100, () => _light.ShadowStrength, v => _light.ShadowStrength = v);
         Add("Schattenweichheit (%)", 0, 100, () => _light.Softness, v => _light.Softness = v);
+        Add("Kontur Anime (‰)", 0, 8, () => _light.OutlineWidth, v => _light.OutlineWidth = v);
     }
 
     private bool _suppressLight;
@@ -557,6 +561,7 @@ public partial class MainWindow : Window
         CastShadowCheck.IsChecked = _light.CastShadow;
         LightFollowCheck.IsChecked = _light.FollowCamera;
         ShowLightCheck.IsChecked = _light.ShowSource;
+        ToonCheck.IsChecked = _light.Toon;
         _suppressLight = false;
         LightChanged();
     }
@@ -577,6 +582,7 @@ public partial class MainWindow : Window
         _light.CastShadow = CastShadowCheck.IsChecked == true;
         _light.FollowCamera = LightFollowCheck.IsChecked == true;
         _light.ShowSource = ShowLightCheck.IsChecked == true;
+        _light.Toon = ToonCheck.IsChecked == true;
         LightChanged();
     }
 
@@ -634,10 +640,11 @@ public partial class MainWindow : Window
         if (_suppressFigure) return;
         var style = CurrentStyle;
         // Sinnvolle Standards beim Wechsel: Körpergröße und Farbe (Holz ↔ Haut), sofern nicht selbst geändert.
-        if (style == FigureStyle.Female && Math.Abs(_props.HeightCm - 180) < 0.5) _props.HeightCm = 168;
-        if (style != FigureStyle.Female && Math.Abs(_props.HeightCm - 168) < 0.5) _props.HeightCm = 180;
-        if (style == FigureStyle.Mannequin && _figure.BodyColor == SkinColor) SetBodyColor(MannequinColor);
-        if (style != FigureStyle.Mannequin && _figure.BodyColor == MannequinColor) SetBodyColor(SkinColor);
+        if (style.IsFemale() && Math.Abs(_props.HeightCm - 180) < 0.5) _props.HeightCm = 168;
+        if (!style.IsFemale() && Math.Abs(_props.HeightCm - 168) < 0.5) _props.HeightCm = 180;
+        // Standardfarben je Stil (Holz, Haut, helle Anime-Haut), nur wenn die Farbe nicht selbst gewählt wurde
+        var std = style == FigureStyle.Mannequin ? MannequinColor : style.IsAnime() ? AnimeSkinColor : SkinColor;
+        if (_figure.BodyColor == MannequinColor || _figure.BodyColor == SkinColor || _figure.BodyColor == AnimeSkinColor) SetBodyColor(std);
         foreach (var a in _proportionAxes) a.Refresh();
         ApplyFigure();
     }
@@ -646,7 +653,7 @@ public partial class MainWindow : Window
 
     private void ResetProportions_Click(object sender, RoutedEventArgs e)
     {
-        _props = new Proportions { HeightCm = CurrentStyle == FigureStyle.Female ? 168 : 180 };
+        _props = new Proportions { HeightCm = CurrentStyle.IsFemale() ? 168 : 180 };
         foreach (var a in _proportionAxes) a.Refresh();
         ApplyFigure();
     }
@@ -819,7 +826,7 @@ public partial class MainWindow : Window
         _lights.Children.Add(SceneFactory.CreateLights(_cam, _light));
         foreach (var a in _cameraAxes) a.Refresh();
         UpdateLightMarker();
-        if (_light.FollowCamera) RebuildFloor();
+        if (_light.FollowCamera || _light.Toon) RebuildFloor(); // Konturbreite hängt vom Kameraabstand ab
         if (_set.Type != SetType.None) UpdateFrameBackground(); // Himmel folgt dem Horizont
         if (_set.HorizonLine) DrawGuides();
     }
@@ -847,6 +854,7 @@ public partial class MainWindow : Window
             ShadowResolution = 640
         };
         if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figures, _cam));
+        if (Outline.Create(_figures, _cam, _light) is { } outline) _floor.Children.Add(outline);
     }
 
     /// <summary>Nach jeder Änderung an der Pose: ggf. auf den Boden stellen, Schatten nachführen, Regler aktualisieren.</summary>

@@ -388,6 +388,9 @@
                                 <Button Content="Gegenlicht" Click="LightPreset_Click" Tag="180,35" ToolTip="Licht von hinten" />
                                 <Button Content="Mittag" Click="LightPreset_Click" Tag="30,80" ToolTip="Licht von oben" />
                             </UniformGrid>
+                            <CheckBox x:Name="ToonCheck" Content="Anime-Darstellung (Cel-Shading mit Konturen)" Margin="0,2"
+                                      Checked="Light_Changed" Unchecked="Light_Changed"
+                                      ToolTip="Harte Licht-/Schattenstufen und dunkle Umrisse wie in Anime-Zeichnungen. Umgebungslicht = Helligkeit der Schattenstufe, Kontur Anime = Linienstärke." />
                             <CheckBox x:Name="CastShadowCheck" Content="Schattenwurf (sonst nur weicher Bodenschatten)" Margin="0,2"
                                       Checked="Light_Changed" Unchecked="Light_Changed" />
                             <CheckBox x:Name="LightFollowCheck" Content="Licht dreht mit der Kamera mit" Margin="0,2"

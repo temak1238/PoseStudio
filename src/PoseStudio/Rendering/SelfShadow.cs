@@ -15,12 +15,16 @@ public static class SelfShadow
 
     public static void Apply(Mannequin figure, OrbitCamera cam, LightSettings light) => Apply(new[] { figure }, cam, light);
 
-    /// <summary>Gemeinsame Tiefenkarte aller Figuren – Figuren werfen auch Schatten aufeinander.</summary>
+    /// <summary>Gemeinsame Tiefenkarte aller Figuren – Figuren werfen auch Schatten aufeinander.
+    /// Im Cel-Shading wird zusätzlich die Lichtseite (N·L) zu zwei harten Stufen zusammengefasst.</summary>
     public static void Apply(IEnumerable<Mannequin> figures, OrbitCamera cam, LightSettings light)
     {
-        var meshes = figures.SelectMany(fg => fg.WorldMeshes()).ToList();
+        var figs = figures.ToList();
+        bool toon = light.Toon;
+        foreach (var fg in figs) fg.SetToon(toon, 0.6 + 0.3 * light.Ambient / 100);
+        var meshes = figs.SelectMany(fg => fg.WorldMeshes()).ToList();
         bool enabled = light.CastShadow && light.ShadowStrength > 0 && light.Intensity > 0;
-        if (!enabled)
+        if (!enabled && !toon)
         {
             foreach (var (mesh, _) in meshes) SetCoords(mesh, null);
             return;
@@ -55,18 +59,19 @@ public static class SelfShadow
         // ---- 1. Tiefenkarte rastern (größter d = am nächsten zum Licht)
         var depth = new float[Res * Res];
         Array.Fill(depth, float.NegativeInfinity);
-        foreach (var (mesh, _, lx, ly, ld) in data)
-        {
-            var idx = mesh.TriangleIndices;
-            for (int t = 0; t + 2 < idx.Count; t += 3)
+        if (enabled)
+            foreach (var (mesh, _, lx, ly, ld) in data)
             {
-                int a = idx[t], b = idx[t + 1], c = idx[t + 2];
-                Raster(depth,
-                    (lx[a] - minX) * scale, (ly[a] - minY) * scale, ld[a],
-                    (lx[b] - minX) * scale, (ly[b] - minY) * scale, ld[b],
-                    (lx[c] - minX) * scale, (ly[c] - minY) * scale, ld[c]);
+                var idx = mesh.TriangleIndices;
+                for (int t = 0; t + 2 < idx.Count; t += 3)
+                {
+                    int a = idx[t], b = idx[t + 1], c = idx[t + 2];
+                    Raster(depth,
+                        (lx[a] - minX) * scale, (ly[a] - minY) * scale, ld[a],
+                        (lx[b] - minX) * scale, (ly[b] - minY) * scale, ld[b],
+                        (lx[c] - minX) * scale, (ly[c] - minY) * scale, ld[c]);
+                }
             }
-        }
 
         // ---- 2. + 3. Punkte prüfen
         double amb = 2.2 * light.Ambient / 255 + 0.18;              // Umgebung + Aufhellung (grob)
@@ -85,29 +90,39 @@ public static class SelfShadow
                 if (nrm.LengthSquared < 1e-12) continue;
                 nrm.Normalize();
                 double ndl = Vector3D.DotProduct(nrm, f);
-                if (ndl <= 0.02) continue; // vom Licht abgewandt: schon dunkel durch die Beleuchtung
-
-                // "Normal Offset": Prüfpunkt entlang der Normale nach außen schieben, damit die eigene
-                // Oberfläche (v. a. bei streifendem Licht) sich nicht selbst verschattet.
-                double off = cell * (radius + 2.5) + 0.004;
-                double px = lx[i] + Vector3D.DotProduct(nrm, r) * off;
-                double py = ly[i] + Vector3D.DotProduct(nrm, u) * off;
-                double pd = ld[i] + ndl * off;
-                double gx = (px - minX) * scale, gy = (py - minY) * scale;
-                double bias = 0.004;
-                int occ = 0, tot = 0;
-                for (int dy = -radius; dy <= radius; dy++)
-                    for (int dx = -radius; dx <= radius; dx++)
-                    {
-                        int x = (int)Math.Round(gx) + dx, y = (int)Math.Round(gy) + dy;
-                        if (x < 0 || y < 0 || x >= Res || y >= Res) continue;
-                        tot++;
-                        if (depth[y * Res + x] > pd + bias) occ++;
-                    }
-                if (occ == 0 || tot == 0) continue;
-                // bei sehr flachem Lichteinfall sanft ausblenden (dort wirkt das Hauptlicht ohnehin kaum)
-                double fade = Math.Clamp((ndl - 0.08) / 0.22, 0, 1);
-                double shadow = (double)occ / tot * fade;
+                double shadow = 0;
+                if (enabled && ndl > 0.02)
+                {
+                    // "Normal Offset": Prüfpunkt entlang der Normale nach außen schieben, damit die eigene
+                    // Oberfläche (v. a. bei streifendem Licht) sich nicht selbst verschattet.
+                    double off = cell * (radius + 2.5) + 0.004;
+                    double px = lx[i] + Vector3D.DotProduct(nrm, r) * off;
+                    double py = ly[i] + Vector3D.DotProduct(nrm, u) * off;
+                    double pd = ld[i] + ndl * off;
+                    double gx = (px - minX) * scale, gy = (py - minY) * scale;
+                    double bias = 0.004;
+                    int occ = 0, tot = 0;
+                    for (int dy = -radius; dy <= radius; dy++)
+                        for (int dx = -radius; dx <= radius; dx++)
+                        {
+                            int x = (int)Math.Round(gx) + dx, y = (int)Math.Round(gy) + dy;
+                            if (x < 0 || y < 0 || x >= Res || y >= Res) continue;
+                            tot++;
+                            if (depth[y * Res + x] > pd + bias) occ++;
+                        }
+                    // bei sehr flachem Lichteinfall sanft ausblenden (dort wirkt das Hauptlicht ohnehin kaum)
+                    double fade = Math.Clamp((ndl - 0.08) / 0.22, 0, 1);
+                    if (tot > 0) shadow = (double)occ / tot * fade;
+                }
+                if (toon)
+                {
+                    // Zwei Stufen: Grenze bei u = 0,5. Schatten, wenn die Fläche vom Licht weg zeigt oder verdeckt ist.
+                    // Die Werte laufen stetig durch die Grenze, damit sie innerhalb der Dreiecke sauber verläuft.
+                    double side = (0.08 - ndl) * 5, cast = shadow * strength - 0.5;
+                    coords[i] = Math.Clamp(0.5 + Math.Max(side, cast), 0, 1);
+                    continue;
+                }
+                if (ndl <= 0.02 || shadow <= 0) continue; // vom Licht abgewandt: schon dunkel durch die Beleuchtung
                 double uPhys = key * ndl / (amb + key * ndl);
                 coords[i] = Math.Clamp(shadow * uPhys * strength, 0, 0.98);
             }

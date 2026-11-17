@@ -45,9 +45,12 @@ internal sealed class BodyBuilder
 
     // ================================================================= Mensch
 
-    public void BuildHuman(bool female, bool hair, bool gripL = false, bool gripR = false)
+    /// <summary>Größe der Hand (Handfläche im Mesh; Finger werden im Skelett mit demselben Faktor skaliert).</summary>
+    public static double HandK(bool female, bool anime) => (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
+
+    public void BuildHuman(bool female, bool hair, bool anime = false, bool gripL = false, bool gripR = false)
     {
-        double w = female ? 0.9 : 1.0;   // Gliedmaßen schlanker
+        double w = (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);   // Gliedmaßen schlanker
         double hip = female ? 1.1 : 1.0; // Becken breiter
         double sh = female ? 0.92 : 1.0; // Brustkorb schmaler
 
@@ -79,7 +82,8 @@ internal sealed class BodyBuilder
         if (female)
             foreach (var s in new[] { 1, -1 })
                 _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
-        BuildHead(female, hair);
+        if (anime) BuildAnimeHead(female, hair);
+        else BuildHead(female, hair);
 
         foreach (var s in new[] { 1, -1 })
         {
@@ -98,7 +102,7 @@ internal sealed class BodyBuilder
                 (-0.43, 0.035 * w, 0.031 * w, 0.0),
                 (-0.52, 0.026 * w, 0.021 * w, 0.0),
                 (-0.56, 0.024 * w, 0.019 * w, 0.0)), MaterialKind.Body);
-            BuildHand("wrist" + sfx, s, female ? 0.9 : 1.0);
+            BuildHand("wrist" + sfx, s, HandK(female, anime));
 
             // ---- Bein als eine Form (Hüfte → Knie → Knöchel), mit Kniescheibe und Wade
             _add("hip" + sfx, Loft(
@@ -112,7 +116,7 @@ internal sealed class BodyBuilder
                 (-0.74, 0.038 * w, 0.04 * w, -0.005),
                 (-0.86, 0.03 * w, 0.03 * w, 0.0)), MaterialKind.Body);
             // ---- Fuß
-            double f = female ? 0.92 : 1.0;
+            double f = (female ? 0.92 : 1.0) * (anime ? 0.92 : 1.0);
             _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f), MaterialKind.Body, true);
             _add("ankle" + sfx, MeshFactory.LoftZ(
                 (-0.05 * f, 0.032 * f, 0.03 * f, -0.04),
@@ -159,6 +163,184 @@ internal sealed class BodyBuilder
                 (0.05, 0.088, 0.055, -0.05),
                 (-0.03, 0.082, 0.04, -0.055),
                 (-0.08, 0.07, 0.028, -0.055)), MaterialKind.Hair, true);
+    }
+
+    // ================================================================= Anime-Kopf
+
+    /// <summary>Anime-Kopf: großer runder Schädel, schmales Gesicht mit kleinem spitzem Kinn, keine ausmodellierte Nase.
+    /// Augen, Brauen und Mund liegen als flache, der Oberfläche angepasste Flächen auf dem Gesicht.</summary>
+    private void BuildAnimeHead(bool female, bool hair)
+    {
+        const string H = "head";
+        double k = female ? 0.96 : 1.0;
+        // Querschnitte (Höhe, halbe Breite, halbe Tiefe, Versatz nach vorne)
+        var head = MeshFactory.LoftY(k, 0.55,
+            (0.034, 0.010, 0.010, 0.052),
+            (0.046, 0.030, 0.028, 0.036),
+            (0.066, 0.052, 0.050, 0.022),
+            (0.090, 0.067, 0.072, 0.012),
+            (0.115, 0.077, 0.085, 0.005),
+            (0.145, 0.083, 0.090, -0.001),
+            (0.175, 0.083, 0.088, -0.005),
+            (0.203, 0.073, 0.077, -0.007),
+            (0.226, 0.050, 0.054, -0.007),
+            (0.238, 0.020, 0.022, -0.006));
+        _add(H, head, MaterialKind.Body, true);
+        foreach (var s in new[] { 1, -1 })
+            _add(H, MeshFactory.Ellipsoid(P(s * 0.074 * k, 0.112 * k, -0.012 * k), 0.009 * k, 0.019 * k, 0.013 * k, 16, 10), MaterialKind.Body, true); // Ohr
+
+        var face = new Decals(head);
+        foreach (var s in new[] { 1, -1 })
+        {
+            double ex = s * 0.031 * k, ey = 0.113 * k, eh = female ? 1.0 : 0.85; // Männer: etwas schmalere Augen
+            _add(H, face.Ellipse(ex, ey, 0.0125 * k, 0.0145 * k * eh, 0, 0.0005), MaterialKind.EyeWhite, true);          // Augenweiß
+            _add(H, face.Ellipse(ex - s * 0.0012 * k, ey - 0.0012 * k, 0.0094 * k, 0.0128 * k * eh, 0, 0.0009), MaterialKind.Iris, true); // Iris
+            _add(H, face.Ellipse(ex + s * 0.0035 * k, ey + 0.0055 * k, 0.0026 * k, 0.0034 * k, 0, 0.0013), MaterialKind.EyeWhite, true); // Glanzpunkt
+            // Obere Wimpernlinie: kräftiger Bogen, außen dicker und leicht nach außen gezogen
+            _add(H, face.Arc(ex, ey - 0.001 * k, 0.0142 * k, 0.0158 * k * eh, s > 0 ? 8 : 172, s > 0 ? 172 : 8, 0.0032 * k, 0.0014 * k, 0.0012), MaterialKind.Line, true);
+            // Untere Linie: kurzer, feiner Strich außen
+            _add(H, face.Arc(ex, ey + 0.001 * k, 0.0128 * k, 0.0150 * k * eh, s > 0 ? -20 : 200, s > 0 ? -60 : 240, 0.0012 * k, 0.0006 * k, 0.0012), MaterialKind.Line, true);
+            // Augenbraue: dünner, flacher Bogen in Haarfarbe
+            _add(H, face.Arc(s * 0.033 * k, 0.128 * k, 0.017 * k, 0.007 * k, s > 0 ? 25 : 155, s > 0 ? 155 : 25, 0.0018 * k, 0.0009 * k, 0.0008), MaterialKind.Hair, true);
+        }
+        // Mund: kleiner, leicht lächelnder Strich
+        _add(H, face.Arc(0, 0.068 * k, 0.0085 * k, 0.0035 * k, 200, 340, 0.0013 * k, 0.0008 * k, 0.0008), MaterialKind.Mouth, true);
+        // Nase: nur eine winzige Erhebung (wirft im Cel-Shading einen kleinen Schatten)
+        if (face.Hit(0, 0.088 * k) is { } nose)
+            _add(H, MeshFactory.Ellipsoid(nose.P - nose.N * 0.001, 0.0032 * k, 0.0055 * k, 0.0035 * k, 14, 8), MaterialKind.Body, true);
+
+        if (!hair) return;
+        // Vorläufige Frisur: Haarkappe mit Pony bis knapp über die Brauen, hinten tief
+        double front = 93 * Math.PI / 180, back = (female ? 150 : 120) * Math.PI / 180;
+        _add(H, MeshFactory.Ellipsoid(P(0, 0.145 * k, -0.004 * k), 0.091 * k, 0.11 * k, 0.1 * k, 44, 26,
+            th => front + (back - front) * (1 - Math.Cos(th)) / 2), MaterialKind.Hair, true);
+        if (female)
+            _add(H, MeshFactory.LoftY(k,
+                (0.15, 0.088, 0.06, -0.04),
+                (0.06, 0.094, 0.056, -0.055),
+                (-0.04, 0.088, 0.04, -0.06),
+                (-0.12, 0.074, 0.026, -0.06)), MaterialKind.Hair, true);
+    }
+
+    /// <summary>Flache Gesichtsdetails, die sich der Kopfoberfläche anpassen: Jeder Punkt wird entlang der Flächennormale
+    /// auf das Kopf-Mesh projiziert und minimal angehoben (Ebenen über die Höhe gestaffelt).</summary>
+    private sealed class Decals
+    {
+        private readonly Point3D[] _p;
+        private readonly int[] _t;
+        public Decals(MeshGeometry3D mesh) { _p = mesh.Positions.ToArray(); _t = mesh.TriangleIndices.ToArray(); }
+
+        /// <summary>Strahl von vorne (+Z) auf den Punkt (x, y): Treffer und geglättete Normale.</summary>
+        public (Point3D P, Vector3D N)? Hit(double x, double y)
+        {
+            Point3D? H(double hx, double hy) => Cast(new Point3D(hx, hy, 1), new Vector3D(0, 0, -1));
+            if (H(x, y) is not { } c) return null;
+            const double d = 0.003;
+            if (H(x + d, y) is not { } px || H(x - d, y) is not { } mx || H(x, y + d) is not { } py || H(x, y - d) is not { } my) return null;
+            var n = Vector3D.CrossProduct(px - mx, py - my);
+            n.Normalize();
+            if (n.Z < 0) n = -n;
+            return (c, n);
+        }
+
+        /// <summary>Nächster Schnittpunkt eines Strahls mit dem Mesh (Möller-Trumbore).</summary>
+        private Point3D? Cast(Point3D o, Vector3D dir)
+        {
+            double best = double.MaxValue;
+            for (int i = 0; i + 2 < _t.Length; i += 3)
+            {
+                var a = _p[_t[i]]; var e1 = _p[_t[i + 1]] - a; var e2 = _p[_t[i + 2]] - a;
+                var h = Vector3D.CrossProduct(dir, e2);
+                double det = Vector3D.DotProduct(e1, h);
+                if (Math.Abs(det) < 1e-12) continue;
+                double f = 1 / det;
+                var s = o - a;
+                double u = f * Vector3D.DotProduct(s, h);
+                if (u < 0 || u > 1) continue;
+                var q = Vector3D.CrossProduct(s, e1);
+                double v = f * Vector3D.DotProduct(dir, q);
+                if (v < 0 || u + v > 1) continue;
+                double t = f * Vector3D.DotProduct(e2, q);
+                if (t > 0 && t < best) best = t;
+            }
+            return best < double.MaxValue ? o + dir * best : null;
+        }
+
+        /// <summary>Gefüllte Ellipse um (x, y), Halbachsen rx/ry, gedreht um rot Grad; lift = Abstand über der Haut.</summary>
+        public MeshGeometry3D Ellipse(double x, double y, double rx, double ry, double rot, double lift)
+        {
+            const int seg = 28, rings = 4;
+            var local = new List<(double u, double v)> { (0, 0) };
+            for (int r = 1; r <= rings; r++)
+                for (int j = 0; j < seg; j++)
+                {
+                    double a = 2 * Math.PI * j / seg, f = (double)r / rings;
+                    local.Add((rx * f * Math.Cos(a), ry * f * Math.Sin(a)));
+                }
+            var tri = new List<int>();
+            for (int j = 0; j < seg; j++) tri.AddRange(new[] { 0, 1 + j, 1 + (j + 1) % seg });
+            for (int r = 1; r < rings; r++)
+                for (int j = 0; j < seg; j++)
+                {
+                    int a = 1 + (r - 1) * seg + j, b = 1 + (r - 1) * seg + (j + 1) % seg;
+                    int c = 1 + r * seg + j, d = 1 + r * seg + (j + 1) % seg;
+                    tri.AddRange(new[] { a, c, b, b, c, d });
+                }
+            return Project(x, y, rot, lift, local, tri);
+        }
+
+        /// <summary>Bogen auf der Ellipse (rx, ry) um (x, y) von Winkel a0 bis a1 (Grad, 0 = rechts/+X, 90 = oben);
+        /// Strichstärke w0 am Anfang, w1 am Ende, an beiden Enden spitz auslaufend.</summary>
+        public MeshGeometry3D Arc(double x, double y, double rx, double ry, double a0, double a1, double w0, double w1, double lift)
+        {
+            const int seg = 24;
+            var local = new List<(double u, double v)>();
+            for (int i = 0; i <= seg; i++)
+            {
+                double t = (double)i / seg, a = (a0 + (a1 - a0) * t) * Math.PI / 180;
+                double w = (w0 + (w1 - w0) * t) * Math.Pow(Math.Sin(Math.PI * Math.Clamp(t * 0.9 + 0.05, 0, 1)), 0.6);
+                var c = (u: rx * Math.Cos(a), v: ry * Math.Sin(a));
+                var n = (u: Math.Cos(a) / rx, v: Math.Sin(a) / ry);
+                double len = Math.Sqrt(n.u * n.u + n.v * n.v);
+                n = (n.u / len, n.v / len);
+                local.Add((c.u + n.u * w / 2, c.v + n.v * w / 2));
+                local.Add((c.u - n.u * w / 2, c.v - n.v * w / 2));
+            }
+            var tri = new List<int>();
+            for (int i = 0; i < seg; i++)
+            {
+                int a = 2 * i, b = a + 1, c = a + 2, d = a + 3;
+                tri.AddRange(new[] { a, b, c, c, b, d });
+            }
+            return Project(x, y, 0, lift, local, tri);
+        }
+
+        private MeshGeometry3D Project(double x, double y, double rot, double lift, List<(double u, double v)> local, List<int> tri)
+        {
+            var (c, n) = Hit(x, y) ?? (new Point3D(x, y, 0.09), new Vector3D(0, 0, 1));
+            var eu = Vector3D.CrossProduct(new Vector3D(0, 1, 0), n); eu.Normalize();
+            var ev = Vector3D.CrossProduct(n, eu); ev.Normalize();
+            double cr = Math.Cos(rot * Math.PI / 180), sr = Math.Sin(rot * Math.PI / 180);
+            var mesh = new MeshGeometry3D();
+            foreach (var (u0, v0) in local)
+            {
+                double u = u0 * cr - v0 * sr, v = u0 * sr + v0 * cr;
+                var q = c + eu * u + ev * v;
+                var p = Cast(q + n * 0.02, -n) ?? q;
+                mesh.Positions.Add(p + n * lift);
+                mesh.Normals.Add(n);
+            }
+            // Dreiecke so ausrichten, dass die Vorderseite nach außen (n) zeigt
+            var pts = mesh.Positions;
+            for (int i = 0; i + 2 < tri.Count; i += 3)
+            {
+                var fn = Vector3D.CrossProduct(pts[tri[i + 1]] - pts[tri[i]], pts[tri[i + 2]] - pts[tri[i]]);
+                if (Vector3D.DotProduct(fn, n) < 0) (tri[i + 1], tri[i + 2]) = (tri[i + 2], tri[i + 1]);
+                mesh.TriangleIndices.Add(tri[i]); mesh.TriangleIndices.Add(tri[i + 1]); mesh.TriangleIndices.Add(tri[i + 2]);
+            }
+            mesh.Freeze();
+            return mesh;
+        }
     }
 
     private void BuildHand(string joint, int s, double k)

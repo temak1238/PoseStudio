@@ -4,7 +4,15 @@ public enum FigureStyle
 {
     Mannequin,
     Male,
-    Female
+    Female,
+    AnimeFemale,
+    AnimeMale
+}
+
+public static class FigureStyleExtensions
+{
+    public static bool IsFemale(this FigureStyle s) => s is FigureStyle.Female or FigureStyle.AnimeFemale;
+    public static bool IsAnime(this FigureStyle s) => s is FigureStyle.AnimeFemale or FigureStyle.AnimeMale;
 }
 
 public enum MaterialKind
@@ -18,7 +26,11 @@ public enum MaterialKind
     PropWood,
     PropMetal,
     PropGold,
-    PropGem
+    PropGem,
+    /// <summary>Dunkle Zeichenlinien im Anime-Gesicht (Wimpernlinie).</summary>
+    Line,
+    /// <summary>Anime-Mund.</summary>
+    Mouth
 }
 
 /// <summary>Körperproportionen. Prozentwerte: 100 = Standard.</summary>
