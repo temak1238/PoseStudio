@@ -40,6 +40,8 @@ public sealed class AppSettings
     public bool ControlNetRegions { get; set; }
     public bool ControlNetOnly { get; set; }
     public bool ClickSelectsFigure { get; set; }
+    /// <summary>Haare und Stoff: 0 = immer live, 1 = beim Ziehen einfrieren, 2 = eingefroren.</summary>
+    public int DynamicsMode { get; set; } = 1;
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

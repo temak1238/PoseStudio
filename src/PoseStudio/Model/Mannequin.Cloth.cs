@@ -41,7 +41,7 @@ public sealed partial class Mannequin
         _bottomBrush.Color = Parse(n.BottomColor, _bottomBrush.Color);
         _shoeBrush.Color = Parse(n.ShoeColor, _shoeBrush.Color);
         if (rebuild) BuildParts();
-        Update();
+        RecomputeDynamics(); // neue Kleidung immer ausrechnen, auch eingefroren
 
         static Color Parse(string s, Color fallback)
         {
@@ -55,6 +55,7 @@ public sealed partial class Mannequin
     private void BuildClothes(BodyBuilder builder)
     {
         _skirtPart = null;
+        _skirtFrozen = null;
         if (Style == FigureStyle.Mannequin) return;
         bool female = Style.IsFemale(), anime = Style.IsAnime();
         builder.BuildClothes(Clothing, female, anime);
@@ -143,6 +144,7 @@ public sealed partial class Mannequin
         if (_skirtPart == null) return;
         int n = _skN, rows = _skRows;
         var pm = Matrix3D.Identity; pm.Scale(Root.SegScale); pm.Append(Root.World);
+        if (ApplyFrozen(_skirtPart, _skirtFrozen, pm)) return;
         double world = new Vector3D(pm.M21, pm.M22, pm.M23).Length;
         double legK = 0.25 + 0.75 * this["hip_l"].SegScale.Y;
         double seg = _skLen * legK * world / rows;
@@ -305,5 +307,6 @@ public sealed partial class Mannequin
         var mesh = (MeshGeometry3D)_skirtPart.Model.Geometry;
         mesh.Positions = pos;
         mesh.Normals = nrm;
+        _skirtFrozen = Capture(mesh, pm);
     }
 }

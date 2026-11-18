@@ -85,6 +85,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--perf")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PerfTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--seat")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -805,6 +813,57 @@ public partial class App : Application
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "seat.jpg"), 90);
         File.WriteAllText(Path.Combine(folder, "seat.txt"), log.ToString());
+    }
+
+    /// <summary>Testmodus --perf: Rechenzeit von Mannequin.Update je Ausstattung (Mittel über 40 Aufrufe).</summary>
+    private static void PerfTest(string file)
+    {
+        var sb = new System.Text.StringBuilder();
+        var cases = new (string name, bool hair, string hairStyle, string bottom, bool seat, string pose)[]
+        {
+            ("nackt, ohne Haare, ohne Block", false, "kurz", "none", false, "Neutral stehen (A-Pose)"),
+            ("Haare kurz", true, "kurz", "none", false, "Neutral stehen (A-Pose)"),
+            ("Haare lang", true, "lang", "none", false, "Neutral stehen (A-Pose)"),
+            ("Haare sehr lang", true, "sehrlang", "none", false, "Neutral stehen (A-Pose)"),
+            ("Rock knielang (ohne Haare)", false, "kurz", "rock", false, "Neutral stehen (A-Pose)"),
+            ("Kleid lang (ohne Haare)", false, "kurz", "langkleid", false, "Neutral stehen (A-Pose)"),
+            ("Sitzblock, sitzend (ohne Haare)", false, "kurz", "none", true, "Sitzen (Stuhl)"),
+            ("Haare lang + Kleid lang + Block, sitzend", true, "lang", "langkleid", true, "Sitzen (Stuhl)"),
+        };
+        foreach (var c in cases)
+        {
+            var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, c.hair, new Proportions());
+            m.SetHair(new HairSettings { Style = c.hairStyle });
+            m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = c.bottom });
+            m.SetSeatBlock(c.seat);
+            m.SetPose(Presets.All.First(p => p.Name == c.pose).ToPose());
+            m.Update();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < 40; i++) m.Update();
+            m.FreezeDynamics = true; m.Update();
+            var swf = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < 40; i++) m.Update();
+            m.FreezeDynamics = false;
+            sb.AppendLine($"{c.name}: {sw.Elapsed.TotalMilliseconds / 40:F1} ms, eingefroren {swf.Elapsed.TotalMilliseconds / 40:F1} ms");
+            // Schatten/Konturen wie in der Vorschau nach jeder Änderung
+            var cam = new OrbitCamera();
+            foreach (var toon in new[] { false, true })
+            {
+                var light = new LightSettings { Toon = toon };
+                var o = new SceneOptions { Light = light, ShadowResolution = 640 };
+                var figs = new[] { m };
+                SelfShadow.Apply(figs, cam, light); Outline.Create(figs, cam, light); SceneFactory.CreateFloor(o, figs, cam);
+                double tS = 0, tO = 0, tF = 0;
+                for (int i = 0; i < 5; i++)
+                {
+                    var s1 = System.Diagnostics.Stopwatch.StartNew(); SelfShadow.Apply(figs, cam, light); tS += s1.Elapsed.TotalMilliseconds;
+                    s1.Restart(); Outline.Create(figs, cam, light); tO += s1.Elapsed.TotalMilliseconds;
+                    s1.Restart(); SceneFactory.CreateFloor(o, figs, cam); tF += s1.Elapsed.TotalMilliseconds;
+                }
+                sb.AppendLine($"    {(toon ? "Cel" : "normal")}: Eigenschatten {tS / 5:F0} ms, Konturen {tO / 5:F0} ms, Bodenschatten {tF / 5:F0} ms, Punkte {m.WorldMeshes().Sum(x => x.Mesh.Positions.Count)}");
+            }
+        }
+        File.WriteAllText(file, sb.ToString());
     }
 
     private static void PelvisTest(string folder)

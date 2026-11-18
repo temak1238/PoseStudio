@@ -103,6 +103,9 @@ public partial class MainWindow : Window
         BuildProportionAxes();
         InitHair();
         InitClothes();
+        PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
+        PreviewMouseLeftButtonUp += Window_PreviewMouseLeftButtonUp;
+        DynamicsCombo.ItemsSource = new[] { "Live (immer neu berechnen)", "Beim Ziehen einfrieren", "Eingefroren" };
         BuildLightAxes();
         InitSetUi();
         InitPropUi();
@@ -118,6 +121,7 @@ public partial class MainWindow : Window
         }
         RefreshFigureList();
         _ready = true;
+        ApplyDynamicsMode();
         foreach (var f in _exportFormats) f.PropertyChanged += (_, _) => DrawGuides();
 
         CustomWBox.LostFocus += CustomSize_LostFocus;
@@ -225,6 +229,7 @@ public partial class MainWindow : Window
 
     private void RefreshFigureList()
     {
+        if (_ready) ApplyDynamicsMode();
         _suppressFigureList = true;
         FigureList.ItemsSource = _figures.Select((fg, i) =>
         {
@@ -751,6 +756,50 @@ public partial class MainWindow : Window
         ClothesChanged();
     }
 
+    // =================================================================== Haare und Stoff: live oder eingefroren
+
+    private bool _frozenByPress;
+
+    private int DynamicsMode => Math.Max(0, DynamicsCombo.SelectedIndex);
+
+    /// <summary>Einfrier-Zustand auf alle Figuren übertragen (Modus 2 = dauerhaft eingefroren).</summary>
+    private void ApplyDynamicsMode()
+    {
+        foreach (var fg in _figures) fg.FreezeDynamics = DynamicsMode == 2 || _frozenByPress;
+        RecomputeButton.IsEnabled = DynamicsMode == 2;
+    }
+
+    private void DynamicsMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready) return;
+        _frozenByPress = false;
+        ApplyDynamicsMode();
+        if (DynamicsMode != 2) RecomputeDynamics_Click(this, new RoutedEventArgs());
+    }
+
+    private void RecomputeDynamics_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var fg in _figures) fg.RecomputeDynamics();
+        RebuildFloor();
+    }
+
+    /// <summary>Modus „Beim Ziehen einfrieren“: solange die linke Maustaste gedrückt ist (Gelenk ziehen, Regler schieben …),
+    /// werden Haare und Stoff nur starr mitbewegt; beim Loslassen einmal neu berechnet.</summary>
+    private void Window_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DynamicsMode != 1) return;
+        _frozenByPress = true;
+        ApplyDynamicsMode();
+    }
+
+    private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_frozenByPress) return;
+        _frozenByPress = false;
+        ApplyDynamicsMode();
+        RecomputeDynamics_Click(this, new RoutedEventArgs());
+    }
+
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
 
     /// <summary>Überträgt Stil, Haare und Proportionen auf die Figur (Pose bleibt erhalten).</summary>
@@ -863,6 +912,7 @@ public partial class MainWindow : Window
         FolderBox.Text = s.OutputFolder;
         PrefixBox.Text = s.FilePrefix;
         SetHairColor(ParseColor(s.HairColor, Color.FromRgb(0x3A, 0x2A, 0x20)));
+        DynamicsCombo.SelectedIndex = Math.Clamp(s.DynamicsMode, 0, 2);
         GuidesCheck.IsChecked = s.Guides;
         ExportFormatList.ItemsSource = _exportFormats.Where(o => !o.IsFixed).ToList();
         FixedFormatList.ItemsSource = _exportFormats.Where(o => o.IsFixed).ToList();
@@ -925,6 +975,7 @@ public partial class MainWindow : Window
         s.OutputFolder = FolderBox.Text;
         s.FilePrefix = PrefixBox.Text;
         s.HairColor = ToHex(_figure.HairColor);
+        s.DynamicsMode = Math.Max(0, DynamicsCombo.SelectedIndex);
         s.Guides = GuidesCheck.IsChecked == true;
         s.OutputPng = PngRadio.IsChecked == true;
         s.Transparent = TransparentCheck.IsChecked == true;
@@ -1251,6 +1302,18 @@ public partial class MainWindow : Window
         sb.AppendLine($"Kleidung: {_figure.Clothing.Top} / {_figure.Clothing.Bottom} / {_figure.Clothing.Shoes}, Teile {_figure.WorldMeshes().Count()}, GetFigure {_figure.GetFigure().Clothing?.Bottom}");
         _clothAxes[0].Value = 180;
         sb.AppendLine($"Weite 180: {_figure.Clothing.Fullness}");
+        // Einfrieren: Kopf drehen, Haare müssen starr mitgehen (Abstand Haarpunkt–Nase bleibt gleich)
+        DynamicsCombo.SelectedIndex = 2;
+        var hairMesh = _figure.WorldMeshes().Select(x => x.Mesh).OrderByDescending(x => x.Positions.Count).First();
+        var nose0 = _figure.NoseWorld; var p0 = hairMesh.Positions[hairMesh.Positions.Count / 2];
+        _figure["neck"].TwistValue = 40; _figure.Update();
+        var nose1 = _figure.NoseWorld; var p1 = hairMesh.Positions[hairMesh.Positions.Count / 2];
+        sb.AppendLine($"Eingefroren: Freeze {_figure.FreezeDynamics}, Abstand Haar–Nase vorher {(p0 - nose0).Length:F4} nachher {(p1 - nose1).Length:F4}, Knopf aktiv {RecomputeButton.IsEnabled}");
+        DynamicsCombo.SelectedIndex = 1;
+        Window_PreviewMouseLeftButtonDown(this, null!);
+        sb.AppendLine($"Beim Ziehen: gedrückt Freeze {_figure.FreezeDynamics}");
+        Window_PreviewMouseLeftButtonUp(this, null!);
+        sb.AppendLine($"Beim Ziehen: losgelassen Freeze {_figure.FreezeDynamics}");
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();

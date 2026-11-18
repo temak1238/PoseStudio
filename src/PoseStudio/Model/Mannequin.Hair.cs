@@ -36,7 +36,7 @@ public sealed partial class Mannequin
                        || Math.Abs(n.Messiness - HairStyle.Messiness) > 1e-9;
         HairStyle = n;
         if (rebuild) BuildParts();
-        Update();
+        RecomputeDynamics(); // neue Frisur/Wind immer ausrechnen, auch eingefroren
     }
 
     private bool HasStrandHair => Hair && Style != FigureStyle.Mannequin;
@@ -45,6 +45,7 @@ public sealed partial class Mannequin
     private void BuildHair()
     {
         _strands.Clear();
+        _hairFrozen = null;
         _hairPart = null;
         if (!HasStrandHair) return;
         bool female = Style.IsFemale(), anime = Style.IsAnime();
@@ -243,6 +244,7 @@ public sealed partial class Mannequin
         var head = this["head"];
         double us = head.UniformScale;
         var hm = Matrix3D.Identity; hm.Scale(new Vector3D(us, us, us)); hm.Append(head.World);
+        if (ApplyFrozen(_hairPart, _hairFrozen, hm)) return;
         double world = new Vector3D(hm.M11, hm.M12, hm.M13).Length; // Meter je Kopf-Einheit (mit Körpergröße)
         double vol = HairStyle.Volume / 100;
         var cols = HairColliders(0.004 * world + 0.006 * (vol - 1) * world);
@@ -322,6 +324,7 @@ public sealed partial class Mannequin
         var mesh = (MeshGeometry3D)_hairPart.Model.Geometry;
         mesh.Positions = pos;
         mesh.Normals = nrm;
+        _hairFrozen = Capture(mesh, hm);
     }
 
     /// <summary>Kette glätten (Catmull-Rom, doppelte Auflösung) und als flaches, spitz zulaufendes Band ausgeben.</summary>

@@ -79,6 +79,13 @@
                                           Checked="Figure_Changed" Unchecked="Figure_Changed" />
                                 <ComboBox x:Name="FigureStyleCombo" SelectionChanged="FigureStyle_Changed" />
                             </DockPanel>
+                            <DockPanel Margin="0,4,0,0">
+                                <Button x:Name="RecomputeButton" DockPanel.Dock="Right" Content="Neu berechnen" Margin="4,0,0,0" Click="RecomputeDynamics_Click"
+                                        ToolTip="Haare und Röcke/Kleider jetzt neu fallen lassen (im Modus „Eingefroren“)" />
+                                <TextBlock Text="Haare &amp; Stoff" Width="80" VerticalAlignment="Center" />
+                                <ComboBox x:Name="DynamicsCombo" SelectionChanged="DynamicsMode_Changed"
+                                          ToolTip="Live: bei jeder Änderung neu berechnen (langsamer). Beim Ziehen einfrieren: während Maus gedrückt starr mitbewegen, beim Loslassen neu berechnen. Eingefroren: nur bei Änderung von Frisur, Kleidung, Wind oder per „Neu berechnen“." />
+                            </DockPanel>
                             <CheckBox x:Name="SeatCheck" Content="Sitzblock unter sitzender Figur" Margin="0,4,0,0"
                                       Checked="Figure_Changed" Unchecked="Figure_Changed"
                                       ToolTip="Sitzt die Figur (Oberschenkel etwa waagerecht), steht automatisch ein einfacher Block unter dem Gesäß – Höhe und Tiefe passen sich an. Nicht in den ControlNet-Bildern." />
