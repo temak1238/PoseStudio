@@ -105,6 +105,9 @@ public partial class MainWindow : Window
         InitClothes();
         PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
         PreviewMouseLeftButtonUp += Window_PreviewMouseLeftButtonUp;
+        // Maustaste außerhalb des Fensters losgelassen: Ziehen trotzdem beenden
+        Deactivated += (_, _) => Window_PreviewMouseLeftButtonUp(this, null!);
+        PreviewMouseMove += (_, e2) => { if (_interacting && e2.LeftButton == MouseButtonState.Released) Window_PreviewMouseLeftButtonUp(this, null!); };
         DynamicsCombo.ItemsSource = new[] { "Live (immer neu berechnen)", "Beim Ziehen einfrieren", "Eingefroren" };
         BuildLightAxes();
         InitSetUi();
@@ -758,7 +761,7 @@ public partial class MainWindow : Window
 
     // =================================================================== Haare und Stoff: live oder eingefroren
 
-    private bool _frozenByPress;
+    private bool _frozenByPress, _interacting;
 
     private int DynamicsMode => Math.Max(0, DynamicsCombo.SelectedIndex);
 
@@ -783,10 +786,12 @@ public partial class MainWindow : Window
         RebuildFloor();
     }
 
-    /// <summary>Modus „Beim Ziehen einfrieren“: solange die linke Maustaste gedrückt ist (Gelenk ziehen, Regler schieben …),
-    /// werden Haare und Stoff nur starr mitbewegt; beim Loslassen einmal neu berechnet.</summary>
+    /// <summary>Solange die linke Maustaste gedrückt ist (Gelenk ziehen, Regler schieben …): Eigenschatten aussetzen,
+    /// Bodenschatten gröber; im Modus „Beim Ziehen einfrieren“ zusätzlich Haare und Stoff nur starr mitführen.
+    /// Beim Loslassen wird alles einmal vollständig berechnet.</summary>
     private void Window_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _interacting = true;
         if (DynamicsMode != 1) return;
         _frozenByPress = true;
         ApplyDynamicsMode();
@@ -794,10 +799,15 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_frozenByPress) return;
-        _frozenByPress = false;
-        ApplyDynamicsMode();
-        RecomputeDynamics_Click(this, new RoutedEventArgs());
+        if (!_interacting) return;
+        _interacting = false;
+        if (_frozenByPress)
+        {
+            _frozenByPress = false;
+            ApplyDynamicsMode();
+            foreach (var fg in _figures) fg.RecomputeDynamics();
+        }
+        RebuildFloor();
     }
 
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
@@ -1042,7 +1052,10 @@ public partial class MainWindow : Window
 
     private void RebuildFloorNow()
     {
-        SelfShadow.Apply(_figures, _cam, _light);
+        // Während gedrückter Maustaste (Ziehen) kein Eigenschatten – er ist der teuerste Schritt und kommt beim Loslassen.
+        // Im Cel-Shading bleiben die Licht-/Schattenstufen live (ohne Schattenwurf, kostet kaum etwas).
+        if (!_interacting) SelfShadow.Apply(_figures, _cam, _light);
+        else if (_light.Toon) { var quick = _light.Clone(); quick.CastShadow = false; SelfShadow.Apply(_figures, _cam, quick); }
         _floor.Children.Clear();
         var o = new SceneOptions
         {
@@ -1051,7 +1064,7 @@ public partial class MainWindow : Window
             Shadow = ShadowPreviewCheck.IsChecked == true,
             Light = _light,
             Set = _set,
-            ShadowResolution = 640
+            ShadowResolution = _interacting ? 320 : 640
         };
         if (o.Floor || o.Shadow) _floor.Children.Add(SceneFactory.CreateFloor(o, _figures, _cam));
         if (Outline.Create(_figures, _cam, _light) is { } outline) _floor.Children.Add(outline);
@@ -1314,6 +1327,15 @@ public partial class MainWindow : Window
         sb.AppendLine($"Beim Ziehen: gedrückt Freeze {_figure.FreezeDynamics}");
         Window_PreviewMouseLeftButtonUp(this, null!);
         sb.AppendLine($"Beim Ziehen: losgelassen Freeze {_figure.FreezeDynamics}");
+        // Ziehen simulieren: eine Mausbewegung = Gelenk ändern, PoseChanged, Boden/Schatten neu (gedrückt vs. losgelassen)
+        _light.CastShadow = true;
+        double Step() { var w = System.Diagnostics.Stopwatch.StartNew(); _figure["elbow_l"].BendValue += 1; PoseChanged(); RebuildFloorNow(); return w.Elapsed.TotalMilliseconds; }
+        Step();
+        double free = Enumerable.Range(0, 10).Select(_ => Step()).Average();
+        Window_PreviewMouseLeftButtonDown(this, null!);
+        double pressed = Enumerable.Range(0, 10).Select(_ => Step()).Average();
+        Window_PreviewMouseLeftButtonUp(this, null!);
+        sb.AppendLine($"Mausbewegung beim Ziehen: ohne Taste {free:F0} ms, mit gedrückter Taste {pressed:F0} ms, danach interagiert {_interacting}");
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();

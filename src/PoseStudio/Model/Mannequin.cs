@@ -496,8 +496,11 @@ public sealed partial class Mannequin
     /// <summary>Skalierung der Hand (Handfläche ist im Mesh bereits mit dem Stilfaktor gebaut, Finger nicht).</summary>
     internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * BodyBuilder.HandK(Style.IsFemale(), Style.IsAnime());
 
+    private Vector3D _updatedRoot = new(double.NaN, 0, 0);
+
     public void Update()
     {
+        _updatedRoot = RootPosition;
         if (_prop.Active) ApplyGripFingers();
         ComputeWorlds();
         if (_prop.Active && _ikEnabled)
@@ -1433,7 +1436,9 @@ public sealed partial class Mannequin
     /// <summary>Verschiebt die Figur senkrecht, so dass der tiefste Punkt genau auf dem Boden (y = 0) steht.</summary>
     public void GroundToFloor()
     {
+        if (RootPosition != _updatedRoot) Update(); // Position wurde ohne Neuberechnung geändert
         double minY = ComputeMinY();
+        if (Math.Abs(minY) < 1e-6) return; // steht schon auf dem Boden: nicht noch einmal alles neu berechnen
         RootPosition = new Vector3D(RootPosition.X, RootPosition.Y - minY, RootPosition.Z);
         Update();
     }
