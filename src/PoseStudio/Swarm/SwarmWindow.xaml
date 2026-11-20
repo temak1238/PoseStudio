@@ -1,0 +1,275 @@
+<Window x:Class="PoseStudio.Swarm.SwarmWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pose Studio – SwarmUI" Width="1500" Height="950" MinWidth="900" MinHeight="600"
+        Background="#F3F3F3" FontSize="12">
+    <Window.Resources>
+        <DataTemplate x:Key="ThumbTemplate">
+            <Border Width="124" Margin="3" Padding="2" Background="White" BorderBrush="#D0D0D0" BorderThickness="1" ToolTip="{Binding ToolTip}">
+                <StackPanel>
+                    <Border Height="120" Background="#EEE">
+                        <Image Source="{Binding Image}" Stretch="Uniform" />
+                    </Border>
+                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap" FontSize="10.5" MaxHeight="28" TextTrimming="CharacterEllipsis" Margin="2,2,2,0" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="WrapPanelTemplate">
+            <WrapPanel />
+        </ItemsPanelTemplate>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,4,0,4" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+        <Style x:Key="Lbl" TargetType="TextBlock">
+            <Setter Property="Width" Value="100" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="6">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="470" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ================= Einstellungen ================= -->
+        <DockPanel Grid.Column="0">
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                <ProgressBar x:Name="Progress" Height="8" Minimum="0" Maximum="1" />
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,3" Foreground="#444" />
+                <DockPanel>
+                    <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Abbrechen" Margin="6,0,0,0" Padding="10,6" Click="Cancel_Click" IsEnabled="False" />
+                    <Button x:Name="GenerateButton" Content="Generieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
+                            Background="#2B7BD6" Foreground="White" Click="Generate_Click" />
+                </DockPanel>
+            </StackPanel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="0,0,6,0">
+                    <GroupBox Header="Server">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Verbinden" Margin="6,0,0,0" Click="Connect_Click" />
+                                <TextBox x:Name="UrlBox" />
+                            </DockPanel>
+                            <TextBlock x:Name="ServerText" Foreground="#666" Margin="0,2,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Einstellungen">
+                        <StackPanel>
+                            <Expander x:Name="HistoryExpander" Header="Aus einem SwarmUI-Bild übernehmen" Expanded="HistoryExpander_Expanded">
+                                <StackPanel>
+                                    <TextBlock TextWrapping="Wrap" Foreground="#666" Margin="0,2"
+                                               Text="Klick auf ein Bild übernimmt dessen Modell, LoRAs, Prompts, Sampler und alle weiteren Einstellungen (z. B. FaceRefine). Init Image, Größe und Seed kommen von hier; Refiner-Werte werden zur Vorgabe für „Nachbessern“." />
+                                    <ListBox x:Name="HistoryList" Height="300" ItemTemplate="{StaticResource ThumbTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="HistoryList_SelectionChanged" />
+                                    <Button Content="Liste aktualisieren" HorizontalAlignment="Left" Margin="0,3" Click="RefreshHistory_Click" />
+                                </StackPanel>
+                            </Expander>
+                            <DockPanel Margin="0,4,0,0">
+                                <Button DockPanel.Dock="Right" Content="Löschen" Margin="4,0,0,0" Click="DeleteProfile_Click" />
+                                <Button DockPanel.Dock="Right" Content="Speichern…" Margin="4,0,0,0" Click="SaveProfile_Click" />
+                                <TextBlock Text="Profil" Style="{StaticResource Lbl}" Width="50" />
+                                <ComboBox x:Name="ProfileCombo" SelectionChanged="Profile_Changed" />
+                            </DockPanel>
+                            <TextBlock x:Name="BaseText" Foreground="#666" TextWrapping="Wrap" Margin="0,3,0,0" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Modell">
+                        <StackPanel>
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="56" Height="56" Background="#EEE" Margin="0,0,6,0">
+                                    <Image x:Name="ModelImage" Stretch="Uniform" />
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="ModelText" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <ToggleButton x:Name="ModelPickToggle" Content="Modell wählen…" HorizontalAlignment="Left" Margin="0,3,0,0" Click="ModelPick_Click" />
+                                </StackPanel>
+                            </DockPanel>
+                            <StackPanel x:Name="ModelPicker" Visibility="Collapsed" Margin="0,4,0,0">
+                                <TextBox x:Name="ModelSearch" TextChanged="ModelSearch_Changed" ToolTip="Suchen" />
+                                <ListBox x:Name="ModelList" Height="320" ItemTemplate="{StaticResource ThumbTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="ModelList_SelectionChanged" />
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="LoRAs">
+                        <StackPanel>
+                            <ItemsControl x:Name="LoraSelected">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,1">
+                                            <Button DockPanel.Dock="Right" Content="✕" Width="22" Margin="4,0,0,0" Click="RemoveLora_Click" Tag="{Binding}" ToolTip="Entfernen" />
+                                            <TextBox DockPanel.Dock="Right" Width="44" Text="{Binding Weight, UpdateSourceTrigger=LostFocus, StringFormat=0.##}" ToolTip="Gewicht" />
+                                            <Slider DockPanel.Dock="Right" Width="90" Minimum="-1" Maximum="2" SmallChange="0.05" LargeChange="0.1" Value="{Binding Weight}" Margin="4,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <CheckBox x:Name="AutoTriggerCheck" Content="Trigger-Wörter der LoRAs automatisch in den Prompt" Margin="0,3" />
+                            <ToggleButton x:Name="LoraPickToggle" Content="LoRA hinzufügen…" HorizontalAlignment="Left" Click="LoraPick_Click" />
+                            <StackPanel x:Name="LoraPicker" Visibility="Collapsed" Margin="0,4,0,0">
+                                <DockPanel>
+                                    <ComboBox x:Name="LoraFolderCombo" DockPanel.Dock="Right" Width="170" Margin="4,0,0,0" SelectionChanged="LoraFilter_Changed" />
+                                    <TextBox x:Name="LoraSearch" TextChanged="LoraFilter_Changed" ToolTip="Suchen" />
+                                </DockPanel>
+                                <ListBox x:Name="LoraList" Height="360" ItemTemplate="{StaticResource ThumbTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="LoraList_SelectionChanged" />
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Prompt">
+                        <StackPanel>
+                            <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" Height="110" VerticalScrollBarVisibility="Auto" />
+                            <TextBlock Text="Negativ-Prompt" Margin="0,4,0,1" />
+                            <TextBox x:Name="NegativeBox" AcceptsReturn="True" TextWrapping="Wrap" Height="70" VerticalScrollBarVisibility="Auto" />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Init Image (aktuelle Szene)">
+                        <StackPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Darstellung" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="LookCombo" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Creativity" Style="{StaticResource Lbl}" />
+                                <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=CreativitySlider, StringFormat=0.00}" TextAlignment="Right" />
+                                <Slider x:Name="CreativitySlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Seitenlänge" Style="{StaticResource Lbl}" />
+                                <TextBlock x:Name="SizeText" DockPanel.Dock="Right" Width="110" Foreground="#666" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                <ComboBox x:Name="SideCombo" IsEditable="True" SelectionChanged="Side_Changed" LostFocus="Side_Changed" />
+                            </DockPanel>
+                            <TextBlock Foreground="#666" TextWrapping="Wrap" Margin="0,2"
+                                       Text="Seitenverhältnis und Bildausschnitt kommen aus der Vorschau im Hauptfenster." />
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Generierung">
+                        <StackPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Anzahl" Style="{StaticResource Lbl}" />
+                                <TextBox x:Name="CountBox" Width="50" HorizontalAlignment="Left" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Seed" Style="{StaticResource Lbl}" />
+                                <Button DockPanel.Dock="Right" Content="Zufall" Margin="4,0,0,0" Click="RandomSeed_Click" ToolTip="Seed -1 = jedes Mal neu" />
+                                <TextBox x:Name="SeedBox" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Steps / CFG" Style="{StaticResource Lbl}" />
+                                <TextBox x:Name="StepsBox" Width="50" ToolTip="0 = aus übernommenen Einstellungen bzw. Standard" />
+                                <TextBox x:Name="CfgBox" Width="50" Margin="6,0,0,0" HorizontalAlignment="Left" ToolTip="0 = aus übernommenen Einstellungen bzw. Standard" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Sampler" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="SamplerCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Scheduler" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="SchedulerCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="VAE" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="VaeCombo" IsEditable="True" />
+                            </DockPanel>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <Expander Header="ControlNet (optional)" Margin="0,4">
+                        <StackPanel Margin="6,2">
+                            <CheckBox x:Name="CnCheck" Content="ControlNet-Bild aus Pose Studio mitschicken" />
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Bild" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="CnKindCombo" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Modell" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="CnModelCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Stärke / Start / Ende" Style="{StaticResource Lbl}" Width="120" />
+                                <TextBox x:Name="CnStrengthBox" Width="44" />
+                                <TextBox x:Name="CnStartBox" Width="44" Margin="4,0,0,0" />
+                                <TextBox x:Name="CnEndBox" Width="44" Margin="4,0,0,0" HorizontalAlignment="Left" />
+                            </DockPanel>
+                            <TextBlock Foreground="#666" TextWrapping="Wrap"
+                                       Text="Hinweis: LLLite-Modelle wie anima_3dpose wirken über das normale ControlNet-Feld von SwarmUI evtl. nicht." />
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Header="Nachbessern (Refiner)" Margin="0,4">
+                        <StackPanel Margin="6,2">
+                            <TextBlock Foreground="#666" TextWrapping="Wrap" Margin="0,0,0,3"
+                                       Text="Gilt für „Nachbessern“ an einem Ergebnis: dasselbe Bild (gleicher Seed) noch einmal mit Refiner-Durchgang und Hochskalierung." />
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Refiner-Anteil" Style="{StaticResource Lbl}" />
+                                <TextBox x:Name="RefControlBox" Width="50" HorizontalAlignment="Left" ToolTip="0.1 = 10 %" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Hochskalieren ×" Style="{StaticResource Lbl}" />
+                                <TextBox x:Name="RefUpscaleBox" Width="50" HorizontalAlignment="Left" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Upscaler" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="RefUpscaleMethodCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Methode" Style="{StaticResource Lbl}" />
+                                <ComboBox x:Name="RefMethodCombo" IsEditable="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1">
+                                <TextBlock Text="Steps / CFG" Style="{StaticResource Lbl}" />
+                                <TextBox x:Name="RefStepsBox" Width="50" />
+                                <TextBox x:Name="RefCfgBox" Width="50" Margin="6,0,0,0" HorizontalAlignment="Left" />
+                            </DockPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+
+        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="#E0E0E0" />
+
+        <!-- ================= Ergebnisse ================= -->
+        <DockPanel Grid.Column="2">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="Liste leeren" Click="ClearResults_Click" />
+                <TextBlock Text="Ergebnisse" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
+                <ItemsControl x:Name="ResultList" Margin="4">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="4" Padding="4" BorderBrush="#CCC" BorderThickness="1" Background="#FAFAFA">
+                                <StackPanel Width="300">
+                                    <Border Height="300" Background="#EEE" Cursor="Hand" MouseLeftButtonUp="ResultImage_Click" Tag="{Binding}">
+                                        <Image Source="{Binding Image}" Stretch="Uniform" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Caption}" Foreground="#555" TextWrapping="Wrap" Margin="0,3" />
+                                    <WrapPanel IsEnabled="{Binding Done}">
+                                        <Button Content="Nachbessern" Margin="0,0,4,2" Click="Refine_Click" Tag="{Binding}" ToolTip="Gleiches Bild mit Refiner und Hochskalierung" />
+                                        <Button Content="Seed übernehmen" Margin="0,0,4,2" Click="UseSeed_Click" Tag="{Binding}" />
+                                        <Button Content="Als Referenzbild" Margin="0,0,4,2" Click="UseAsReference_Click" Tag="{Binding}" ToolTip="Im Hauptfenster als Referenzfoto der aktiven Figur einblenden" />
+                                        <Button Content="Ordner" Margin="0,0,4,2" Click="OpenFile_Click" Tag="{Binding}" ToolTip="Lokale Kopie im Explorer zeigen" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Grid>
+</Window>

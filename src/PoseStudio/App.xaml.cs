@@ -85,6 +85,13 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--swarm-test")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () => { await SwarmTest(e.Args[1], e.Args[2]); Shutdown(); });
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--bust")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -1038,6 +1045,62 @@ public partial class App : Application
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * views.Length, W * rows.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "bust.jpg"), 90);
+    }
+
+    /// <summary>Testmodus --swarm-test &lt;Ordner&gt; &lt;URL&gt;: Verbindung, Listen, Übernahme aus der Historie, ein kleines Bild generieren, Historie prüfen, nachbessern.</summary>
+    private static async Task SwarmTest(string folder, string url)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        void L(string s) { log.AppendLine(s); File.WriteAllText(Path.Combine(folder, "swarm.txt"), log.ToString()); }
+        using var c = new PoseStudio.Swarm.SwarmClient(url);
+        try
+        {
+            L("Version: " + await c.ConnectAsync());
+            var models = await c.ListModelsAsync("Stable-Diffusion"); var loras = await c.ListModelsAsync("LoRA");
+            L($"Modelle {models.Count}, LoRAs {loras.Count}, mit Vorschaubild {models.Count(m => m.PreviewUrl != null)}/{loras.Count(m => m.PreviewUrl != null)}, LoRAs mit Trigger {loras.Count(l => !string.IsNullOrWhiteSpace(l.Trigger))}");
+            var thumb = await PoseStudio.Swarm.ThumbCache.LoadAsync(loras[0].PreviewUrl!, 128);
+            L($"Vorschaubild geladen: {thumb != null} ({loras[0].Name})");
+            var hist = await c.ListHistoryAsync(5);
+            L($"Historie: {hist.Count} Bilder, neuestes {hist[0].Src}");
+            var s = new PoseStudio.Swarm.SwarmSettings { Url = url, SideLength = 768, Count = 1, Creativity = 0.6 };
+            s.ImportFrom(hist[0].Params!, hist[0].OriginalPrompt);
+            s.SideLength = 768; s.Count = 1;
+            L($"Übernommen: Modell {s.Model}, LoRAs {string.Join(", ", s.Loras.Select(l => l.Name + "@" + l.Weight))}, Steps {s.Steps}, Sampler {s.Sampler}, weitere {s.Base?.Count}: {string.Join(", ", s.Base!.Select(x => x.Key))}");
+            L($"Refiner-Vorgabe: {s.RefinerMethod}, Anteil {s.RefinerControl}, ×{s.RefinerUpscale}, {s.RefinerUpscaleMethod}");
+            // Szene: Anime-Figur, Cel-Shading, sitzend mit Rock
+            var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+            m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+            m.SetHair(new HairSettings { Style = "lang", Wind = 30 });
+            m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = "rock", Shoes = "socken" });
+            m.SetPose(Presets.All.First(p => p.Name == "Peace-Zeichen").ToPose()); m.GroundToFloor();
+            var (w, h) = s.SizeFor(16.0 / 9);
+            var pel = m.PelvisWorld;
+            var cam = new OrbitCamera { Yaw = 15, Pitch = 5, Distance = 3.2, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+            var bmp = SceneFactory.Render(m, cam, new SceneOptions { Floor = true, Shadow = true, Light = new LightSettings { Toon = true }, Background = System.Windows.Media.Color.FromRgb(0xEE, 0xEE, 0xEE) }, w, h);
+            SceneFactory.SavePng(bmp, Path.Combine(folder, "init.png"));
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(new System.Windows.Media.Imaging.FormatConvertedBitmap(bmp, System.Windows.Media.PixelFormats.Bgr24, null, 0)));
+            using var ms = new MemoryStream(); enc.Save(ms);
+            var p = s.BuildParams("data:image/png;base64," + Convert.ToBase64String(ms.ToArray()), w, h, null, loras.ToDictionary(l => l.Id, l => l.Trigger));
+            L($"Auftrag: {w}x{h}, Schlüssel: {string.Join(", ", p.Select(x => x.Key))}");
+            var sw = System.Diagnostics.Stopwatch.StartNew(); int prog = 0;
+            var res = await c.GenerateAsync(p, new Progress<PoseStudio.Swarm.SwarmProgress>(_ => prog++), CancellationToken.None);
+            L($"Generiert in {sw.Elapsed.TotalSeconds:F0} s, Fortschrittsmeldungen {prog}, Bilder {res.Count}: {string.Join(", ", res.Select(r => r.Path))}");
+            var bytes = await c.DownloadAsync(res[0].Path);
+            File.WriteAllBytes(Path.Combine(folder, "result.png"), bytes);
+            long seed = -1;
+            if (res[0].Metadata != null && System.Text.Json.Nodes.JsonNode.Parse(res[0].Metadata!) is System.Text.Json.Nodes.JsonObject meta) seed = long.Parse(meta["sui_image_params"]!["seed"]!.ToString());
+            L($"Heruntergeladen {bytes.Length} Bytes, Seed {seed}");
+            var hist2 = await c.ListHistoryAsync(3);
+            L($"In der Historie: {hist2.Any(x => res[0].Path.Contains(x.Src.Replace(" ", "%20")) || res[0].Path.EndsWith(x.Src))} (neuestes jetzt {hist2[0].Src})");
+            s.RefinerUpscale = 1.5;
+            var r2 = await c.GenerateAsync(s.BuildRefine(p, seed), null, CancellationToken.None);
+            var b2 = await c.DownloadAsync(r2[0].Path);
+            File.WriteAllBytes(Path.Combine(folder, "refined.png"), b2);
+            var bi = PoseStudio.Swarm.ThumbCache.Decode(b2, 0);
+            L($"Nachgebessert: {r2[0].Path}, {bi.PixelWidth}x{bi.PixelHeight}");
+        }
+        catch (Exception ex) { L("FEHLER: " + ex); }
     }
 
     private static void PelvisTest(string folder)

@@ -42,6 +42,8 @@ public sealed class AppSettings
     public bool ClickSelectsFigure { get; set; }
     /// <summary>Haare und Stoff: 0 = immer live, 1 = beim Ziehen einfrieren, 2 = eingefroren.</summary>
     public int DynamicsMode { get; set; } = 1;
+    /// <summary>SwarmUI-Fenster: Server, Einstellungen, Profile.</summary>
+    public PoseStudio.Swarm.SwarmSettings Swarm { get; set; } = new();
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");

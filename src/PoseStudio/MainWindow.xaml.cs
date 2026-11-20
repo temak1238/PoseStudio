@@ -14,7 +14,7 @@ using PoseStudio.Rendering;
 
 namespace PoseStudio;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
 {
     /// <summary>Aktive Figur (wird bearbeitet). Alle Figuren der Szene stehen in _figures.</summary>
     private Mannequin _figure = new();
@@ -836,6 +836,41 @@ public partial class MainWindow : Window
         RebuildFloor();
     }
 
+    // =================================================================== SwarmUI
+
+    private PoseStudio.Swarm.SwarmSettings _swarmSettings = new();
+    private PoseStudio.Swarm.SwarmWindow? _swarmWindow;
+
+    private void OpenSwarm_Click(object sender, RoutedEventArgs e)
+    {
+        if (_swarmWindow is { IsLoaded: true }) { _swarmWindow.Activate(); return; }
+        _swarmWindow = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this) { Owner = this };
+        _swarmWindow.Show();
+    }
+
+    double PoseStudio.Swarm.ISwarmScene.PreviewAspect => CurrentPreviewAspect();
+
+    /// <summary>Szene wie beim Export rendern (ohne Transparenz), wahlweise in einer anderen Darstellung.</summary>
+    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look)
+    {
+        var light = _light.Clone();
+        if (look >= 0) { light.Toon = look > 0; light.ToonStyle = Math.Max(0, look - 1); }
+        var opts = new SceneOptions
+        {
+            Background = _background, FloorBase = _background,
+            Floor = FloorExportCheck.IsChecked == true, Shadow = ShadowExportCheck.IsChecked == true,
+            BackgroundImage = _bgImage, BackgroundStretch = CurrentStretch,
+            Light = light, Set = _set, ShadowResolution = 2048
+        };
+        try { return SceneFactory.Render(_figures, _cam, opts, w, h); }
+        finally { RebuildFloor(); } // Vorschau wieder in der eigenen Darstellung
+    }
+
+    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderControl(int w, int h, bool regions) =>
+        SceneFactory.RenderControl(_figures, _cam, regions ? SceneFactory.ControlMode.Regions : SceneFactory.ControlMode.Pose3D, w, h);
+
+    void PoseStudio.Swarm.ISwarmScene.UseAsReference(string path) => LoadReferenceImage(path);
+
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
 
     /// <summary>Überträgt Stil, Haare und Proportionen auf die Figur (Pose bleibt erhalten).</summary>
@@ -956,6 +991,7 @@ public partial class MainWindow : Window
         PrefixBox.Text = s.FilePrefix;
         SetHairColor(ParseColor(s.HairColor, Color.FromRgb(0x3A, 0x2A, 0x20)));
         DynamicsCombo.SelectedIndex = Math.Clamp(s.DynamicsMode, 0, 2);
+        _swarmSettings = s.Swarm ?? new PoseStudio.Swarm.SwarmSettings();
         GuidesCheck.IsChecked = s.Guides;
         ExportFormatList.ItemsSource = _exportFormats.Where(o => !o.IsFixed).ToList();
         FixedFormatList.ItemsSource = _exportFormats.Where(o => o.IsFixed).ToList();
@@ -1019,6 +1055,7 @@ public partial class MainWindow : Window
         s.FilePrefix = PrefixBox.Text;
         s.HairColor = ToHex(_figure.HairColor);
         s.DynamicsMode = Math.Max(0, DynamicsCombo.SelectedIndex);
+        s.Swarm = _swarmSettings;
         s.Guides = GuidesCheck.IsChecked == true;
         s.OutputPng = PngRadio.IsChecked == true;
         s.Transparent = TransparentCheck.IsChecked == true;
@@ -1384,6 +1421,8 @@ public partial class MainWindow : Window
             catch (Exception ex) { bad.Add(pr.Name + ": " + ex.Message); }
         }
         sb.AppendLine($"Vorlagen: {okP}/{Presets.All.Count} angewendet, {Presets.All.Count(x => x.HandR != null)} mit Handhaltung rechts, davon Finger gesetzt {withHands}, Kategorien {string.Join(", ", Presets.All.Select(x => x.Category).Distinct())}{(bad.Count > 0 ? " FEHLER: " + string.Join("; ", bad) : "")}");
+        var swWin = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
+        sb.AppendLine($"SwarmUI-Fenster erzeugt: {swWin.Title}");
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();
