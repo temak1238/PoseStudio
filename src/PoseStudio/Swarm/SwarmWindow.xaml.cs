@@ -370,6 +370,9 @@ public partial class SwarmWindow : Window
 
     private async Task RunAsync(JsonObject p, int count, string what)
     {
+        // Zufallsseed selbst würfeln: so ist der Seed jedes Bildes bekannt (Nachbessern braucht ihn)
+        if ((p["seed"]?.GetValue<long>() ?? -1) < 0) p["seed"] = (long)Random.Shared.Next(1, int.MaxValue);
+        long baseSeed = p["seed"]!.GetValue<long>();
         _cts = new CancellationTokenSource();
         GenerateButton.IsEnabled = false; CancelButton.IsEnabled = true;
         var pending = new List<SwarmResultItem>();
@@ -400,7 +403,9 @@ public partial class SwarmWindow : Window
                 item.LocalPath = Path.Combine(OutputFolder, $"swarm_{DateTime.Now:yyyyMMdd_HHmmss}_{i}{ext}");
                 await File.WriteAllBytesAsync(item.LocalPath, bytes);
                 item.Image = ThumbCache.Decode(bytes, 600);
-                item.Seed = SeedFrom(res[i].Metadata) ?? (p["seed"]?.GetValue<long>() ?? -1);
+                long? known = SeedFrom(res[i].Metadata);
+                if (known is null or < 0) known = await _client.LookupSeedAsync(res[i].Path);
+                item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
                 item.Caption = $"{what} · Seed {item.Seed}";
                 item.Done = true;

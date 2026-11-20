@@ -204,6 +204,28 @@ public sealed class SwarmClient : IDisposable
         return results;
     }
 
+    /// <summary>Tatsächlichen Seed eines Ergebnisses aus der Historie lesen (die direkte Rückmeldung enthält nur den angefragten).</summary>
+    public async Task<long?> LookupSeedAsync(string resultPath, CancellationToken ct = default)
+    {
+        string p = Uri.UnescapeDataString(resultPath.TrimStart('/'));
+        if (p.StartsWith("View/", StringComparison.OrdinalIgnoreCase)) p = p[5..];
+        if (p.StartsWith(UserId + "/", StringComparison.OrdinalIgnoreCase)) p = p[(UserId.Length + 1)..];
+        int slash = p.LastIndexOf('/');
+        string folder = slash > 0 ? p[..slash] : "", file = p[(slash + 1)..];
+        var r = await PostAsync("ListImages", new JsonObject { ["path"] = folder, ["depth"] = 1, ["sortBy"] = "Date", ["sortReverse"] = false }, ct);
+        foreach (var f in r["files"] as JsonArray ?? new JsonArray())
+        {
+            if (f is not JsonObject o || o["src"]?.GetValue<string>() is not { } src || !src.EndsWith(file, StringComparison.Ordinal)) continue;
+            try
+            {
+                if (o["metadata"]?.GetValue<string>() is { } meta && JsonNode.Parse(meta)?["sui_image_params"]?["seed"] is JsonNode s
+                    && long.TryParse(s.ToString(), out var seed) && seed >= 0) return seed;
+            }
+            catch { }
+        }
+        return null;
+    }
+
     /// <summary>Laufende Generierungen dieser Sitzung abbrechen.</summary>
     public async Task InterruptAsync()
     {

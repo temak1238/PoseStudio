@@ -1083,6 +1083,7 @@ public partial class App : Application
             using var ms = new MemoryStream(); enc.Save(ms);
             var p = s.BuildParams("data:image/png;base64," + Convert.ToBase64String(ms.ToArray()), w, h, null, loras.ToDictionary(l => l.Id, l => l.Trigger));
             L($"Auftrag: {w}x{h}, Schlüssel: {string.Join(", ", p.Select(x => x.Key))}");
+            p["seed"] = (long)Random.Shared.Next(1, int.MaxValue); long sent = p["seed"]!.GetValue<long>();
             var sw = System.Diagnostics.Stopwatch.StartNew(); int prog = 0;
             var res = await c.GenerateAsync(p, new Progress<PoseStudio.Swarm.SwarmProgress>(_ => prog++), CancellationToken.None);
             L($"Generiert in {sw.Elapsed.TotalSeconds:F0} s, Fortschrittsmeldungen {prog}, Bilder {res.Count}: {string.Join(", ", res.Select(r => r.Path))}");
@@ -1090,7 +1091,9 @@ public partial class App : Application
             File.WriteAllBytes(Path.Combine(folder, "result.png"), bytes);
             long seed = -1;
             if (res[0].Metadata != null && System.Text.Json.Nodes.JsonNode.Parse(res[0].Metadata!) is System.Text.Json.Nodes.JsonObject meta) seed = long.Parse(meta["sui_image_params"]!["seed"]!.ToString());
-            L($"Heruntergeladen {bytes.Length} Bytes, Seed {seed}");
+            var looked = await c.LookupSeedAsync(res[0].Path);
+            L($"Heruntergeladen {bytes.Length} Bytes, Seed gesendet {sent}, aus Rückmeldung {seed}, aus Historie {looked}");
+            seed = looked ?? sent;
             var hist2 = await c.ListHistoryAsync(3);
             L($"In der Historie: {hist2.Any(x => res[0].Path.Contains(x.Src.Replace(" ", "%20")) || res[0].Path.EndsWith(x.Src))} (neuestes jetzt {hist2[0].Src})");
             s.RefinerUpscale = 1.5;
@@ -1098,7 +1101,7 @@ public partial class App : Application
             var b2 = await c.DownloadAsync(r2[0].Path);
             File.WriteAllBytes(Path.Combine(folder, "refined.png"), b2);
             var bi = PoseStudio.Swarm.ThumbCache.Decode(b2, 0);
-            L($"Nachgebessert: {r2[0].Path}, {bi.PixelWidth}x{bi.PixelHeight}");
+            L($"Nachgebessert: {r2[0].Path}, {bi.PixelWidth}x{bi.PixelHeight}, Seed laut Historie {await c.LookupSeedAsync(r2[0].Path)}");
         }
         catch (Exception ex) { L("FEHLER: " + ex); }
     }
