@@ -85,6 +85,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--look")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            LookTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--perf")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -864,6 +872,35 @@ public partial class App : Application
             }
         }
         File.WriteAllText(file, sb.ToString());
+    }
+
+    /// <summary>Testmodus --look: dieselbe Szene in allen Darstellungen (Normal, Cel, 2D flach, Strichzeichnung).</summary>
+    private static void LookTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 320;
+        var poses = new[] { "Kontrapost", "Sitzen (Stuhl)", "Tanzen" };
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int r = 0; r < poses.Length; r++)
+                for (int c = 0; c < 4; c++)
+                {
+                    var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+                    m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                    m.HairColor = System.Windows.Media.Color.FromRgb(0xC9, 0x8A, 0x4E);
+                    m.SetPose(Presets.All.First(p => p.Name == poses[r]).ToPose());
+                    m.SetHair(new HairSettings { Style = "lang", Wind = 30 });
+                    m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = r == 1 ? "rock" : "kleid", Shoes = "socken", TopColor = "#F2EEE6", BottomColor = "#5B6FA8" });
+                    m.GroundToFloor();
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = 25, Pitch = 5, Distance = 3.1, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+                    var light = new LightSettings { Toon = c > 0, ToonStyle = Math.Max(0, c - 1) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = c < 2, Light = light, Background = System.Windows.Media.Colors.White }, W, W),
+                        new Rect(c * W, r * W, W, W));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * 4, W * poses.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "looks.jpg"), 92);
     }
 
     private static void PelvisTest(string folder)

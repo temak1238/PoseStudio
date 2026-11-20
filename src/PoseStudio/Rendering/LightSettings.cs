@@ -17,6 +17,8 @@ public sealed class LightSettings
     public bool ShowSource { get; set; } = true;
     /// <summary>Anime-Darstellung: harte Licht-/Schattenstufen (Cel-Shading) und dunkle Konturen.</summary>
     public bool Toon { get; set; }
+    /// <summary>Art der Anime-Darstellung: 0 = Cel-Shading (zwei Stufen), 1 = 2D flach (keine Schattierung), 2 = Strichzeichnung.</summary>
+    public int ToonStyle { get; set; }
     /// <summary>Konturstärke im Cel-Shading in Promille der Bildhöhe (0 = keine Kontur).</summary>
     public double OutlineWidth { get; set; } = 2.5;
 
@@ -30,6 +32,7 @@ public sealed class LightSettings
         ShadowStrength = Math.Clamp(ShadowStrength, 0, 100);
         Softness = Math.Clamp(Softness, 0, 100);
         OutlineWidth = Math.Clamp(OutlineWidth, 0, 8);
+        ToonStyle = Math.Clamp(ToonStyle, 0, 2);
     }
 
     /// <summary>Richtung zur Lichtquelle (Einheitsvektor, zeigt vom Objekt zum Licht).</summary>

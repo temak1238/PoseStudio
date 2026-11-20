@@ -150,6 +150,14 @@
                                     <Button Content="Proportionen zurücksetzen" HorizontalAlignment="Left" Click="ResetProportions_Click" />
                                 </StackPanel>
                             </Expander>
+                            <Expander x:Name="ShapeExpander" Header="Körperform" Margin="0,4,0,0">
+                                <StackPanel>
+                                    <ItemsControl x:Name="ShapeItems" ItemTemplate="{StaticResource AxisTemplate}" />
+                                    <Button Content="Körperform zurücksetzen" HorizontalAlignment="Left" Click="ResetShape_Click" />
+                                    <TextBlock FontSize="11" Foreground="#666" TextWrapping="Wrap" Margin="0,2,0,0"
+                                               Text="Wirkt auf Mensch- und Anime-Figuren; Kleidung passt sich an. Die Gliederpuppe bleibt unverändert." />
+                                </StackPanel>
+                            </Expander>
                         </StackPanel>
                     </GroupBox>
 
@@ -453,9 +461,11 @@
                                 <Button Content="Gegenlicht" Click="LightPreset_Click" Tag="180,35" ToolTip="Licht von hinten" />
                                 <Button Content="Mittag" Click="LightPreset_Click" Tag="30,80" ToolTip="Licht von oben" />
                             </UniformGrid>
-                            <CheckBox x:Name="ToonCheck" Content="Anime-Darstellung (Cel-Shading mit Konturen)" Margin="0,2"
-                                      Checked="Light_Changed" Unchecked="Light_Changed"
-                                      ToolTip="Harte Licht-/Schattenstufen und dunkle Umrisse wie in Anime-Zeichnungen. Umgebungslicht = Helligkeit der Schattenstufe, Kontur Anime = Linienstärke." />
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="Darstellung" Width="80" VerticalAlignment="Center" />
+                                <ComboBox x:Name="LookCombo" SelectionChanged="Look_Changed"
+                                          ToolTip="Normal: weiche 3D-Schattierung. Cel-Shading: zwei harte Licht-/Schattenstufen mit Konturen (Umgebungslicht = Helligkeit der Schattenstufe). 2D flach: einfarbige Flächen mit Konturen wie eine Zeichnung. Strichzeichnung: nur Linien auf weißen Flächen. Linienstärke: Regler „Kontur Anime“." />
+                            </DockPanel>
                             <CheckBox x:Name="CastShadowCheck" Content="Schattenwurf (sonst nur weicher Bodenschatten)" Margin="0,2"
                                       Checked="Light_Changed" Unchecked="Light_Changed" />
                             <CheckBox x:Name="LightFollowCheck" Content="Licht dreht mit der Kamera mit" Margin="0,2"

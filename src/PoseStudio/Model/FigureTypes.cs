@@ -51,6 +51,21 @@ public sealed class Proportions
     public double Shoulder { get; set; } = 100;
     public double Head { get; set; } = 100;
     public double Build { get; set; } = 100;
+    // Körperform (ab 0.20), Prozent: 100 = Standard
+    public double Bust { get; set; } = 100;
+    public double Waist { get; set; } = 100;
+    public double Hips { get; set; } = 100;
+    public double Glutes { get; set; } = 100;
+    public double Belly { get; set; } = 100;
+    public double Thighs { get; set; } = 100;
+    public double Calves { get; set; } = 100;
+    public double UpperArms { get; set; } = 100;
+    public double Neck { get; set; } = 100;
+    public double Hands { get; set; } = 100;
+
+    /// <summary>Werte, die die Form der Körperteile ändern (Neuaufbau der Meshes nötig).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ShapeKey => FormattableString.Invariant($"{Bust:F1}|{Waist:F1}|{Hips:F1}|{Glutes:F1}|{Belly:F1}|{Thighs:F1}|{Calves:F1}|{UpperArms:F1}|{Hands:F1}");
 
     public Proportions Clone() => (Proportions)MemberwiseClone();
 
@@ -63,6 +78,16 @@ public sealed class Proportions
         Shoulder = Math.Clamp(Shoulder, 75, 130);
         Head = Math.Clamp(Head, 75, 140);
         Build = Math.Clamp(Build, 70, 150);
+        Bust = Math.Clamp(Bust, 30, 220);
+        Waist = Math.Clamp(Waist, 70, 140);
+        Hips = Math.Clamp(Hips, 75, 150);
+        Glutes = Math.Clamp(Glutes, 60, 170);
+        Belly = Math.Clamp(Belly, 70, 180);
+        Thighs = Math.Clamp(Thighs, 70, 160);
+        Calves = Math.Clamp(Calves, 70, 160);
+        UpperArms = Math.Clamp(UpperArms, 70, 170);
+        Neck = Math.Clamp(Neck, 60, 150);
+        Hands = Math.Clamp(Hands, 75, 130);
     }
 }
 

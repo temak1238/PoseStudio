@@ -10,7 +10,8 @@ internal sealed class BodyBuilder
     public delegate void AddPartFn(string jointId, MeshGeometry3D mesh, MaterialKind mat, bool uniform = false);
 
     private readonly AddPartFn _add;
-    public BodyBuilder(AddPartFn add) => _add = add;
+    private readonly Proportions _shape;
+    public BodyBuilder(AddPartFn add, Proportions? shape = null) { _add = add; _shape = shape ?? new Proportions(); }
 
     private static Point3D P(double x, double y, double z) => new(x, y, z);
 
@@ -46,13 +47,50 @@ internal sealed class BodyBuilder
     // ================================================================= Mensch
 
     /// <summary>Größe der Hand (Handfläche im Mesh; Finger werden im Skelett mit demselben Faktor skaliert).</summary>
-    public static double HandK(bool female, bool anime) => (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
+    public static double HandK(bool female, bool anime, Proportions? p = null) => (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0) * (p?.Hands ?? 100) / 100;
 
     /// <summary>Querschnitt eines Loft-Körpers: Höhe, halbe Breite, halbe Tiefe, Versatz nach vorne.</summary>
     public readonly record struct Sec(double Y, double Rx, double Rz, double Cz);
 
+    // ---- Körperform-Regler: Querschnitte gezielt in einzelnen Höhenbereichen verändern
+
+    /// <summary>Dreiecks-Gewicht: 1 bei c, 0 ab Abstand r.</summary>
+    private static double Tri(double y, double c, double r) => Math.Max(0, 1 - Math.Abs(y - c) / r);
+
+    /// <summary>Breite und Tiefe je Höhe um (1 + grow(y)) skalieren, Mitte um shift(y)·Tiefe nach vorne schieben.</summary>
+    private static Sec[] Shape(Sec[] s, Func<double, double> grow, Func<double, double> shift) =>
+        s.Select(q => { double g = 1 + grow(q.Y); return new Sec(q.Y, q.Rx * g, q.Rz * g, q.Cz + q.Rz * shift(q.Y)); }).ToArray();
+
+    private static Sec[] ShapeTorso(Sec[] s, bool female, Proportions? p)
+    {
+        if (p == null) return s;
+        double waist = p.Waist / 100 - 1, hips = p.Hips / 100 - 1, glutes = p.Glutes / 100 - 1, belly = p.Belly / 100 - 1, bust = p.Bust / 100 - 1;
+        return s.Select(q =>
+        {
+            double y = q.Y;
+            double wWaist = Tri(y, 0.19, 0.09), wHip = Tri(y, -0.035, 0.095), wGlute = Tri(y, -0.05, 0.065), wBelly = Tri(y, 0.14, 0.11);
+            double wChest = female ? 0 : Tri(y, 0.41, 0.1); // Männer: Brustkorb tiefer
+            double fx = 1 + waist * wWaist + hips * wHip;
+            double fz = 1 + waist * wWaist + belly * wBelly + glutes * wGlute * 0.7 + bust * wChest * 0.35;
+            double rz = q.Rz * fz;
+            // Bauch wächst nach vorne, Gesäß nach hinten
+            double cz = q.Cz + q.Rz * (belly * wBelly * 0.5 - glutes * wGlute * 0.45 + bust * wChest * 0.15);
+            return new Sec(y, q.Rx * fx, rz, cz);
+        }).ToArray();
+    }
+
+    /// <summary>Brust (Frau) als Ellipsoid je Seite: Größe nach Regler, Ansatz bleibt am Brustkorb.</summary>
+    internal static (Point3D C, double Rx, double Ry, double Rz) Breast(int s, Proportions? p, double extra = 0)
+    {
+        double b = (p?.Bust ?? 100) / 100, k = 0.75 + 0.25 * b;
+        double rz = 0.05 * b + extra;
+        return (new Point3D(s * 0.066, 0.13 - 0.01 * (b - 1), 0.006 + 0.05 * b + extra * 0.4), 0.068 * k + extra, 0.07 * k + extra, rz);
+    }
+
     /// <summary>Rumpf von Schritt bis Hals (Becken-System).</summary>
-    internal static Sec[] TorsoSections(bool female, bool anime)
+    internal static Sec[] TorsoSections(bool female, bool anime, Proportions? p = null) => ShapeTorso(TorsoBase(female, anime), female, p);
+
+    private static Sec[] TorsoBase(bool female, bool anime)
     {
         double w = (female ? 0.9 : 1.0) * (anime ? 0.92 : 1.0);
         double hip = female ? 1.1 : 1.0, sh = female ? 0.92 : 1.0, waist = female ? 0.86 : 1.0, glute = female ? 1.08 : 1.0;
@@ -84,7 +122,9 @@ internal sealed class BodyBuilder
     }
 
     /// <summary>Ober- und Unterarm (Schulter-System, nach unten).</summary>
-    internal static Sec[] ArmSections(double w) => new Sec[]
+    internal static Sec[] ArmSections(double w, Proportions? p = null) => Shape(ArmBase(w), y => Tri(y, -0.1, 0.17) * ((p?.UpperArms ?? 100) / 100 - 1), y => 0);
+
+    private static Sec[] ArmBase(double w) => new Sec[]
     {
         new(0.00, 0.05 * w, 0.05 * w, 0.0), new(-0.06, 0.052 * w, 0.05 * w, 0.003), new(-0.16, 0.046 * w, 0.047 * w, 0.005),
         new(-0.25, 0.039 * w, 0.04 * w, 0.0), new(-0.29, 0.036 * w, 0.036 * w, 0.0), new(-0.33, 0.041 * w, 0.038 * w, 0.0),
@@ -92,7 +132,10 @@ internal sealed class BodyBuilder
     };
 
     /// <summary>Bein mit Kniescheibe und Wade (Hüft-System, nach unten).</summary>
-    internal static Sec[] LegSections(bool female, double w) => new Sec[]
+    internal static Sec[] LegSections(bool female, double w, Proportions? p = null) => Shape(LegBase(female, w),
+        y => Tri(y, -0.13, 0.26) * ((p?.Thighs ?? 100) / 100 - 1) + Tri(y, -0.6, 0.16) * ((p?.Calves ?? 100) / 100 - 1), y => 0);
+
+    private static Sec[] LegBase(bool female, double w) => new Sec[]
     {
         new(0.015, 0.066, 0.066, 0.0), new(-0.04, 0.086 * (female ? 1.04 : 1), 0.088, 0.005), new(-0.20, 0.075, 0.078, 0.008),
         new(-0.36, 0.058 * w, 0.06 * w, 0.005), new(-0.44, 0.051 * w, 0.055 * w, 0.006), new(-0.50, 0.05 * w, 0.055 * w, -0.008),
@@ -118,10 +161,10 @@ internal sealed class BodyBuilder
 
         // ---- Rumpf als eine durchgehende Form von Schritt bis Hals (im Becken-System).
         // Sie wird über die Kette Becken → Bauch → Brust → Hals → Kopf weich gebogen (Skinning in Mannequin).
-        _add("pelvis", LoftOf(TorsoSections(female, anime), 0.35), MaterialKind.Body);
+        _add("pelvis", LoftOf(TorsoSections(female, anime, _shape), 0.35), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
-                _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.056), 0.068, 0.07, 0.05), MaterialKind.Body);
+                { var br = Breast(s, _shape); _add("chest", MeshFactory.Ellipsoid(br.C, br.Rx, br.Ry, br.Rz), MaterialKind.Body); }
         if (anime) BuildAnimeHead(female, hair);
         else BuildHead(female, hair);
 
@@ -130,10 +173,10 @@ internal sealed class BodyBuilder
             string sfx = s > 0 ? "_l" : "_r";
             // ---- Oberarm mit Schulter; Ober- und Unterarm als eine Form (Schulter → Ellbogen → Handgelenk)
             _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w, 0.065, 0.054 * w), MaterialKind.Body);
-            _add("shoulder" + sfx, LoftOf(ArmSections(w)), MaterialKind.Body);
-            BuildHand("wrist" + sfx, s, HandK(female, anime));
+            _add("shoulder" + sfx, LoftOf(ArmSections(w, _shape)), MaterialKind.Body);
+            BuildHand("wrist" + sfx, s, HandK(female, anime, _shape));
             // ---- Bein als eine Form (Hüfte → Knie → Knöchel)
-            _add("hip" + sfx, LoftOf(LegSections(female, w)), MaterialKind.Body);
+            _add("hip" + sfx, LoftOf(LegSections(female, w, _shape)), MaterialKind.Body);
             // ---- Fuß
             double f = FootK(female, anime);
             _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f), MaterialKind.Body, true);
@@ -181,7 +224,7 @@ internal sealed class BodyBuilder
         var top = TopDef.Find(c.Top) ?? TopDef.All[0];
         var bottom = BottomDef.Find(c.Bottom) ?? BottomDef.All[0];
         var shoes = ShoeDef.Find(c.Shoes) ?? ShoeDef.All[0];
-        var torso = TorsoSections(female, anime);
+        var torso = TorsoSections(female, anime, _shape);
         double w = LimbW(female, anime);
         bool dress = bottom.Kind == BottomKind.Dress;
         // Kleid: Ausschnitt und Ärmel vom Oberteil (mindestens ärmellos), Farbe vom Kleid
@@ -195,13 +238,13 @@ internal sealed class BodyBuilder
             _add("pelvis", LoftOf(Clip(torso, lower, bodice.Upper, 0.006, 0.01), 0.05), topKind);
             if (female)
                 foreach (var s in new[] { 1, -1 })
-                    _add("chest", MeshFactory.Ellipsoid(P(s * 0.066, 0.13, 0.058), 0.074, 0.076, 0.055), topKind);
+                { var br = Breast(s, _shape, 0.006); _add("chest", MeshFactory.Ellipsoid(br.C, br.Rx, br.Ry, br.Rz), topKind); }
             if (bodice.Sleeve < 0)
                 foreach (var s in new[] { 1, -1 })
                 {
                     string sfx = s > 0 ? "_l" : "_r";
                     _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.045, 0), 0.05 * w + 0.013, 0.082, 0.054 * w + 0.013), topKind);
-                    _add("shoulder" + sfx, LoftOf(Clip(ArmSections(w), 0.0, bodice.Sleeve, 0.009, bodice.Sleeve < -0.3 ? 0.006 : 0.011), 0.05), topKind);
+                    _add("shoulder" + sfx, LoftOf(Clip(ArmSections(w, _shape), 0.0, bodice.Sleeve, 0.009, bodice.Sleeve < -0.3 ? 0.006 : 0.011), 0.05), topKind);
                 }
         }
 
@@ -209,7 +252,7 @@ internal sealed class BodyBuilder
         {
             _add("pelvis", LoftOf(Clip(torso, -0.135, 0.11, 0.007), 0.35), MaterialKind.ClothBottom);
             foreach (var sfx in new[] { "_l", "_r" })
-                _add("hip" + sfx, LoftOf(Clip(LegSections(female, w), 0.015, bottom.Hem, 0.008, bottom.Hem < -0.5 ? 0.014 : 0.012), 0.05), MaterialKind.ClothBottom);
+                _add("hip" + sfx, LoftOf(Clip(LegSections(female, w, _shape), 0.015, bottom.Hem, 0.008, bottom.Hem < -0.5 ? 0.014 : 0.012), 0.05), MaterialKind.ClothBottom);
         }
 
         if (shoes.Id != "none")
@@ -218,7 +261,7 @@ internal sealed class BodyBuilder
             foreach (var sfx in new[] { "_l", "_r" })
             {
                 if (shoes.Shaft < 0)
-                    _add("hip" + sfx, LoftOf(Clip(LegSections(female, w), shoes.Shaft, -0.86, o), 0.05), MaterialKind.Shoes);
+                    _add("hip" + sfx, LoftOf(Clip(LegSections(female, w, _shape), shoes.Shaft, -0.86, o), 0.05), MaterialKind.Shoes);
                 _add("ankle" + sfx, MeshFactory.Sphere(P(0, 0, 0), 0.027 * f + o), MaterialKind.Shoes, true);
                 var foot = FootSections(f).Select(q => (z: q.z, rx: q.rx + o, ry: q.ry + o + (shoes.Sole ? 0.003 : 0), cy: q.cy - (shoes.Sole ? 0.004 : 0))).ToList();
                 if (shoes.Sole) { var first = foot[0]; foot.Insert(0, (first.z - 0.012, first.rx * 0.9, first.ry * 0.8, first.cy)); }

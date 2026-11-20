@@ -63,7 +63,7 @@ public sealed partial class Mannequin
         var bottom = BottomDef.Find(Clothing.Bottom);
         if (bottom is not { Kind: BottomKind.Skirt or BottomKind.Dress }) return;
         const double yWaist = 0.09;
-        var sec = BodyBuilder.Clip(BodyBuilder.TorsoSections(female, anime), yWaist - 0.002, yWaist, 0.012)[^1];
+        var sec = BodyBuilder.Clip(BodyBuilder.TorsoSections(female, anime, Proportions), yWaist - 0.002, yWaist, 0.012)[^1];
         _skN = 32;
         _skLen = bottom.Length;
         _skRows = Math.Clamp((int)Math.Round(_skLen / 0.045), 5, 22);
@@ -104,13 +104,13 @@ public sealed partial class Mannequin
             list.Add(new Collider(inv, w, c, ya, yb, rx + margin, (rx + rz) / 2 + margin, rz + margin));
         }
         bool female = Style.IsFemale();
-        double hip = female ? 1.1 : 1.0, w = BodyBuilder.LimbW(female, Style.IsAnime());
+        double hip = (female ? 1.1 : 1.0) * Proportions.Hips / 100, w = BodyBuilder.LimbW(female, Style.IsAnime()), th = Proportions.Thighs / 100;
         Add(Root, new Point3D(0, -0.01, -0.012), -0.07, 0.06, 0.155 * hip, 0.1 * (female ? 1.08 : 1));
         Add(this["spine"], new Point3D(0, 0.08, 0), -0.08, 0.1, 0.14, 0.09);
         foreach (var sfx in new[] { "_l", "_r" })
         {
             // seitlich etwas breiter als der Oberschenkel: die beiden berühren sich, der Stoff fädelt nicht dazwischen durch
-            Add(this["hip" + sfx], new Point3D(0, -0.2, 0.006), -0.19, 0.17, 0.1 * (female ? 1.04 : 1), 0.083);
+            Add(this["hip" + sfx], new Point3D(0, -0.2, 0.006), -0.19, 0.17, 0.1 * (female ? 1.04 : 1) * th, 0.083 * th);
             Add(this["knee" + sfx], new Point3D(0, -0.2, 0), -0.2, 0.18, 0.056 * w, 0.058 * w);
         }
         return list;

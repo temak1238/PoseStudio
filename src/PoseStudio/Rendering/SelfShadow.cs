@@ -21,10 +21,11 @@ public static class SelfShadow
     {
         var figs = figures.ToList();
         bool toon = light.Toon;
-        foreach (var fg in figs) fg.SetToon(toon, 0.6 + 0.3 * light.Ambient / 100);
+        foreach (var fg in figs) fg.SetToon(toon, 0.6 + 0.3 * light.Ambient / 100, toon && light.ToonStyle == 2);
+        bool flat = toon && light.ToonStyle >= 1; // 2D flach / Strichzeichnung: keine Licht-/Schattenstufen
         var meshes = figs.SelectMany(fg => fg.WorldMeshes()).ToList();
         bool enabled = light.CastShadow && light.ShadowStrength > 0 && light.Intensity > 0;
-        if (!enabled && !toon)
+        if (flat || (!enabled && !toon))
         {
             foreach (var (mesh, _) in meshes) SetCoords(mesh, null);
             return;

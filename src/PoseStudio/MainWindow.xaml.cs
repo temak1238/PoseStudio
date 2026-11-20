@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<FormatOption> _exportFormats = new();
     private readonly Stack<PoseData> _undo = new();
     private readonly ObservableCollection<AxisViewModel> _proportionAxes = new();
+    private readonly ObservableCollection<AxisViewModel> _shapeAxes = new();
     private Proportions _props = new();
     private HairSettings _hair = new();
     private readonly ObservableCollection<AxisViewModel> _hairAxes = new();
@@ -94,6 +95,7 @@ public partial class MainWindow : Window
         PositionItems.ItemsSource = _positionAxes;
         CameraItems.ItemsSource = _cameraAxes;
         ProportionItems.ItemsSource = _proportionAxes;
+        ShapeItems.ItemsSource = _shapeAxes;
         InitHands();
         FigureStyleCombo.ItemsSource = Styles.Select(s => s.Name).ToList();
         BgStretchCombo.ItemsSource = StretchModes.Select(s => s.Name).ToList();
@@ -103,6 +105,7 @@ public partial class MainWindow : Window
         BuildProportionAxes();
         InitHair();
         InitClothes();
+        LookCombo.ItemsSource = Looks;
         PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;
         PreviewMouseLeftButtonUp += Window_PreviewMouseLeftButtonUp;
         // Maustaste außerhalb des Fensters losgelassen: Ziehen trotzdem beenden
@@ -182,6 +185,19 @@ public partial class MainWindow : Window
         Add("Schulterbreite (%)", 75, 130, () => _props.Shoulder, v => _props.Shoulder = v);
         Add("Kopfgröße (%)", 75, 140, () => _props.Head, v => _props.Head = v);
         Add("Körperbau (%)", 70, 150, () => _props.Build, v => _props.Build = v);
+        void S(string label, double min, double max, Func<double> get, Action<double> set) =>
+            _shapeAxes.Add(new AxisViewModel(label, min, max, get, v => { set(v); ApplyFigure(); }));
+        _shapeAxes.Clear();
+        S("Brust (%)", 30, 220, () => _props.Bust, v => _props.Bust = v);
+        S("Taille (%)", 70, 140, () => _props.Waist, v => _props.Waist = v);
+        S("Hüfte (%)", 75, 150, () => _props.Hips, v => _props.Hips = v);
+        S("Gesäß (%)", 60, 170, () => _props.Glutes, v => _props.Glutes = v);
+        S("Bauch (%)", 70, 180, () => _props.Belly, v => _props.Belly = v);
+        S("Oberschenkel (%)", 70, 160, () => _props.Thighs, v => _props.Thighs = v);
+        S("Waden (%)", 70, 160, () => _props.Calves, v => _props.Calves = v);
+        S("Oberarme (%)", 70, 170, () => _props.UpperArms, v => _props.UpperArms = v);
+        S("Halslänge (%)", 60, 150, () => _props.Neck, v => _props.Neck = v);
+        S("Handgröße (%)", 75, 130, () => _props.Hands, v => _props.Hands = v);
     }
 
     // =================================================================== Mehrere Figuren
@@ -574,7 +590,7 @@ public partial class MainWindow : Window
         CastShadowCheck.IsChecked = _light.CastShadow;
         LightFollowCheck.IsChecked = _light.FollowCamera;
         ShowLightCheck.IsChecked = _light.ShowSource;
-        ToonCheck.IsChecked = _light.Toon;
+        LookCombo.SelectedIndex = _light.Toon ? 1 + _light.ToonStyle : 0;
         _suppressLight = false;
         LightChanged();
     }
@@ -589,13 +605,23 @@ public partial class MainWindow : Window
         RebuildFloor();
     }
 
+    private static readonly string[] Looks = { "Normal (3D)", "Cel-Shading (Anime)", "2D flach", "Strichzeichnung" };
+
+    private void Look_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressLight || LookCombo.SelectedIndex < 0) return;
+        _light.Toon = LookCombo.SelectedIndex > 0;
+        _light.ToonStyle = Math.Max(0, LookCombo.SelectedIndex - 1);
+        LightChanged();
+    }
+
     private void Light_Changed(object sender, RoutedEventArgs e)
     {
         if (_suppressLight) return;
         _light.CastShadow = CastShadowCheck.IsChecked == true;
         _light.FollowCamera = LightFollowCheck.IsChecked == true;
         _light.ShowSource = ShowLightCheck.IsChecked == true;
-        _light.Toon = ToonCheck.IsChecked == true;
+
         LightChanged();
     }
 
@@ -838,7 +864,7 @@ public partial class MainWindow : Window
         ShowClothing(fd.Clothing);
         SeatCheck.IsChecked = fd.SeatBlock;
         _suppressFigure = false;
-        foreach (var a in _proportionAxes) a.Refresh();
+        foreach (var a in _proportionAxes.Concat(_shapeAxes)) a.Refresh();
         ApplyFigure();
     }
 
@@ -852,17 +878,24 @@ public partial class MainWindow : Window
         // Standardfarben je Stil (Holz, Haut, helle Anime-Haut), nur wenn die Farbe nicht selbst gewählt wurde
         var std = style == FigureStyle.Mannequin ? MannequinColor : style.IsAnime() ? AnimeSkinColor : SkinColor;
         if (_figure.BodyColor == MannequinColor || _figure.BodyColor == SkinColor || _figure.BodyColor == AnimeSkinColor) SetBodyColor(std);
-        foreach (var a in _proportionAxes) a.Refresh();
+        foreach (var a in _proportionAxes.Concat(_shapeAxes)) a.Refresh();
         ApplyFigure();
     }
 
     // Während InitializeComponent können Haken schon Ereignisse auslösen, bevor alle Bedienelemente existieren
     private void Figure_Changed(object sender, RoutedEventArgs e) { if (ClothesExpander != null) ApplyFigure(); }
 
+    private void ResetShape_Click(object sender, RoutedEventArgs e)
+    {
+        _props.Bust = _props.Waist = _props.Hips = _props.Glutes = _props.Belly = _props.Thighs = _props.Calves = _props.UpperArms = _props.Neck = _props.Hands = 100;
+        foreach (var a in _shapeAxes) a.Refresh();
+        ApplyFigure();
+    }
+
     private void ResetProportions_Click(object sender, RoutedEventArgs e)
     {
         _props = new Proportions { HeightCm = CurrentStyle.IsFemale() ? 168 : 180 };
-        foreach (var a in _proportionAxes) a.Refresh();
+        foreach (var a in _proportionAxes.Concat(_shapeAxes)) a.Refresh();
         ApplyFigure();
     }
 
@@ -1336,6 +1369,21 @@ public partial class MainWindow : Window
         double pressed = Enumerable.Range(0, 10).Select(_ => Step()).Average();
         Window_PreviewMouseLeftButtonUp(this, null!);
         sb.AppendLine($"Mausbewegung beim Ziehen: ohne Taste {free:F0} ms, mit gedrückter Taste {pressed:F0} ms, danach interagiert {_interacting}");
+        // Körperform: Hüfte und Brust ändern die Körperbreite bzw. -tiefe
+        double Width() { var b = Rect3D.Empty; foreach (var (mesh, mx) in _figure.WorldMeshes()) { if (mesh.Positions.Count == 0) continue; var r = mesh.Bounds; } return _figure.WorldMeshes().SelectMany(x => x.Mesh.Positions.Select(p => x.Transform.Transform(p))).Where(p => Math.Abs(p.Y - _figure.PelvisWorld.Y) < 0.05).Select(p => p.X).DefaultIfEmpty().Max() - _figure.WorldMeshes().SelectMany(x => x.Mesh.Positions.Select(p => x.Transform.Transform(p))).Where(p => Math.Abs(p.Y - _figure.PelvisWorld.Y) < 0.05).Select(p => p.X).DefaultIfEmpty().Min(); }
+        double w0 = Width();
+        _shapeAxes.First(a => a.Label.StartsWith("Hüfte")).Value = 140;
+        sb.AppendLine($"Körperform Hüfte 140: Breite auf Beckenhöhe {w0:F3} → {Width():F3} m, Proportionen {_figure.Proportions.Hips}");
+        ResetShape_Click(this, new RoutedEventArgs());
+        sb.AppendLine($"Körperform zurückgesetzt: Hüfte {_figure.Proportions.Hips}, Breite {Width():F3}");
+        // Alle Vorlagen anwenden: keine Ausnahme, Handhaltungen kommen an
+        int okP = 0, withHands = 0; var bad = new List<string>();
+        foreach (var pr in Presets.All)
+        {
+            try { _figure.SetPose(pr.ToPose()); okP++; if (pr.HandR != null && Math.Abs(_figure["index2_r"].SideValue) + Math.Abs(_figure["thumb2_r"].SideValue) > 1) withHands++; }
+            catch (Exception ex) { bad.Add(pr.Name + ": " + ex.Message); }
+        }
+        sb.AppendLine($"Vorlagen: {okP}/{Presets.All.Count} angewendet, {Presets.All.Count(x => x.HandR != null)} mit Handhaltung rechts, davon Finger gesetzt {withHands}, Kategorien {string.Join(", ", Presets.All.Select(x => x.Category).Distinct())}{(bad.Count > 0 ? " FEHLER: " + string.Join("; ", bad) : "")}");
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();

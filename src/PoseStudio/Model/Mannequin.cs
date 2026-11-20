@@ -137,21 +137,23 @@ public sealed partial class Mannequin
         public ShadeBrush(Color c) { _color = c; Rebuild(); }
         public Color Color { get => _color; set { _color = value; Rebuild(); } }
 
-        public void SetToon(bool on, double shadow)
+        public void SetToon(bool on, double shadow, bool white = false)
         {
-            _toon = on; _shadow = shadow;
+            _toon = on; _shadow = shadow; _white = white;
             Rebuild();
         }
+        private bool _white;
 
         private void Rebuild()
         {
             var stops = new GradientStopCollection();
+            var baseColor = _white ? Colors.White : _color; // Strichzeichnung: alle Flächen weiß
             if (_toon)
             {
                 // Anime-Schatten: dunkler und leicht ins Rötlich-Violette verschoben
                 byte S(double v) => (byte)Math.Clamp(v, 0, 255);
-                var sh = Color.FromRgb(S(_color.R * _shadow), S(_color.G * _shadow * 0.9), S(_color.B * _shadow * 0.97));
-                stops.Add(new GradientStop(_color, 0)); stops.Add(new GradientStop(_color, 0.5));
+                var sh = Color.FromRgb(S(baseColor.R * _shadow), S(baseColor.G * _shadow * 0.9), S(baseColor.B * _shadow * 0.97));
+                stops.Add(new GradientStop(baseColor, 0)); stops.Add(new GradientStop(baseColor, 0.5));
                 stops.Add(new GradientStop(sh, 0.5)); stops.Add(new GradientStop(sh, 1));
             }
             else
@@ -176,16 +178,16 @@ public sealed partial class Mannequin
         g.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(specular, 0xFF, 0xFF, 0xFF)), 40));
         return g;
     }
-
-    /// <summary>Cel-Shading ein/aus. shadow = Helligkeit der Schattenstufe (0..1).</summary>
-    public void SetToon(bool on, double shadow)
+    /// <summary>Cel-Shading ein/aus. shadow = Helligkeit der Schattenstufe (0..1); lineart = Strichzeichnung (alle Flächen weiß,
+    /// nur Augen, Mund und Linien behalten ihre Farbe).</summary>
+    public void SetToon(bool on, double shadow, bool lineart = false)
     {
-        if (on == Toon && Math.Abs(shadow - _toonShadow) < 1e-6) return;
+        if (on == Toon && Math.Abs(shadow - _toonShadow) < 1e-6 && lineart == _lineart) return;
         bool switchMat = on != Toon;
-        Toon = on; _toonShadow = shadow;
+        Toon = on; _toonShadow = shadow; _lineart = lineart;
         foreach (var (kind, (brush, spec)) in _shades)
         {
-            brush.SetToon(on, shadow);
+            brush.SetToon(on, shadow, on && lineart && kind is not (MaterialKind.Line or MaterialKind.Iris or MaterialKind.Mouth or MaterialKind.EyeWhite));
             if (switchMat) _mats[kind] = MakeMaterial(brush.Brush, spec, on);
         }
         if (!switchMat) return;
@@ -201,6 +203,7 @@ public sealed partial class Mannequin
 
     public bool Toon { get; private set; }
     private double _toonShadow = 0.74;
+    private bool _lineart;
     private readonly Dictionary<MaterialKind, (ShadeBrush Brush, byte Spec)> _shades = new();
 
     /// <summary>Teile mit Kontur im Cel-Shading: keine Gesichtsdetails und keine sehr kleinen Teile.</summary>
@@ -370,7 +373,7 @@ public sealed partial class Mannequin
         // Greifende Hände bekommen eine geschlossene Hand (Faust um den Griff)
         bool gripL = _prop.Active && (_prop.TwoHanded || _prop.MainSide > 0);
         bool gripR = _prop.Active && (_prop.TwoHanded || _prop.MainSide < 0);
-        var builder = new BodyBuilder((id, m, k, u) => AddPart(id, m, k, u));
+        var builder = new BodyBuilder((id, m, k, u) => AddPart(id, m, k, u), Proportions);
         if (Style == FigureStyle.Mannequin) builder.BuildMannequin();
         else builder.BuildHuman(Style.IsFemale(), Hair, Style.IsAnime(), gripL, gripR);
         BuildClothes(builder);
@@ -406,7 +409,7 @@ public sealed partial class Mannequin
     /// <summary>Wechselt Figurenstil/Haare/Proportionen. Die Pose bleibt erhalten.</summary>
     public void SetFigure(FigureStyle style, bool hair, Proportions proportions)
     {
-        bool rebuild = style != Style || hair != Hair || Group.Children.Count == 0;
+        bool rebuild = style != Style || hair != Hair || Group.Children.Count == 0 || proportions.ShapeKey != Proportions.ShapeKey;
         Style = style;
         Hair = hair;
         Proportions = proportions.Clone();
@@ -425,8 +428,8 @@ public sealed partial class Mannequin
         var p = Proportions;
         double a = p.Arm / 100, l = p.Leg / 100, t = p.Torso / 100, s = p.Shoulder / 100, h = p.Head / 100, b = p.Build / 100;
         // Anime-Proportionen: größerer Kopf, längere Beine, schmalere Schultern, etwas kürzerer Rumpf
-        double neckLen = 1, hSeg = h;
-        if (Style.IsAnime()) { h *= 1.32; l *= 1.06; s *= Style.IsFemale() ? 0.92 : 0.97; t *= 0.96; neckLen = 0.85; }
+        double neckLen = p.Neck / 100, hSeg = h;
+        if (Style.IsAnime()) { h *= 1.32; l *= 1.06; s *= Style.IsFemale() ? 0.92 : 0.97; t *= 0.96; neckLen *= 0.85; }
         foreach (var j in Joints)
         {
             (j.SegScale, j.UniformScale) = j.Id switch
@@ -494,7 +497,7 @@ public sealed partial class Mannequin
     }
 
     /// <summary>Skalierung der Hand (Handfläche ist im Mesh bereits mit dem Stilfaktor gebaut, Finger nicht).</summary>
-    internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * BodyBuilder.HandK(Style.IsFemale(), Style.IsAnime());
+    internal double HandScale(string sfx) => this["wrist" + sfx].UniformScale * BodyBuilder.HandK(Style.IsFemale(), Style.IsAnime(), Proportions);
 
     private Vector3D _updatedRoot = new(double.NaN, 0, 0);
 
