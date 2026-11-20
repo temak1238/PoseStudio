@@ -85,6 +85,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--shape")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            ShapeTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--look")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -189,6 +197,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--pose-review")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            PoseReview(e.Args[1], e.Args.Length >= 3 ? int.Parse(e.Args[2]) : 0);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--presets")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -203,6 +219,49 @@ public partial class App : Application
     }
 
     /// <summary>Alle Pose-Vorlagen als Kontaktbogen (je Vorlage 3/4-Ansicht und Seite).</summary>
+    /// <summary>Testmodus --pose-review &lt;Ordner&gt; [ab Index]: Vorlagen groß, je vorne/schräg/seitlich, 4 Vorlagen pro Zeile, 16 pro Blatt.</summary>
+    private static void PoseReview(string folder, int start)
+    {
+        Directory.CreateDirectory(folder);
+        var m = new Mannequin();
+        m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+        m.SetHair(new HairSettings { Style = "kurz", Wind = 0 });
+        var opts = new SceneOptions { Floor = true, Shadow = true, Light = new LightSettings { CastShadow = false } };
+        const int cw = 190, ch = 260, perRow = 4, perSheet = 16;
+        var yaws = new[] { 0.0, 40.0, 90.0 };
+        var tf = new System.Windows.Media.Typeface("Segoe UI");
+        for (int sheet = 0; start + sheet * perSheet < Presets.All.Count; sheet++)
+        {
+            int first = start + sheet * perSheet, count = Math.Min(perSheet, Presets.All.Count - first);
+            int rows = (count + perRow - 1) / perRow, W = cw * yaws.Length * perRow, H = ch * rows;
+            var dv = new System.Windows.Media.DrawingVisual();
+            using (var dc = dv.RenderOpen())
+            {
+                dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, W, H));
+                for (int k = 0; k < count; k++)
+                {
+                    int i = first + k;
+                    m.SetPose(Presets.All[i].ToPose()); m.GroundToFloor();
+                    { var sh = m["shoulder_r"].World.Transform(new System.Windows.Media.Media3D.Point3D()); var hd = m["wrist_r"].World.Transform(new System.Windows.Media.Media3D.Point3D()); var pw = m.Root.World; pw.Invert(); var d = pw.Transform(hd - sh); d.Normalize(); File.AppendAllText(Path.Combine(folder, "arms.txt"), FormattableString.Invariant($"{i} {Presets.All[i].Name}: rechte Hand rel. Schulter (Becken-System x=links, y=oben, z=vorne) {d.X:F2} {d.Y:F2} {d.Z:F2}") + Environment.NewLine); }
+                    double minY = m.ComputeMinY(), maxY = m.ComputeMaxY();
+                    var pel = m.PelvisWorld;
+                    for (int v = 0; v < yaws.Length; v++)
+                    {
+                        var cam = new OrbitCamera { Yaw = yaws[v], Pitch = 8, Target = new System.Windows.Media.Media3D.Point3D(pel.X, (minY + maxY) / 2, pel.Z), Distance = 4.2 };
+                        double x = ((k % perRow) * yaws.Length + v) * cw, y = (k / perRow) * ch;
+                        dc.DrawImage(SceneFactory.Render(m, cam, opts, cw, ch), new Rect(x, y, cw, ch));
+                        if (v == 0)
+                            dc.DrawText(new System.Windows.Media.FormattedText($"{i}: {Presets.All[i].Name}", System.Globalization.CultureInfo.CurrentCulture,
+                                FlowDirection.LeftToRight, tf, 12, System.Windows.Media.Brushes.Black, 1.0), new Point(x + 3, y + 2));
+                    }
+                }
+            }
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W, H, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            SceneFactory.SaveJpeg(rtb, Path.Combine(folder, $"review_{first:D3}.jpg"), 88);
+        }
+    }
+
     private static void PresetSheet(string folder, string style)
     {
         Directory.CreateDirectory(folder);
@@ -901,6 +960,42 @@ public partial class App : Application
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * 4, W * poses.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "looks.jpg"), 92);
+    }
+
+    /// <summary>Testmodus --shape: Körperform-Regler (Anime weiblich/männlich, 2D flach) mit und ohne Kleidung.</summary>
+    private static void ShapeTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 260;
+        var cases = new (string name, Action<Proportions> set)[]
+        {
+            ("Standard", p => { }), ("Brust 50", p => p.Bust = 50), ("Brust 170", p => p.Bust = 170),
+            ("Taille 75, Hüfte 135", p => { p.Waist = 75; p.Hips = 135; }), ("Gesäß 150", p => p.Glutes = 150),
+            ("Bauch 160", p => p.Belly = 160), ("Oberschenkel 140, Waden 130", p => { p.Thighs = 140; p.Calves = 130; }),
+            ("Oberarme 160", p => p.UpperArms = 160), ("Hals 140, Hände 125", p => { p.Neck = 140; p.Hands = 125; }),
+        };
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int r = 0; r < 2; r++)
+                for (int c = 0; c < cases.Length; c++)
+                {
+                    var props = new Proportions { HeightCm = 160 }; cases[c].set(props);
+                    var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, props);
+                    m.BodyColor = System.Windows.Media.Color.FromRgb(0xF8, 0xE2, 0xD4);
+                    m.SetHair(new HairSettings { Style = "zopf", Wind = 0 });
+                    if (r == 1) m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = "minirock", Shoes = "socken" });
+                    m.SetPose(Presets.All.First(p => p.Name == "Kontrapost").ToPose()); m.GroundToFloor();
+                    var pel = m.PelvisWorld;
+                    var cam = new OrbitCamera { Yaw = 35, Pitch = 5, Distance = 3.0, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = true, ToonStyle = 1 }, Background = System.Windows.Media.Colors.White }, W, W * 3 / 2),
+                        new Rect(c * W, r * W * 3 / 2, W, W * 3 / 2));
+                    if (r == 0)
+                        dc.DrawText(new System.Windows.Media.FormattedText(cases[c].name, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                            new System.Windows.Media.Typeface("Segoe UI"), 12, System.Windows.Media.Brushes.Black, 1.0), new Point(c * W + 4, 2));
+                }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * cases.Length, W * 3, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "shape.jpg"), 90);
     }
 
     private static void PelvisTest(string folder)

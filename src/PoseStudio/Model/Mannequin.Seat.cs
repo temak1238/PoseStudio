@@ -61,7 +61,7 @@ public sealed partial class Mannequin
         var hipL = this["hip_l"].World.Transform(new Point3D()); var hipR = this["hip_r"].World.Transform(new Point3D());
         var kneeL = this["knee_l"].World.Transform(new Point3D()); var kneeR = this["knee_r"].World.Transform(new Point3D());
         double thigh = ((kneeL - hipL).Length + (kneeR - hipR).Length) / 2;
-        double drop = ((hipL.Y - kneeL.Y) + (hipR.Y - kneeR.Y)) / 2;
+        double drop = Math.Max(hipL.Y - kneeL.Y, hipR.Y - kneeR.Y); // beide Oberschenkel etwa waagerecht (nicht: ein Bein im Tritt)
         // Sitzhöhe: tiefster Punkt des Rumpfes (Gesäß) – nur Körper, ohne Kleidung
         double seatY = double.MaxValue;
         foreach (var p in Root.Parts)
@@ -76,7 +76,10 @@ public sealed partial class Mannequin
         double minY = ComputeMinY();
         double kneeBend = (this["knee_l"].BendValue + this["knee_r"].BendValue) / 2;
         double kneeLow = Math.Min(kneeL.Y, kneeR.Y) - minY;
-        bool sitting = drop < thigh * 0.55 && seatY - minY > 0.18 * thigh / 0.45 && kneeLow > 0.25 * thigh / 0.45 && kneeBend < 125;
+        // Becken aufrecht (nicht im Liegen), Knie deutlich gebeugt (nicht beim Bücken oder Treten)
+        var pelvisUp = Root.World.Transform(new Vector3D(0, 1, 0)); pelvisUp.Normalize();
+        bool sitting = drop < thigh * 0.55 && seatY - minY > 0.18 * thigh / 0.45 && kneeLow > 0.25 * thigh / 0.45
+                       && kneeBend > 50 && kneeBend < 125 && pelvisUp.Y > 0.6;
         if (sitting)
         {
             double knee = (Vector3D.DotProduct(kneeL - pel, fwd) + Vector3D.DotProduct(kneeR - pel, fwd)) / 2;

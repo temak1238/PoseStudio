@@ -172,7 +172,8 @@ internal sealed class BodyBuilder
         {
             string sfx = s > 0 ? "_l" : "_r";
             // ---- Oberarm mit Schulter; Ober- und Unterarm als eine Form (Schulter → Ellbogen → Handgelenk)
-            _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w, 0.065, 0.054 * w), MaterialKind.Body);
+            double ua = 1 + (_shape.UpperArms / 100 - 1) * 0.8; // Schulterrundung wächst mit den Oberarmen
+            _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.05, 0), 0.05 * w * ua, 0.065, 0.054 * w * ua), MaterialKind.Body);
             _add("shoulder" + sfx, LoftOf(ArmSections(w, _shape)), MaterialKind.Body);
             BuildHand("wrist" + sfx, s, HandK(female, anime, _shape));
             // ---- Bein als eine Form (Hüfte → Knie → Knöchel)
@@ -243,7 +244,8 @@ internal sealed class BodyBuilder
                 foreach (var s in new[] { 1, -1 })
                 {
                     string sfx = s > 0 ? "_l" : "_r";
-                    _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.045, 0), 0.05 * w + 0.013, 0.082, 0.054 * w + 0.013), topKind);
+                    double ua = 1 + (_shape.UpperArms / 100 - 1) * 0.8;
+                    _add("shoulder" + sfx, MeshFactory.Ellipsoid(P(s * 0.002, -0.045, 0), 0.05 * w * ua + 0.013, 0.082, 0.054 * w * ua + 0.013), topKind);
                     _add("shoulder" + sfx, LoftOf(Clip(ArmSections(w, _shape), 0.0, bodice.Sleeve, 0.009, bodice.Sleeve < -0.3 ? 0.006 : 0.011), 0.05), topKind);
                 }
         }

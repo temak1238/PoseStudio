@@ -271,7 +271,7 @@ public static class Presets
             ("hip_l", 0, 3, 0), ("hip_r", 0, 3, 0), ("head", 4, 0, 0)),
 
         Make(Stand, "Hände hinter dem Rücken",
-            ("shoulder_l", -25, 14, 60), ("shoulder_r", -25, 14, 60), ("elbow_l", 70, 0, 0), ("elbow_r", 70, 0, 0),
+            ("shoulder_l", -35, 12, -85), ("shoulder_r", -35, 12, -85), ("elbow_l", 85, 0, 0), ("elbow_r", 85, 0, 0),
             ("chest", -6, 0, 0), ("head", -3, 0, 0)),
 
         Make(Stand, "Seitlich gedreht, Blick zur Kamera",
@@ -340,11 +340,11 @@ public static class Presets
             ("shoulder_l", -10, 38, -80), ("elbow_l", 100, 0, 0), ("head", -4, 0, 0)),
 
         MakeH(Gest, "Salutieren", null, "Flach (gestreckt)",
-            ("shoulder_r", 15, 80, 60), ("elbow_r", 130, 0, 0), ("wrist_r", 10, 0, 0),
+            ("shoulder_r", 25, 50, -25), ("elbow_r", 140, 0, 0), ("wrist_r", -10, 0, 0),
             ("shoulder_l", 0, 6, 0), ("elbow_l", 5, 0, 0), ("chest", -5, 0, 0)),
 
         MakeH(Gest, "Fäuste geballt (entschlossen)", "Faust", "Faust",
-            ("shoulder_l", 20, 15, -30), ("shoulder_r", 20, 15, -30), ("elbow_l", 110, 0, 0), ("elbow_r", 110, 0, 0),
+            ("shoulder_l", 20, 15, 0), ("shoulder_r", 20, 15, 0), ("elbow_l", 100, 0, 0), ("elbow_r", 100, 0, 0),
             ("chest", -5, 0, 0), ("hip_l", 0, 10, 0), ("hip_r", 0, 10, 0)),
 
         // ---- Sitzen & Knien
@@ -367,11 +367,6 @@ public static class Presets
             ("hip_l", 88, 4, 0), ("hip_r", 88, 4, 0), ("knee_l", 5, 0, 0), ("knee_r", 5, 0, 0),
             ("spine", 8, 0, 0), ("shoulder_l", -30, 20, 0), ("shoulder_r", -30, 20, 0), ("elbow_l", 8, 0, 0), ("elbow_r", 8, 0, 0)),
 
-        Make(Sit, "Seitsitz (Beine zur Seite)",
-            ("pelvis", 0, 8, 0), ("hip_l", 70, 25, 45), ("knee_l", 140, 0, 0), ("hip_r", 75, 10, 50), ("knee_r", 140, 0, 0),
-            ("chest", 0, -8, 0), ("shoulder_r", 0, 25, 0), ("elbow_r", 5, 0, 0),
-            ("shoulder_l", 30, 10, -40), ("elbow_l", 60, 0, 0), ("head", 0, 8, 0)),
-
         Make(Sit, "Sitzen – Knie umarmt",
             ("hip_l", 120, 4, 0), ("hip_r", 120, 4, 0), ("knee_l", 140, 0, 0), ("knee_r", 140, 0, 0),
             ("spine", 25, 0, 0), ("chest", 15, 0, 0), ("head", 15, 0, 0),
@@ -383,7 +378,7 @@ public static class Presets
             ("shoulder_r", 50, 10, -20), ("elbow_r", 140, 0, 0), ("wrist_r", -25, 0, 0),
             ("shoulder_l", 35, 10, -40), ("elbow_l", 70, 0, 0)),
 
-        Make(Sit, "Knien – aufrecht, Hände auf den Oberschenkeln",
+        Make(Sit, "Fersensitz – Hände auf den Oberschenkeln",
             ("hip_l", 85, 4, 0), ("hip_r", 85, 4, 0), ("knee_l", 150, 0, 0), ("knee_r", 150, 0, 0),
             ("ankle_l", -40, 0, 0), ("ankle_r", -40, 0, 0),
             ("shoulder_l", 15, 8, -30), ("shoulder_r", 15, 8, -30), ("elbow_l", 45, 0, 0), ("elbow_r", 45, 0, 0)),
@@ -401,7 +396,7 @@ public static class Presets
 
         MakeH(Sit, "Knien – Gebet", "Flach (gestreckt)", "Flach (gestreckt)",
             ("knee_l", 90, 0, 0), ("knee_r", 90, 0, 0), ("ankle_l", -40, 0, 0), ("ankle_r", -40, 0, 0),
-            ("shoulder_l", 40, 5, -50), ("shoulder_r", 40, 5, -50), ("elbow_l", 110, 0, 0), ("elbow_r", 110, 0, 0),
+            ("shoulder_l", 40, 3, -30), ("shoulder_r", 40, 3, -30), ("elbow_l", 105, 0, 0), ("elbow_r", 105, 0, 0),
             ("neck", 15, 0, 0), ("head", 10, 0, 0)),
 
         // ---- Liegen
@@ -481,22 +476,22 @@ public static class Presets
         MakeH(Fight, "Kampfstellung (Fäuste)", "Faust", "Faust",
             ("pelvis", 0, 0, -30), ("chest", 3, 0, 20), ("head", 8, 0, 12),
             ("hip_l", 25, 8, 0), ("knee_l", 25, 0, 0), ("hip_r", -12, 12, 20), ("knee_r", 28, 0, 0),
-            ("shoulder_l", 50, 25, -40), ("elbow_l", 115, 0, 0), ("shoulder_r", 35, 30, -40), ("elbow_r", 130, 0, 0)),
+            ("shoulder_l", 50, 20, 0), ("elbow_l", 120, 0, 0), ("shoulder_r", 35, 25, 0), ("elbow_r", 130, 0, 0)),
 
         MakeH(Fight, "Faustschlag", "Faust", "Faust",
             ("pelvis", 0, 0, -20), ("chest", 5, 0, -25), ("head", 5, 0, 15),
             ("hip_l", 40, 8, 0), ("knee_l", 35, 0, 0), ("hip_r", -20, 10, 15), ("knee_r", 15, 0, 0),
-            ("shoulder_r", 88, 5, 0), ("elbow_r", 5, 0, 0), ("shoulder_l", 40, 25, -40), ("elbow_l", 120, 0, 0)),
+            ("shoulder_r", 88, 5, 0), ("elbow_r", 5, 0, 0), ("shoulder_l", 40, 25, 0), ("elbow_l", 120, 0, 0)),
 
         MakeH(Fight, "Tritt nach vorne", "Faust", "Faust",
             ("pelvis", -10, 0, 0), ("chest", 10, 0, 0),
             ("hip_r", 100, 0, 0), ("knee_r", 10, 0, 0), ("ankle_r", 25, 0, 0), ("knee_l", 10, 0, 0),
-            ("shoulder_l", 45, 25, -40), ("elbow_l", 110, 0, 0), ("shoulder_r", 40, 25, -40), ("elbow_r", 110, 0, 0)),
+            ("shoulder_l", 45, 25, 0), ("elbow_l", 115, 0, 0), ("shoulder_r", 40, 25, 0), ("elbow_r", 115, 0, 0)),
 
         MakeH(Fight, "Seitwärtstritt", "Faust", "Faust",
             ("pelvis", 0, -25, 0), ("chest", 0, 20, 0), ("head", 0, 10, 0),
             ("hip_r", 15, 85, 0), ("knee_r", 10, 0, 0), ("knee_l", 15, 0, 0),
-            ("shoulder_l", 45, 25, -40), ("elbow_l", 110, 0, 0), ("shoulder_r", 30, 30, -40), ("elbow_r", 120, 0, 0)),
+            ("shoulder_l", 45, 25, 0), ("elbow_l", 115, 0, 0), ("shoulder_r", 30, 30, 0), ("elbow_r", 125, 0, 0)),
 
         MakeH(Fight, "Abwehr (Arme vor dem Gesicht)", "Faust", "Faust",
             ("shoulder_l", 80, 20, -60), ("shoulder_r", 80, 20, -60), ("elbow_l", 110, 0, 0), ("elbow_r", 110, 0, 0),
@@ -532,7 +527,7 @@ public static class Presets
             ("pelvis", 0, 0, -80), ("head", 0, 0, 75), ("neck", 0, 0, 10),
             ("hip_l", 0, 15, 0), ("hip_r", 0, 15, 0),
             ("shoulder_l", 0, 90, 0), ("elbow_l", 0, 0, 0),
-            ("shoulder_r", 0, 90, -80), ("elbow_r", 145, 0, 0)),
+            ("shoulder_r", 0, 88, 0), ("elbow_r", 150, 0, 0)),
 
         MakeH(Fight, "Zielen (beidhändig)", "Locker greifen", "Pistole",
             ("shoulder_l", 88, -10, 0), ("shoulder_r", 88, -6, 0), ("elbow_l", 12, 0, 0), ("elbow_r", 5, 0, 0),
@@ -557,7 +552,7 @@ public static class Presets
             ("neck", 15, 0, 0), ("head", 12, 0, 0)),
 
         MakeH(Daily, "Tasche über der Schulter", null, "Faust",
-            ("shoulder_r", -5, 10, -20), ("elbow_r", 120, 0, 0),
+            ("shoulder_r", -5, 12, 0), ("elbow_r", 145, 0, 0),
             ("shoulder_l", 0, 10, 0), ("elbow_l", 12, 0, 0), ("hip_r", 6, 4, 10), ("knee_r", 12, 0, 0)),
 
         Make(Daily, "Gähnen und strecken",
@@ -596,7 +591,7 @@ public static class Presets
             ("wrist_l", 50, 0, 0), ("wrist_r", 50, 0, 0), ("head", 0, 15, 0), ("hip_r", 10, 4, 10), ("knee_r", 20, 0, 0)),
 
         MakeH(Expr, "Peace am Auge (zwinkern)", "Flach (gestreckt)", "Peace / Victory",
-            ("shoulder_r", 30, 45, -20), ("elbow_r", 140, 0, 0),
+            ("shoulder_r", 25, 45, -35), ("elbow_r", 150, 0, 0),
             ("shoulder_l", -10, 38, -80), ("elbow_l", 100, 0, 0),
             ("head", 0, -12, 0), ("pelvis", 0, 5, 0), ("hip_r", 8, 4, 10), ("knee_r", 15, 0, 0)),
 

@@ -26,7 +26,8 @@ public static class Outline
     {
         if (!light.Toon || light.OutlineWidth <= 0) return null;
         // Breite pro Meter Abstand: Promille der Bildhöhe × sichtbare Höhe je Meter Abstand
-        double perMeter = light.OutlineWidth / 1000 * 2 * Math.Tan(cam.VerticalFov * Math.PI / 360);
+        // Strichzeichnung: Linien etwas kräftiger, da sie dort das einzige Gestaltungsmittel sind
+        double perMeter = light.OutlineWidth * (light.ToonStyle == 2 ? 1.4 : 1.0) / 1000 * 2 * Math.Tan(cam.VerticalFov * Math.PI / 360);
         var camPos = cam.Position; var look = cam.LookDirection;
         var group = new Model3DGroup();
         foreach (var (mesh, m) in figures.SelectMany(f => f.OutlineMeshes()))
