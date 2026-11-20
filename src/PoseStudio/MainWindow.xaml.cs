@@ -1423,6 +1423,17 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sb.AppendLine($"Vorlagen: {okP}/{Presets.All.Count} angewendet, {Presets.All.Count(x => x.HandR != null)} mit Handhaltung rechts, davon Finger gesetzt {withHands}, Kategorien {string.Join(", ", Presets.All.Select(x => x.Category).Distinct())}{(bad.Count > 0 ? " FEHLER: " + string.Join("; ", bad) : "")}");
         var swWin = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
         sb.AppendLine($"SwarmUI-Fenster erzeugt: {swWin.Title}");
+        {
+            string tdir = Path.Combine(Path.GetTempPath(), "PoseStudioSwarmTest"); if (Directory.Exists(tdir)) Directory.Delete(tdir, true); Directory.CreateDirectory(tdir);
+            PoseStudio.Swarm.SwarmWindow.OutputOverride = tdir;
+            string img = Path.Combine(tdir, "swarm_test_0.png");
+            SceneFactory.SavePng(SceneFactory.Render(_figures, _cam, new SceneOptions(), 64, 64), img);
+            var w1 = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
+            w1.AddResultForTest(img, "Testbild", 4242, new System.Text.Json.Nodes.JsonObject { ["prompt"] = "x", ["seed"] = 4242 });
+            var w2 = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
+            sb.AppendLine($"Ergebnisse nach neuem Öffnen: {w2.ResultCount}, erstes: {w2.FirstResult}");
+            PoseStudio.Swarm.SwarmWindow.OutputOverride = null; Directory.Delete(tdir, true);
+        }
         foreach (var useInit in new[] { true, false })
         {
             var ts = new PoseStudio.Swarm.SwarmSettings { UseInitImage = useInit, UseControlNet = true, ControlModel = "anima_3dpose_6200" };

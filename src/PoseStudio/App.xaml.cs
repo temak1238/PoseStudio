@@ -85,6 +85,20 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 5 && e.Args[0] == "--render-control")
+        {
+            // --render-control <datei.png> <breite> <höhe> [Pose]: 3D-Pose-Bild einer Anime-Figur (für Tests)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var rm = new Mannequin(); rm.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+            rm.SetPose(Presets.All.First(p => p.Name == (e.Args.Length > 5 ? e.Args[5] : "Sprung – Beine gespreizt")).ToPose()); rm.GroundToFloor();
+            int rw = int.Parse(e.Args[2]), rh = int.Parse(e.Args[3]);
+            var rp = rm.PelvisWorld;
+            var rc = new OrbitCamera { Yaw = 10, Pitch = 5, Distance = 3.6, Target = new P3(rp.X, (rm.ComputeMinY() + rm.ComputeMaxY()) / 2, rp.Z) };
+            SceneFactory.SavePng(SceneFactory.RenderControl(new[] { rm }, rc, SceneFactory.ControlMode.Pose3D, rw, rh), e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--swarm-cn")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

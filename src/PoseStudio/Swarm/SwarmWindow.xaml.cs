@@ -48,7 +48,18 @@ public partial class SwarmWindow : Window
     private readonly ObservableCollection<SwarmResultItem> _results = new();
     private bool _suppress;
     private static readonly string[] LookNames = { "Wie im Hauptfenster", "Normal (3D)", "Cel-Shading", "2D flach", "Strichzeichnung" };
-    public static string OutputFolder { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmOutput");
+    /// <summary>Nur für Tests: anderer Ordner für Ergebnisse und Liste.</summary>
+    internal static string? OutputOverride;
+    public static string OutputFolder => OutputOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmOutput");
+
+    /// <summary>Nur für Tests: fertiges Ergebnis hinzufügen (wie nach einer Generierung).</summary>
+    internal void AddResultForTest(string path, string caption, long seed, JsonObject sent)
+    {
+        var item = new SwarmResultItem { LocalPath = path, Caption = caption, Seed = seed, Sent = sent, Done = true, Image = ThumbCache.Decode(File.ReadAllBytes(path), 200) };
+        _results.Insert(0, item); SaveResult(item); SaveResultIndex();
+    }
+    internal int ResultCount => _results.Count;
+    internal (string Caption, long Seed, bool HasSent) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null);
 
     public SwarmWindow(SwarmSettings settings, ISwarmScene scene)
     {
@@ -64,6 +75,7 @@ public partial class SwarmWindow : Window
         CnKindCombo.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" };
         LoraSelected.ItemsSource = _selectedLoras;
         ResultList.ItemsSource = _results;
+        LoadResults();
         ShowSettings();
         RefreshProfiles();
         Loaded += async (_, _) => await ConnectAsync();
@@ -417,8 +429,10 @@ public partial class SwarmWindow : Window
                 item.Sent = p;
                 item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
                 item.Done = true;
+                SaveResult(item);
             }
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
+            SaveResultIndex();
             StatusText.Text = $"Fertig: {res.Count} Bild(er) in {sw.Elapsed.TotalSeconds:F0} s – auch in der SwarmUI-Historie.";
         }
         catch (OperationCanceledException)
@@ -454,6 +468,62 @@ public partial class SwarmWindow : Window
         _cts?.Cancel();
     }
 
+    // ------------------------------------------------------------------ Ergebnisse dauerhaft
+
+    private static string IndexFile => Path.Combine(OutputFolder, "results.json");
+
+    /// <summary>Zum Bild eine Begleitdatei mit Beschriftung, Seed und gesendeten Parametern (für „Nachbessern“ nach einem Neustart).</summary>
+    private static void SaveResult(SwarmResultItem item)
+    {
+        if (item.LocalPath == null) return;
+        try
+        {
+            var o = new JsonObject { ["caption"] = item.Caption, ["seed"] = item.Seed, ["sent"] = item.Sent?.DeepClone() };
+            File.WriteAllText(item.LocalPath + ".json", o.ToJsonString());
+        }
+        catch { /* Bild bleibt trotzdem in der Liste dieser Sitzung */ }
+    }
+
+    /// <summary>Reihenfolge der Liste speichern (nur fertige Bilder).</summary>
+    private void SaveResultIndex()
+    {
+        try
+        {
+            Directory.CreateDirectory(OutputFolder);
+            var arr = new JsonArray(_results.Where(r => r.Done && r.LocalPath != null).Select(r => (JsonNode?)JsonValue.Create(Path.GetFileName(r.LocalPath!))).ToArray());
+            File.WriteAllText(IndexFile, arr.ToJsonString());
+        }
+        catch { }
+    }
+
+    private void LoadResults()
+    {
+        try
+        {
+            if (!File.Exists(IndexFile) || JsonNode.Parse(File.ReadAllText(IndexFile)) is not JsonArray arr) return;
+            foreach (var n in arr)
+            {
+                string path = Path.Combine(OutputFolder, n?.ToString() ?? "");
+                if (!File.Exists(path)) continue;
+                var item = new SwarmResultItem { LocalPath = path, Caption = Path.GetFileName(path) };
+                try
+                {
+                    if (File.Exists(path + ".json") && JsonNode.Parse(File.ReadAllText(path + ".json")) is JsonObject o)
+                    {
+                        item.Caption = o["caption"]?.ToString() ?? item.Caption;
+                        item.Seed = long.TryParse(o["seed"]?.ToString(), out var sd) ? sd : -1;
+                        item.Sent = o["sent"] as JsonObject is { } sent ? (JsonObject)sent.DeepClone() : null;
+                    }
+                    item.Image = ThumbCache.Decode(File.ReadAllBytes(path), 600);
+                }
+                catch { continue; }
+                item.Done = true;
+                _results.Add(item);
+            }
+        }
+        catch { }
+    }
+
     // ------------------------------------------------------------------ Ergebnis-Aktionen
 
     private void ResultImage_Click(object sender, MouseButtonEventArgs e)
@@ -481,5 +551,12 @@ public partial class SwarmWindow : Window
             Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
     }
 
-    private void ClearResults_Click(object sender, RoutedEventArgs e) => _results.Clear();
+    private void ClearResults_Click(object sender, RoutedEventArgs e)
+    {
+        if (_results.Count == 0) return;
+        if (MessageBox.Show(this, $"Alle {_results.Count} Ergebnisse aus der Liste entfernen?\n\nDie Bilder bleiben in der SwarmUI-Historie und als lokale Kopie in\n{OutputFolder}.",
+                "Liste leeren", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        _results.Clear();
+        SaveResultIndex();
+    }
 }
