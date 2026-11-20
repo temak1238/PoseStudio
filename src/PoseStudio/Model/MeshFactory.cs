@@ -126,7 +126,7 @@ public static class MeshFactory
         return (list, end.C + axis * r);
     }
 
-    private static MeshGeometry3D Build(List<Point3D> pts, List<int> tri)
+    internal static MeshGeometry3D Build(List<Point3D> pts, List<int> tri)
     {
         var normals = new Vector3D[pts.Count];
         for (int i = 0; i < tri.Count; i += 3)

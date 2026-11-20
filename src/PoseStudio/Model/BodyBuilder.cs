@@ -79,12 +79,85 @@ internal sealed class BodyBuilder
         }).ToArray();
     }
 
-    /// <summary>Brust (Frau) als Ellipsoid je Seite: Größe nach Regler, Ansatz bleibt am Brustkorb.</summary>
-    internal static (Point3D C, double Rx, double Ry, double Rz) Breast(int s, Proportions? p, double extra = 0)
+    /// <summary>Punkt und Normale der Rumpfoberfläche (Becken-System) bei Breite x und Höhe y – Querschnitte linear zwischen den Stützstellen.</summary>
+    private static (Point3D P, Vector3D N) TorsoSurface(Sec[] s, double x, double y, double off)
     {
-        double b = (p?.Bust ?? 100) / 100, k = 0.75 + 0.25 * b;
-        double rz = 0.05 * b + extra;
-        return (new Point3D(s * 0.066, 0.13 - 0.01 * (b - 1), 0.006 + 0.05 * b + extra * 0.4), 0.068 * k + extra, 0.07 * k + extra, rz);
+        Sec q = s[^1];
+        for (int i = 0; i + 1 < s.Length; i++)
+            if (y >= s[i].Y && y <= s[i + 1].Y)
+            {
+                double t = (y - s[i].Y) / (s[i + 1].Y - s[i].Y);
+                q = new Sec(y, s[i].Rx + (s[i + 1].Rx - s[i].Rx) * t, s[i].Rz + (s[i + 1].Rz - s[i].Rz) * t, s[i].Cz + (s[i + 1].Cz - s[i].Cz) * t);
+                break;
+            }
+        double rx = q.Rx + off, rz = q.Rz + off;
+        double u = Math.Clamp(x / rx, -0.98, 0.98);
+        double z = q.Cz + rz * Math.Sqrt(1 - u * u);
+        var n = new Vector3D(x / (rx * rx), 0, (z - q.Cz) / (rz * rz));
+        n.Normalize();
+        return (new Point3D(x, y, z), n);
+    }
+
+    /// <summary>Brust als Höhenfeld auf der Rumpfoberfläche (Brust-System): wächst ohne Kante aus dem Brustkorb.
+    /// Oben flacher, langer Übergang (keine Kontur), unten voller und runder mit weicher Falte, leicht nach außen und unten.
+    /// extra = zusätzlicher Abstand für Kleidung (Oberteil liegt etwas größer darüber).</summary>
+    internal static MeshGeometry3D BreastMesh(int s, Sec[] torso, Proportions? p, double extra = 0)
+    {
+        double b = (p?.Bust ?? 100) / 100;
+        const double chestY = 0.25; // Brust-Gelenk im Becken-System (unskaliert)
+        double cx = s * (0.068 + 0.006 * (b - 1)), cy = 0.372 - 0.012 * (b - 1);
+        double a = 0.058 * (0.8 + 0.2 * b) + extra * 2;    // halbe Breite der Grundfläche
+        double H = 0.042 * Math.Pow(Math.Max(b, 0.2), 1.1) + extra; // Höhe über der Haut
+        const int rings = 12, slices = 36;
+        var pts = new List<Point3D>(); var tri = new List<int>(); var skin = new List<Vector3D>();
+        for (int k = 0; k <= rings; k++)
+        {
+            double t = (double)k / rings;
+            for (int j = 0; j < slices; j++)
+            {
+                double phi = 2 * Math.PI * j / slices, up = Math.Sin(phi), side = Math.Cos(phi);
+                // Grundfläche: nach oben weiter auslaufend, nach unten kürzer; Spitze leicht nach unten versetzt
+                double ry = up > 0 ? a * (1.0 + 0.45 * up) : a * (1.0 + 0.1 * up);
+                double x = cx + s * side * a * t * (side * s > 0 ? 1.08 : 0.9);
+                double y = cy - 0.012 * (0.6 + 0.4 * b) + up * ry * t;
+                // Höhenprofil: oben weich und flach auslaufend (Hermite-Kurve, Steigung 0 am Rand), unten runde Wölbung
+                double fUp = (1 - t) * (1 - t) * (1 + 2 * t), fLow = Math.Sqrt(Math.Max(0, 1 - Math.Pow(t, 2.4)));
+                double wUp = Math.Pow(Math.Max(0, up * 0.5 + 0.5), 1.6);
+
+                double h = H * (fLow * (1 - wUp) + fUp * wUp);
+                var (sp, n) = TorsoSurface(torso, x, y, extra * 0.5);
+                // leicht nach außen und unten gerichtet
+                var dir = n + new Vector3D(s * 0.18, -0.12, 0); dir.Normalize();
+                var q = sp + dir * h - n * 0.002;
+                pts.Add(new Point3D(q.X, q.Y - chestY, q.Z));
+                skin.Add(n);
+                if (k == 0) break; // Mittelpunkt nur einmal
+            }
+        }
+        // Dreiecke: Mitte → erster Ring, dann Ring zu Ring
+        for (int j = 0; j < slices; j++) tri.AddRange(new[] { 0, 1 + j, 1 + (j + 1) % slices });
+        for (int k = 1; k < rings; k++)
+            for (int j = 0; j < slices; j++)
+            {
+                int a0 = 1 + (k - 1) * slices + j, b0 = 1 + (k - 1) * slices + (j + 1) % slices;
+                int c0 = a0 + slices, d0 = b0 + slices;
+                tri.AddRange(new[] { a0, c0, b0, b0, c0, d0 });
+            }
+        // Vorderseite nach außen (vom Rumpf weg) ausrichten
+        var fn = Vector3D.CrossProduct(pts[tri[1]] - pts[tri[0]], pts[tri[2]] - pts[tri[0]]);
+        if (fn.Z < 0) for (int i = 0; i < tri.Count; i += 3) (tri[i + 1], tri[i + 2]) = (tri[i + 2], tri[i + 1]);
+        // Lichtübergang ohne Saum: äußere Ringe übernehmen die Normale der Rumpfoberfläche
+        var mesh = MeshFactory.Build(pts, tri).Clone();
+        for (int k = rings - 1; k <= rings; k++)
+            for (int j = 0; j < slices; j++)
+            {
+                int i = 1 + (k - 1) * slices + j;
+                double w = k == rings ? 1 : 0.5;
+                var nn = mesh.Normals[i] * (1 - w) + skin[i] * w; nn.Normalize();
+                mesh.Normals[i] = nn;
+            }
+        mesh.Freeze();
+        return mesh;
     }
 
     /// <summary>Rumpf von Schritt bis Hals (Becken-System).</summary>
@@ -164,7 +237,7 @@ internal sealed class BodyBuilder
         _add("pelvis", LoftOf(TorsoSections(female, anime, _shape), 0.35), MaterialKind.Body);
         if (female)
             foreach (var s in new[] { 1, -1 })
-                { var br = Breast(s, _shape); _add("chest", MeshFactory.Ellipsoid(br.C, br.Rx, br.Ry, br.Rz), MaterialKind.Body); }
+                _add("chest", BreastMesh(s, TorsoSections(female, anime, _shape), _shape), MaterialKind.Body);
         if (anime) BuildAnimeHead(female, hair);
         else BuildHead(female, hair);
 
@@ -239,7 +312,7 @@ internal sealed class BodyBuilder
             _add("pelvis", LoftOf(Clip(torso, lower, bodice.Upper, 0.006, 0.01), 0.05), topKind);
             if (female)
                 foreach (var s in new[] { 1, -1 })
-                { var br = Breast(s, _shape, 0.006); _add("chest", MeshFactory.Ellipsoid(br.C, br.Rx, br.Ry, br.Rz), topKind); }
+                    _add("chest", BreastMesh(s, torso, _shape, 0.007), topKind);
             if (bodice.Sleeve < 0)
                 foreach (var s in new[] { 1, -1 })
                 {

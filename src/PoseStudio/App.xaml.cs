@@ -85,6 +85,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--bust")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            BustTest(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--shape")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -996,6 +1004,40 @@ public partial class App : Application
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * cases.Length, W * 3, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
         rtb.Render(dv);
         SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "shape.jpg"), 90);
+    }
+
+    /// <summary>Testmodus --bust: Oberkörper-Nahaufnahmen (vorne, schräg, seitlich) bei Brust 60/100/150, nackt und mit Shirt, Normal und Cel.</summary>
+    private static void BustTest(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        const int W = 240;
+        var views = new[] { 0.0, 35.0, 80.0 };
+        var rows = new (double bust, bool shirt, bool toon, FigureStyle style)[]
+        {
+            (100, false, false, FigureStyle.AnimeFemale), (60, false, true, FigureStyle.AnimeFemale), (100, false, true, FigureStyle.AnimeFemale),
+            (150, false, true, FigureStyle.AnimeFemale), (100, true, true, FigureStyle.AnimeFemale), (100, false, false, FigureStyle.Female),
+        };
+        var dv = new System.Windows.Media.DrawingVisual();
+        using (var dc = dv.RenderOpen())
+            for (int r = 0; r < rows.Length; r++)
+            {
+                var row = rows[r];
+                var m = new Mannequin(); m.SetFigure(row.style, true, new Proportions { HeightCm = 160, Bust = row.bust });
+                m.BodyColor = System.Windows.Media.Color.FromRgb(0xF2, 0xD6, 0xC4);
+                m.SetHair(new HairSettings { Style = "zopf", Wind = 0 });
+                if (row.shirt) m.SetClothing(new ClothingSettings { Top = "tshirt", Bottom = "rock" });
+                m.SetPose(Presets.All.First(p => p.Name == "Neutral stehen (A-Pose)").ToPose());
+                var t = m["chest"].World.Transform(new P3(0, 0.12, 0.05));
+                for (int c = 0; c < views.Length; c++)
+                {
+                    var cam = new OrbitCamera { Yaw = views[c], Pitch = 5, Distance = 1.1, Target = t };
+                    dc.DrawImage(SceneFactory.Render(m, cam, new SceneOptions { Floor = false, Shadow = false, Light = new LightSettings { Toon = row.toon }, Background = System.Windows.Media.Color.FromRgb(0xF4, 0xF4, 0xF4) }, W, W),
+                        new Rect(c * W, r * W, W, W));
+                }
+            }
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(W * views.Length, W * rows.Length, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        SceneFactory.SaveJpeg(rtb, Path.Combine(folder, "bust.jpg"), 90);
     }
 
     private static void PelvisTest(string folder)
