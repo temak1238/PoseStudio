@@ -163,6 +163,8 @@ public sealed class SwarmSettings
             p["controlnetstrength"] = ControlStrength;
             p["controlnetstart"] = ControlStart;
             p["controlnetend"] = ControlEnd;
+            // Bild nicht vorverarbeiten: sonst macht SwarmUI daraus automatisch ein OpenPose-Skelett und anima_3dpose sieht die Pose nicht
+            p["controlnetpreprocessor"] = "None";
         }
         return p;
     }

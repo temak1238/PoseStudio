@@ -53,6 +53,11 @@ public partial class SwarmWindow : Window
     public SwarmWindow(SwarmSettings settings, ISwarmScene scene)
     {
         InitializeComponent();
+        // nie größer als der Bildschirm (sonst liegt „Generieren“ außerhalb)
+        var wa = SystemParameters.WorkArea;
+        Width = Math.Min(Width, wa.Width - 20); Height = Math.Min(Height, wa.Height - 20);
+        Left = wa.Left + (wa.Width - Width) / 2; Top = wa.Top + (wa.Height - Height) / 2;
+        WindowStartupLocation = WindowStartupLocation.Manual;
         _s = settings; _scene = scene;
         LookCombo.ItemsSource = LookNames;
         SideCombo.ItemsSource = new[] { "1024", "1152", "1280", "1408", "1536" };
@@ -142,7 +147,7 @@ public partial class SwarmWindow : Window
     {
         var m = _models.FirstOrDefault(x => x.Id.Equals(_s.Model, StringComparison.OrdinalIgnoreCase) || x.Name.Equals(_s.Model, StringComparison.OrdinalIgnoreCase)
                                              || Path.GetFileNameWithoutExtension(x.Name).Equals(_s.Model, StringComparison.OrdinalIgnoreCase));
-        ModelText.Text = string.IsNullOrWhiteSpace(_s.Model) ? "(Standardmodell von SwarmUI)" : m?.Short ?? _s.Model;
+        ModelText.Text = string.IsNullOrWhiteSpace(_s.Model) ? "(Standardmodell von SwarmUI)" : m != null ? Path.GetFileNameWithoutExtension(m.Name) : _s.Model;
         ModelImage.Source = null;
         if (m?.PreviewUrl != null) _ = SetImageAsync(ModelImage, m.PreviewUrl);
     }
@@ -198,7 +203,7 @@ public partial class SwarmWindow : Window
     {
         string q = ModelSearch.Text.Trim();
         ModelList.ItemsSource = _models.Where(m => q == "" || m.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || m.Title.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .Select(m => new ThumbItem { Key = m.Id, Label = m.Short, ToolTip = m.Name, Url = m.PreviewUrl, Tag = m }).ToList();
+            .Select(m => new ThumbItem { Key = m.Id, Label = Path.GetFileNameWithoutExtension(m.Name), ToolTip = m.Name + (string.IsNullOrWhiteSpace(m.Title) ? "" : Environment.NewLine + m.Title), Url = m.PreviewUrl, Tag = m }).ToList();
     }
 
     private void FillLoraList()
@@ -407,7 +412,7 @@ public partial class SwarmWindow : Window
                 if (known is null or < 0) known = await _client.LookupSeedAsync(res[i].Path);
                 item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
-                item.Caption = $"{what} · Seed {item.Seed}";
+                item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
                 item.Done = true;
             }
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);

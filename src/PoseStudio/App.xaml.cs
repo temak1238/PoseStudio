@@ -85,6 +85,13 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--swarm-cn")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () => { await SwarmCnTest(e.Args[1], e.Args[2], e.Args.Length > 3 ? e.Args[3] : "Sprung – Beine gespreizt", e.Args.Length > 4 ? double.Parse(e.Args[4], System.Globalization.CultureInfo.InvariantCulture) : 1.0); Shutdown(); });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--swarm-test")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -1104,6 +1111,44 @@ public partial class App : Application
             L($"Nachgebessert: {r2[0].Path}, {bi.PixelWidth}x{bi.PixelHeight}, Seed laut Historie {await c.LookupSeedAsync(r2[0].Path)}");
         }
         catch (Exception ex) { L("FEHLER: " + ex); }
+    }
+
+    /// <summary>Testmodus --swarm-cn &lt;Ordner&gt; &lt;URL&gt; [Pose] [Stärke]: gleiche Seed/Prompt ohne und mit anima_3dpose (ohne Init Image).</summary>
+    private static async Task SwarmCnTest(string folder, string url, string pose, double strength)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        void L(string s) { log.AppendLine(s); File.WriteAllText(Path.Combine(folder, "cn.txt"), log.ToString()); }
+        using var c = new PoseStudio.Swarm.SwarmClient(url);
+        try
+        {
+            await c.ConnectAsync();
+            var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+            m.SetPose(Presets.All.First(p => p.Name == pose).ToPose()); m.GroundToFloor();
+            const int w = 832, h = 1216;
+            var pel = m.PelvisWorld;
+            var cam = new OrbitCamera { Yaw = 10, Pitch = 5, Distance = 3.6, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+            var ctl = SceneFactory.RenderControl(new[] { m }, cam, SceneFactory.ControlMode.Pose3D, w, h);
+            SceneFactory.SavePng(ctl, Path.Combine(folder, "control.png"));
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(new System.Windows.Media.Imaging.FormatConvertedBitmap(ctl, System.Windows.Media.PixelFormats.Bgr24, null, 0)));
+            using var ms = new MemoryStream(); enc.Save(ms);
+            string dataUrl = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+            var baseP = new System.Text.Json.Nodes.JsonObject
+            {
+                ["prompt"] = "1girl, solo, white dress, simple background, full body, anime", ["negativeprompt"] = "worst quality, bad quality, lowres",
+                ["model"] = "ghostbubblemango", ["images"] = 1, ["seed"] = 777, ["steps"] = 21, ["cfgscale"] = 4.0, ["width"] = w, ["height"] = h, ["aspectratio"] = "Custom",
+            };
+            foreach (var withCn in new[] { false, true })
+            {
+                var p = (System.Text.Json.Nodes.JsonObject)baseP.DeepClone();
+                if (withCn) { p["controlnetimageinput"] = dataUrl; p["controlnetmodel"] = "anima_3dpose_6200"; p["controlnetstrength"] = strength; p["controlnetstart"] = 0.0; p["controlnetend"] = 1.0; p["controlnetpreprocessor"] = "None"; }
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var res = await c.GenerateAsync(p, null, CancellationToken.None);
+                File.WriteAllBytes(Path.Combine(folder, withCn ? "mit_cn.png" : "ohne_cn.png"), await c.DownloadAsync(res[0].Path));
+                L($"{(withCn ? "mit" : "ohne")} ControlNet: {sw.Elapsed.TotalSeconds:F0} s, {res[0].Path}");
+            }
+        }
+        catch (Exception ex) { L("FEHLER: " + ex.Message); }
     }
 
     private static void PelvisTest(string folder)

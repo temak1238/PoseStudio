@@ -103,7 +103,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel Margin="0,1">
-                                            <Button DockPanel.Dock="Right" Content="✕" Width="22" Margin="4,0,0,0" Click="RemoveLora_Click" Tag="{Binding}" ToolTip="Entfernen" />
+                                            <Button DockPanel.Dock="Right" Content="X" Width="22" FontWeight="Bold" Margin="4,0,0,0" Click="RemoveLora_Click" Tag="{Binding}" ToolTip="Entfernen" />
                                             <TextBox DockPanel.Dock="Right" Width="44" Text="{Binding Weight, UpdateSourceTrigger=LostFocus, StringFormat=0.##}" ToolTip="Gewicht" />
                                             <Slider DockPanel.Dock="Right" Width="90" Minimum="-1" Maximum="2" SmallChange="0.05" LargeChange="0.1" Value="{Binding Weight}" Margin="4,0" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
@@ -202,7 +202,7 @@
                                 <TextBox x:Name="CnEndBox" Width="44" Margin="4,0,0,0" HorizontalAlignment="Left" />
                             </DockPanel>
                             <TextBlock Foreground="#666" TextWrapping="Wrap"
-                                       Text="Hinweis: LLLite-Modelle wie anima_3dpose wirken über das normale ControlNet-Feld von SwarmUI evtl. nicht." />
+                                       Text="anima_3dpose: Bild „3D-Pose“, Stärke um 1. Pose Studio schaltet den Preprocessor von SwarmUI ab (sonst würde das Posenbild in ein OpenPose-Skelett umgewandelt). Mit ControlNet kann Creativity höher sein (z. B. 0.8–1.0)." />
                         </StackPanel>
                     </Expander>
 
