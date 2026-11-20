@@ -22,6 +22,8 @@ public sealed class SwarmSettings
     public string Negative { get; set; } = "";
     /// <summary>Darstellung des Init Image: -1 = wie im Hauptfenster, 0 = Normal, 1 = Cel, 2 = 2D flach, 3 = Strichzeichnung.</summary>
     public int Look { get; set; } = -1;
+    /// <summary>Szene als Init Image mitschicken (aus = nur Prompt, Pose ggf. über ControlNet).</summary>
+    public bool UseInitImage { get; set; } = true;
     public double Creativity { get; set; } = 0.6;
     public int SideLength { get; set; } = 1280;
     public int Count { get; set; } = 2;
@@ -154,8 +156,11 @@ public sealed class SwarmSettings
         p["aspectratio"] = "Custom";
         p["width"] = w;
         p["height"] = h;
-        p["initimage"] = initDataUrl;
-        p["initimagecreativity"] = Math.Clamp(Creativity, 0, 1);
+        if (UseInitImage)
+        {
+            p["initimage"] = initDataUrl;
+            p["initimagecreativity"] = Math.Clamp(Creativity, 0, 1);
+        }
         if (UseControlNet && controlDataUrl != null && !string.IsNullOrWhiteSpace(ControlModel))
         {
             p["controlnetimageinput"] = controlDataUrl;

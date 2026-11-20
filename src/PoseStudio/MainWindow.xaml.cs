@@ -1423,6 +1423,12 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sb.AppendLine($"Vorlagen: {okP}/{Presets.All.Count} angewendet, {Presets.All.Count(x => x.HandR != null)} mit Handhaltung rechts, davon Finger gesetzt {withHands}, Kategorien {string.Join(", ", Presets.All.Select(x => x.Category).Distinct())}{(bad.Count > 0 ? " FEHLER: " + string.Join("; ", bad) : "")}");
         var swWin = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
         sb.AppendLine($"SwarmUI-Fenster erzeugt: {swWin.Title}");
+        foreach (var useInit in new[] { true, false })
+        {
+            var ts = new PoseStudio.Swarm.SwarmSettings { UseInitImage = useInit, UseControlNet = true, ControlModel = "anima_3dpose_6200" };
+            var tp = ts.BuildParams("data:init", 1024, 576, "data:cn", new Dictionary<string, string?>());
+            sb.AppendLine($"Init Image {(useInit ? "an" : "aus")}: initimage {tp.ContainsKey("initimage")}, creativity {tp.ContainsKey("initimagecreativity")}, ControlNet {tp.ContainsKey("controlnetimageinput")}, Preprocessor {tp["controlnetpreprocessor"]}");
+        }
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();

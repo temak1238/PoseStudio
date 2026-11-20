@@ -134,6 +134,7 @@
 
                     <GroupBox Header="Init Image (aktuelle Szene)">
                         <StackPanel>
+                            <CheckBox x:Name="InitCheck" Content="Szene als Init Image mitschicken" Margin="0,0,0,3" ToolTip="Aus: nur Prompt (und ControlNet, falls aktiv) – die Pose kommt dann allein über ControlNet, Stil und Kleidung sind frei." />
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Darstellung" Style="{StaticResource Lbl}" />
                                 <ComboBox x:Name="LookCombo" />

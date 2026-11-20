@@ -83,6 +83,7 @@ public partial class SwarmWindow : Window
         NegativeBox.Text = _s.Negative;
         AutoTriggerCheck.IsChecked = _s.AutoTrigger;
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);
+        InitCheck.IsChecked = _s.UseInitImage;
         CreativitySlider.Value = _s.Creativity;
         SideCombo.Text = _s.SideLength.ToString(CultureInfo.InvariantCulture);
         CountBox.Text = _s.Count.ToString(CultureInfo.InvariantCulture);
@@ -116,6 +117,7 @@ public partial class SwarmWindow : Window
         _s.Negative = NegativeBox.Text;
         _s.AutoTrigger = AutoTriggerCheck.IsChecked == true;
         _s.Look = LookCombo.SelectedIndex - 1;
+        _s.UseInitImage = InitCheck.IsChecked == true;
         _s.Creativity = CreativitySlider.Value;
         _s.SideLength = Math.Clamp((int)PD(SideCombo.Text, _s.SideLength), 256, 4096);
         _s.Count = Math.Clamp((int)PD(CountBox.Text, _s.Count), 1, 16);
@@ -356,12 +358,13 @@ public partial class SwarmWindow : Window
         JsonObject p;
         try
         {
-            string init = ToDataUrl(_scene.RenderInit(w, h, _s.Look));
+            if (!_s.UseInitImage && !_s.UseControlNet) StatusText.Text = "Hinweis: weder Init Image noch ControlNet – die Pose aus Pose Studio wird nicht verwendet.";
+            string init = _s.UseInitImage ? ToDataUrl(_scene.RenderInit(w, h, _s.Look)) : "";
             string? cn = _s.UseControlNet ? ToDataUrl(_scene.RenderControl(w, h, _s.ControlRegions)) : null;
             p = _s.BuildParams(init, w, h, cn, LoraTriggers());
         }
         catch (Exception ex) { StatusText.Text = "Rendern fehlgeschlagen: " + ex.Message; return; }
-        await RunAsync(p, _s.Count, $"{w}×{h}, Creativity {F(_s.Creativity)}");
+        await RunAsync(p, _s.Count, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" : "ohne Init Image") + (_s.UseControlNet ? $", ControlNet {F(_s.ControlStrength)}" : ""));
     }
 
     private async void Refine_Click(object sender, RoutedEventArgs e)
