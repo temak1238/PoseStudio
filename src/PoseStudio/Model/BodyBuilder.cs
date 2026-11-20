@@ -121,8 +121,10 @@ internal sealed class BodyBuilder
                 double x = cx + s * side * a * t * (side * s > 0 ? 1.08 : 0.9);
                 double y = cy - 0.012 * (0.6 + 0.4 * b) + up * ry * t;
                 // Höhenprofil: oben weich und flach auslaufend (Hermite-Kurve, Steigung 0 am Rand), unten runde Wölbung
-                double fUp = (1 - t) * (1 - t) * (1 + 2 * t), fLow = Math.Sqrt(Math.Max(0, 1 - Math.Pow(t, 2.4)));
-                double wUp = Math.Pow(Math.Max(0, up * 0.5 + 0.5), 1.6);
+                // beide Kurven in der Mitte gleich rund (cos-Form), nur zum Rand verschieden: oben flach auslaufend, unten steil zur Falte
+                double c = Math.Cos(Math.PI / 2 * Math.Min(1, t));
+                double fUp = Math.Pow(c, 1.25), fLow = Math.Pow(c, 0.55);
+                double wUp = Math.Pow(Math.Max(0, up * 0.5 + 0.5), 1.6) * Math.Min(1, t * 1.6); // in der Mitte kein Unterschied
 
                 double h = H * (fLow * (1 - wUp) + fUp * wUp);
                 var (sp, n) = TorsoSurface(torso, x, y, extra * 0.5);

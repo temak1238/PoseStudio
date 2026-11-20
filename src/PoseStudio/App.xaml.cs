@@ -1011,7 +1011,7 @@ public partial class App : Application
     {
         Directory.CreateDirectory(folder);
         const int W = 240;
-        var views = new[] { 0.0, 35.0, 80.0 };
+        var views = new[] { 0.0, 35.0, 90.0 };
         var rows = new (double bust, bool shirt, bool toon, FigureStyle style)[]
         {
             (100, false, false, FigureStyle.AnimeFemale), (60, false, true, FigureStyle.AnimeFemale), (100, false, true, FigureStyle.AnimeFemale),
