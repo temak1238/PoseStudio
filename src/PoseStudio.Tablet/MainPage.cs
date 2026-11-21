@@ -44,6 +44,9 @@ public sealed class MainPage : ContentPage
     private readonly Switch _useCn = new();
     private readonly Picker _cnKind = new() { ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" } };
     private readonly Picker _cnModel = new() { Title = "ControlNet-Modell" };
+    private readonly Label _cnHint = new() { TextColor = Ui.Muted, FontSize = 12, Text = "SwarmUI macht aus dem Bild zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich beim Generieren an dessen Aufbau – Farben und Stil kommen aus dem Prompt. Für Posen ist eine Pose-Studio-Vorlage (3D-Pose) deutlich genauer." };
+    private int _cnShownFor = -1;
+    private List<string> _cnIds = new();
     private readonly Entry _cnStrength = Num(), _cnStart = Num(), _cnEnd = Num();
     private readonly Picker _format = new() { ItemsSource = TabletSettings.Formats.Select(a => a.Name).ToList() };
     private readonly Picker _orient = new() { ItemsSource = new[] { "Hochformat", "Querformat" } };
@@ -133,7 +136,13 @@ public sealed class MainPage : ContentPage
 
         _creativity.ValueChanged += (_, e) => _creativityText.Text = Ui.F(Math.Round(e.NewValue, 2));
         _count.ValueChanged += (_, e) => _countText.Text = ((int)e.NewValue).ToString();
-        _source.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Source = _source.SelectedIndex; UpdateSourceUi(); } };
+        _source.SelectedIndexChanged += (_, _) => { if (!_suppress) { StoreCn(); _t.Source = _source.SelectedIndex; UpdateSourceUi(); } };
+        _cnKind.SelectedIndexChanged += (_, _) =>
+        {
+            if (_suppress || _cnShownFor != 2) return;
+            S.ImageControlKind = Math.Max(0, _cnKind.SelectedIndex);
+            if (SwarmSettings.SuggestImageControlModel(S.ImageControlKind, _cnIds) is { } m) { _suppress = true; SetItems(_cnModel, _cnIds, m, "(keins)"); _suppress = false; }
+        };
         _format.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Format = Math.Max(0, _format.SelectedIndex); _orient.IsEnabled = _t.Format != 0; UpdateSizeText(); } };
         _orient.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Portrait = _orient.SelectedIndex != 1; UpdateSizeText(); } };
         _side.SelectedIndexChanged += (_, _) => { if (!_suppress) UpdateSizeText(); };
@@ -149,6 +158,7 @@ public sealed class MainPage : ContentPage
         var crea = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) } }; crea.Add(_creativity, 0); crea.Add(_creativityText, 1);
         _initBox.Children.Add(Row("Creativity", crea));
         _cnBox.Children.Add(Row("ControlNet", _useCn));
+        _cnBox.Children.Add(_cnHint);
         _cnBox.Children.Add(Row("Art", _cnKind));
         _cnBox.Children.Add(Row("Modell", _cnModel));
         _cnBox.Children.Add(Row("Stärke / Start / Ende", Cols(_cnStrength, _cnStart, _cnEnd)));
@@ -270,9 +280,7 @@ public sealed class MainPage : ContentPage
         _look.SelectedIndex = Math.Clamp(S.Look < 0 ? 1 : S.Look, 0, TabletTemplate.LookNames.Length - 1);
         _useInit.IsToggled = S.UseInitImage;
         _creativity.Value = S.Creativity; _creativityText.Text = Ui.F(Math.Round(S.Creativity, 2));
-        _useCn.IsToggled = S.UseControlNet;
-        _cnKind.SelectedIndex = S.ControlRegions ? 1 : 0;
-        SetItems(_cnModel, _cnModel.ItemsSource?.Cast<string>().Skip(1), S.ControlModel, "(keins)");
+        _cnShownFor = -1;   // ControlNet-Felder füllt UpdateSourceUi je nach Quelle
         _cnStrength.Text = Ui.F(S.ControlStrength); _cnStart.Text = Ui.F(S.ControlStart); _cnEnd.Text = Ui.F(S.ControlEnd);
         _format.SelectedIndex = Math.Clamp(_t.Format, 0, TabletSettings.Formats.Length - 1);
         _orient.SelectedIndex = _t.Portrait ? 0 : 1;
@@ -307,9 +315,7 @@ public sealed class MainPage : ContentPage
         S.Look = Math.Max(0, _look.SelectedIndex);
         S.UseInitImage = _useInit.IsToggled;
         S.Creativity = Math.Round(_creativity.Value, 2);
-        S.UseControlNet = _useCn.IsToggled;
-        S.ControlRegions = _cnKind.SelectedIndex == 1;
-        S.ControlModel = GetItem(_cnModel);
+        StoreCn();
         S.ControlStrength = Ui.PD(_cnStrength.Text, 1); S.ControlStart = Ui.PD(_cnStart.Text, 0); S.ControlEnd = Ui.PD(_cnEnd.Text, 1);
         _t.Format = Math.Max(0, _format.SelectedIndex);
         _t.Portrait = _orient.SelectedIndex != 1;
@@ -331,13 +337,53 @@ public sealed class MainPage : ContentPage
 
     protected override void OnDisappearing() { base.OnDisappearing(); SaveState(); }
 
+    /// <summary>ControlNet-Felder für die Quelle füllen: Vorlage = 3D-Pose/Regionen (Renderbilder), eigenes Bild = Arten mit Preprocessor.</summary>
+    private void ShowCn(int src)
+    {
+        if (src == _cnShownFor) return;
+        _cnShownFor = src;
+        if (src != 1 && src != 2) return;
+        bool old = _suppress; _suppress = true;
+        _cnHint.IsVisible = src == 2;
+        if (src == 1)
+        {
+            _cnKind.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" };
+            _cnKind.SelectedIndex = S.ControlRegions ? 1 : 0;
+            _useCn.IsToggled = S.UseControlNet;
+            SetItems(_cnModel, _cnIds, S.ControlModel, "(keins)");
+        }
+        else
+        {
+            _cnKind.ItemsSource = SwarmSettings.ImageControlKinds.Select(k => k.Name).ToList();
+            _cnKind.SelectedIndex = Math.Clamp(S.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1);
+            _useCn.IsToggled = S.ImageUseControlNet;
+            if (S.ImageControlModel == "" && SwarmSettings.SuggestImageControlModel(S.ImageControlKind, _cnIds) is { } m) S.ImageControlModel = m;
+            SetItems(_cnModel, _cnIds, S.ImageControlModel, "(keins)");
+        }
+        _suppress = old;
+    }
+
+    /// <summary>ControlNet-Felder in die Einstellungen der gerade angezeigten Quelle zurückschreiben.</summary>
+    private void StoreCn()
+    {
+        if (_cnShownFor == 1)
+        {
+            S.UseControlNet = _useCn.IsToggled; S.ControlRegions = _cnKind.SelectedIndex == 1; S.ControlModel = GetItem(_cnModel);
+        }
+        else if (_cnShownFor == 2)
+        {
+            S.ImageUseControlNet = _useCn.IsToggled; S.ImageControlKind = Math.Max(0, _cnKind.SelectedIndex); S.ImageControlModel = GetItem(_cnModel);
+        }
+    }
+
     private void UpdateSourceUi()
     {
         int src = Math.Max(0, _source.SelectedIndex);
         _templateBox.IsVisible = src == 1;
         _imageBox.IsVisible = src == 2;
         _initBox.IsVisible = src != 0;
-        _cnBox.IsVisible = src == 1;
+        _cnBox.IsVisible = src == 1 || src == 2;
+        ShowCn(src);
         _aspectBox.IsVisible = src == 0;
         if (src == 1) ShowTemplate();
         if (src == 2) _ownImg.Source = _t.ImagePath != null && File.Exists(_t.ImagePath) ? ImageSource.FromFile(_t.ImagePath) : null;
@@ -429,9 +475,10 @@ public sealed class MainPage : ContentPage
             SetItems(_refUpMethod, values.GetValueOrDefault("refinerupscalemethod"), S.RefinerUpscaleMethod);
             SetItems(_refMethod, values.GetValueOrDefault("refinermethod"), S.RefinerMethod);
             SetItems(_vae, vaes.Select(v => v.Id), S.Vae);
-            SetItems(_cnModel, cns.Select(v => v.Id), S.ControlModel, "(keins)");
-            if (S.ControlModel == "" && cns.FirstOrDefault(c => c.Id.Contains("3dpose", StringComparison.OrdinalIgnoreCase)) is { } pose)
-                SetItems(_cnModel, cns.Select(v => v.Id), pose.Id, "(keins)");
+            _cnIds = cns.Select(v => v.Id).ToList();
+            if (S.ControlModel == "" && _cnIds.FirstOrDefault(c => c.Contains("3dpose", StringComparison.OrdinalIgnoreCase)) is { } pose) S.ControlModel = pose;
+            _cnShownFor = -1;
+            ShowCn(Math.Max(0, _source.SelectedIndex));
             ShowModel();
             ShowLoras();
         }
@@ -652,8 +699,17 @@ public sealed class MainPage : ContentPage
             else if (src == 2)
             {
                 if (_t.ImagePath == null || !File.Exists(_t.ImagePath)) throw new InvalidOperationException("Kein eigenes Bild gewählt.");
-                if (s.UseInitImage) init = Ui.DataUrl(await File.ReadAllBytesAsync(_t.ImagePath));
-                s.UseControlNet = false;
+                byte[] own = await File.ReadAllBytesAsync(_t.ImagePath);
+                if (s.UseInitImage) init = Ui.DataUrl(own);
+                s.UseControlNet = s.ImageUseControlNet && s.ImageControlModel != "";
+                if (s.UseControlNet)
+                {
+                    var kind = SwarmSettings.ImageControlKinds[Math.Clamp(s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)];
+                    cn = Ui.DataUrl(own);
+                    s.ControlModel = s.ImageControlModel;
+                    s.ControlPreprocessor = kind.Preprocessor;
+                }
+                else if (s.ImageUseControlNet) _status.Text = "Hinweis: kein ControlNet-Modell gewählt – ControlNet bleibt aus.";
                 what = $"eigenes Bild, {w}×{h}";
             }
             else
@@ -662,7 +718,7 @@ public sealed class MainPage : ContentPage
                 what = $"{w}×{h}";
             }
             if (s.UseInitImage) what += $", Creativity {Ui.F(s.Creativity)}";
-            if (s.UseControlNet) what += $", ControlNet {Ui.F(s.ControlStrength)}";
+            if (s.UseControlNet) what += s.ControlPreprocessor != null ? $", {SwarmSettings.ImageControlKinds[Math.Clamp(s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Name.Split(' ')[0]} {Ui.F(s.ControlStrength)}" : $", ControlNet {Ui.F(s.ControlStrength)}";
             var p = s.BuildParams(init, w, h, cn, LoraTriggers());
             await RunAsync(p, s.Count, what);
         }

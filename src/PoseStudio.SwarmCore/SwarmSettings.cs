@@ -42,6 +42,30 @@ public sealed class SwarmSettings
     public double ControlStrength { get; set; } = 1.0;
     public double ControlStart { get; set; }
     public double ControlEnd { get; set; } = 1.0;
+    // ControlNet mit eigenem Bild: SwarmUI erzeugt das Steuerbild per Preprocessor (Linien, Skizze, Tiefe, Pose)
+    public bool ImageUseControlNet { get; set; }
+    public int ImageControlKind { get; set; }
+    public string ImageControlModel { get; set; } = "";
+    /// <summary>Preprocessor für diesen Auftrag (nur zur Laufzeit gesetzt); null = keiner (Pose-Studio-Renderbilder).</summary>
+    [System.Text.Json.Serialization.JsonIgnore] public string? ControlPreprocessor { get; set; }
+
+    /// <summary>Arten für ControlNet mit eigenem Bild: Anzeige, SwarmUI-Preprocessor, Namensteile passender Modelle (Anima-LLLite).</summary>
+    public static readonly (string Name, string Preprocessor, string[] ModelHints)[] ImageControlKinds =
+    {
+        ("Linien (Lineart)", "AnimeLineArtPreprocessor", new[] { "any-test", "lineart" }),
+        ("Skizze (Scribble)", "Scribble_PiDiNet_Preprocessor", new[] { "any-test", "scribble" }),
+        ("Tiefe (Depth)", "DepthAnythingV2Preprocessor", new[] { "depth" }),
+        ("Pose (DWPose, schwach)", "DWPreprocessor", new[] { "lllite-pose", "dwpose", "openpose" }),
+    };
+
+    /// <summary>Passendes Modell zur Art aus der Liste der ControlNets (erstes nach Reihenfolge der Hinweise).</summary>
+    public static string? SuggestImageControlModel(int kind, IEnumerable<string> models)
+    {
+        var list = models.ToList();
+        foreach (var hint in ImageControlKinds[Math.Clamp(kind, 0, ImageControlKinds.Length - 1)].ModelHints)
+            if (list.FirstOrDefault(m => m.Contains(hint, StringComparison.OrdinalIgnoreCase)) is { } m) return m;
+        return null;
+    }
     // Nachbessern (Refiner)
     public double RefinerControl { get; set; } = 0.1;
     public double RefinerUpscale { get; set; } = 2.0;
@@ -77,7 +101,7 @@ public sealed class SwarmSettings
     {
         "initimage", "initimagecreativity", "initimage_filename", "initimage_resolution", "initimageresettonorm", "initimagenoise",
         "controlnetimageinput", "controlnetimageinput_filename", "controlnetimageinput_resolution", "controlnetmodel", "controlnetstrength",
-        "controlnetstart", "controlnetend", "seed", "wildcardseed", "images", "width", "height", "aspectratio", "sidelength", "swarm_version",
+        "controlnetstart", "controlnetend", "controlnetpreprocessor", "seed", "wildcardseed", "images", "width", "height", "aspectratio", "sidelength", "swarm_version",
         "prompt", "negativeprompt", "model", "loras", "loraweights", "steps", "cfgscale", "sampler", "scheduler", "vae", "variationseed",
         "variationseedstrength", "date", "generation_time", "prep_time", "original_prompt", "used_wildcards", "unused_parameters",
     };
@@ -177,8 +201,9 @@ public sealed class SwarmSettings
             p["controlnetstrength"] = ControlStrength;
             p["controlnetstart"] = ControlStart;
             p["controlnetend"] = ControlEnd;
-            // Bild nicht vorverarbeiten: sonst macht SwarmUI daraus automatisch ein OpenPose-Skelett und anima_3dpose sieht die Pose nicht
-            p["controlnetpreprocessor"] = "None";
+            // Renderbilder aus Pose Studio nicht vorverarbeiten: sonst macht SwarmUI daraus automatisch ein OpenPose-Skelett und anima_3dpose sieht die Pose nicht.
+            // Eigene Bilder: SwarmUI erzeugt das Steuerbild mit dem gewählten Preprocessor.
+            p["controlnetpreprocessor"] = string.IsNullOrWhiteSpace(ControlPreprocessor) ? "None" : ControlPreprocessor;
         }
         return p;
     }
