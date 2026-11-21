@@ -5,6 +5,11 @@
 	             android:usesCleartextTraffic="true" android:label="Pose Studio Swarm"></application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
+	<!-- Generierung im Hintergrund weiterlaufen lassen (Vordergrund-Dienst mit Benachrichtigung, CPU/WLAN wach halten) -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<!-- Nur für Android 9 und älter: Bild in die Galerie speichern -->
 	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>

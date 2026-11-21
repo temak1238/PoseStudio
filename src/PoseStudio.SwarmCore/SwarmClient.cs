@@ -29,6 +29,14 @@ public sealed record SwarmProgress(double Overall, double Current, string? Previ
 /// <summary>Fertiges Bild einer Generierung: Pfad auf dem Server und Metadaten (JSON).</summary>
 public sealed record SwarmResult(string Path, string? Metadata);
 
+/// <summary>Verbindung zu SwarmUI während einer Generierung verloren. <see cref="Started"/>: der Auftrag war schon beim Server
+/// (die Bilder entstehen dort evtl. trotzdem und lassen sich aus der Historie nachholen); sonst kam er nie an.</summary>
+public sealed class SwarmConnectionException(bool started, Exception inner)
+    : Exception((started ? "Verbindung zu SwarmUI unterbrochen: " : "SwarmUI nicht erreichbar: ") + inner.Message, inner)
+{
+    public bool Started { get; } = started;
+}
+
 /// <summary>Schlanker Client für die HTTP/WebSocket-API von SwarmUI (POST /API/&lt;Route&gt; mit JSON, session_id im Body).</summary>
 public sealed class SwarmClient : IDisposable
 {
@@ -172,8 +180,12 @@ public sealed class SwarmClient : IDisposable
         body["session_id"] = await SessionAsync(ct);
         var wsUrl = new Uri((BaseUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws") + BaseUrl[BaseUrl.IndexOf(':')..] + "/API/GenerateText2ImageWS");
         using var ws = new ClientWebSocket();
-        await ws.ConnectAsync(wsUrl, ct);
-        await ws.SendAsync(Encoding.UTF8.GetBytes(body.ToJsonString()), WebSocketMessageType.Text, true, ct);
+        try
+        {
+            await ws.ConnectAsync(wsUrl, ct);
+            await ws.SendAsync(Encoding.UTF8.GetBytes(body.ToJsonString()), WebSocketMessageType.Text, true, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { throw new SwarmConnectionException(false, ex); }
         var results = new List<SwarmResult>();
         var buffer = new byte[1 << 16];
         using var msg = new MemoryStream();
@@ -183,7 +195,8 @@ public sealed class SwarmClient : IDisposable
             WebSocketReceiveResult rr;
             do
             {
-                rr = await ws.ReceiveAsync(buffer, ct);
+                try { rr = await ws.ReceiveAsync(buffer, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { throw new SwarmConnectionException(true, ex); }
                 if (rr.MessageType == WebSocketMessageType.Close) break;
                 msg.Write(buffer, 0, rr.Count);
             } while (!rr.EndOfMessage);

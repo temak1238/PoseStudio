@@ -87,7 +87,7 @@ public sealed class MainPage : ContentPage
         RefreshProfiles();
         LoadResults();
         ShowResultFolder();
-        Loaded += async (_, _) => { await ConnectAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); };
+        Loaded += async (_, _) => { await ConnectAsync(); await RestoreQueueAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); };
     }
 
     // ------------------------------------------------------------------ Aufbau
@@ -201,7 +201,7 @@ public sealed class MainPage : ContentPage
 
     private Grid BuildResults()
     {
-        _generate.Clicked += async (_, _) => await GenerateAsync();
+        _generate.Clicked += async (_, _) => { if (_paused && _queue.Count > 0 && _running == null) StartPump(); else await GenerateAsync(); };
         // Abbrechen: nur den laufenden Auftrag; die Warteschlange läuft danach weiter
         _cancel.Clicked += async (_, _) => { if (_running == null) return; _cts?.Cancel(); if (_client != null) try { await _client.InterruptAsync(); } catch { } };
         _clearQueue.Clicked += (_, _) => ClearQueue();
@@ -785,32 +785,55 @@ public sealed class MainPage : ContentPage
 
     /// <summary>Ein Auftrag: Parameter (Seed schon gewürfelt), Platzhalter-Kacheln in der Ergebnisliste.</summary>
     private sealed record Job(JsonObject P, int Count, string What, long BaseSeed, List<ResultItem> Pending);
-    private readonly Queue<Job> _queue = new();
+    /// <summary>Auftrag, dessen Verbindung abriss, nachdem er schon bei SwarmUI war. SwarmUI bricht ihn dann ab – was vorher schon
+    /// fertig war, steht aber in der Historie und wird nachgeholt (erkannt an Seed und Prompt); der Rest wird neu eingereiht.</summary>
+    private sealed record LostJob(JsonObject P, int Count, string What, long BaseSeed, DateTime Since, List<ResultItem> Pending, HashSet<long> Found, bool Requeue);
+    private readonly List<Job> _queue = new();
+    private readonly List<LostJob> _lost = new();
     private Job? _running;
+    private bool _paused, _recovering, _askedNotify, _restored;
+    private static string QueueFile => Path.Combine(FileSystem.AppDataDirectory, "queue.json");
 
     /// <summary>Auftrag einreihen – „Generieren“ bleibt bedienbar, die Aufträge laufen nacheinander.</summary>
     private Task RunAsync(JsonObject p, int count, string what)
     {
-        // Zufallsseed selbst würfeln: so ist der Seed jedes Bildes bekannt (Nachbessern braucht ihn)
+        // Zufallsseed selbst würfeln: so ist der Seed jedes Bildes bekannt (Nachbessern und Nachholen brauchen ihn)
         if ((p["seed"]?.GetValue<long>() ?? -1) < 0) p["seed"] = (long)Random.Shared.Next(1, int.MaxValue);
-        var pending = new List<ResultItem>();
-        for (int i = 0; i < count; i++) { var it = new ResultItem { Caption = "In der Warteschlange: " + what }; pending.Add(it); _results.Insert(i, it); }
+        _queue.Add(new Job(p, count, what, p["seed"]!.GetValue<long>(), AddPlaceholders(count, "In der Warteschlange: " + what)));
         _resultList.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
-        _queue.Enqueue(new Job(p, count, what, p["seed"]!.GetValue<long>(), pending));
-        if (_running == null) _ = PumpAsync();
-        else _status.Text = $"Eingereiht: {what}";
-        UpdateQueueUi();
+        if (_running != null) _status.Text = $"Eingereiht: {what}";
+        _ = AskNotificationsAsync();
+        StartPump();
         return Task.CompletedTask;
+    }
+
+    private List<ResultItem> AddPlaceholders(int count, string caption, int at = 0)
+    {
+        var list = new List<ResultItem>();
+        for (int i = 0; i < count; i++) { var it = new ResultItem { Caption = caption }; list.Add(it); _results.Insert(Math.Min(at + i, _results.Count), it); }
+        return list;
+    }
+
+    /// <summary>Warteschlange (wieder) anlaufen lassen – auch nach einer Pause wegen fehlender Verbindung.</summary>
+    private void StartPump()
+    {
+        _paused = false;
+        SaveQueue();
+        if (_running == null && _queue.Count > 0) _ = PumpAsync();
+        UpdateQueueUi();
     }
 
     private async Task PumpAsync()
     {
-        while (_queue.TryDequeue(out var job))
+        while (!_paused && _queue.Count > 0)
         {
+            var job = _queue[0];
+            _queue.RemoveAt(0);
             _running = job;
+            SaveQueue();
             UpdateQueueUi();
             try { await ExecuteAsync(job); }
-            finally { _running = null; }
+            finally { _running = null; SaveQueue(); }
         }
         UpdateQueueUi();
     }
@@ -821,23 +844,56 @@ public sealed class MainPage : ContentPage
         _cancel.IsEnabled = _running != null;
         _clearQueue.IsVisible = waiting > 0;
         _clearQueue.Text = $"Warteschlange leeren ({waiting})";
-        _generate.Text = _running == null ? "Generieren" : waiting > 0 ? $"Einreihen ({waiting} warten)" : "Einreihen";
+        _generate.Text = _running == null ? (_paused && waiting > 0 ? $"Fortsetzen ({waiting})" : "Generieren") : waiting > 0 ? $"Einreihen ({waiting} warten)" : "Einreihen";
+        UpdateKeepAlive();
+    }
+
+    /// <summary>Solange etwas läuft, wartet oder nachgeholt wird: Vordergrund-Dienst, damit Android die App im Hintergrund nicht einfriert.</summary>
+    private void UpdateKeepAlive()
+    {
+        int lost = _lost.Sum(l => l.Pending.Count(x => !x.Done));
+        if (_running != null) GenerationService.Show($"Generiere: {_running.What}" + (_queue.Count > 0 ? $" · {_queue.Count} warten" : ""));
+        else if (_queue.Count > 0 && !_paused) GenerationService.Show($"{_queue.Count} Auftrag/Aufträge in der Warteschlange");
+        else if (lost > 0) GenerationService.Show($"Hole {lost} Bild(er) vom Server nach");
+        else GenerationService.Stop();
+    }
+
+    /// <summary>Android 13+: einmal um Erlaubnis für die Fortschritts-Benachrichtigung bitten (ohne läuft der Dienst trotzdem).</summary>
+    private async Task AskNotificationsAsync()
+    {
+        if (_askedNotify || !OperatingSystem.IsAndroidVersionAtLeast(33)) return;
+        _askedNotify = true;
+        try
+        {
+            if (await Permissions.CheckStatusAsync<Permissions.PostNotifications>() != PermissionStatus.Granted)
+                await Permissions.RequestAsync<Permissions.PostNotifications>();
+        }
+        catch { }
     }
 
     private void ClearQueue()
     {
-        while (_queue.TryDequeue(out var job))
-            foreach (var it in job.Pending) _results.Remove(it);
+        foreach (var job in _queue) foreach (var it in job.Pending) _results.Remove(it);
+        _queue.Clear();
+        _paused = false;
+        SaveQueue();
         _status.Text = "Warteschlange geleert." + (_running != null ? " Der laufende Auftrag läuft weiter." : "");
         UpdateQueueUi();
+    }
+
+    /// <summary>App kommt zurück in den Vordergrund: angehaltene Warteschlange fortsetzen, verlorene Bilder nachholen.</summary>
+    public void OnAppResumed()
+    {
+        if (_paused && _queue.Count > 0 && _running == null) StartPump();
+        _ = RecoverLostAsync();
     }
 
     private async Task ExecuteAsync(Job job)
     {
         var (p, _, what, baseSeed, pending) = job;
         var client = _client;
-        if (client == null) { foreach (var it in pending) _results.Remove(it); _status.Text = "Keine Verbindung zu SwarmUI."; return; }
-        _cts = new CancellationTokenSource();
+        if (client == null) { RequeueAndPause(job, "Keine Verbindung zu SwarmUI"); return; }
+        var cts = _cts = new CancellationTokenSource();
         foreach (var it in pending) it.Caption = "Warte auf SwarmUI …";
         _progress.Progress = 0;
         string Queued() => _queue.Count > 0 ? $" · {_queue.Count} in der Warteschlange" : "";
@@ -854,8 +910,7 @@ public sealed class MainPage : ContentPage
         });
         try
         {
-            var res = await client.GenerateAsync(p, progress, _cts.Token);
-            string folder = AndroidStore.ResultsFolder;
+            var res = await client.GenerateAsync(p, progress, cts.Token);
             for (int i = 0; i < res.Count; i++)
             {
                 ResultItem item;
@@ -868,26 +923,38 @@ public sealed class MainPage : ContentPage
                     pending.Add(item);
                 }
                 var bytes = await client.DownloadAsync(res[i].Path);
-                item.LocalPath = Path.Combine(folder, $"swarm_{DateTime.Now:yyyyMMdd_HHmmss}_{i}{ResultStore.ExtensionOf(res[i].Path)}");
-                await File.WriteAllBytesAsync(item.LocalPath, bytes);
-                item.Image = ImageSource.FromFile(item.LocalPath);
                 long? known = ResultStore.SeedFrom(res[i].Metadata);
                 if (known is null or < 0) known = await client.LookupSeedAsync(res[i].Path);
-                item.Seed = known is >= 0 ? known.Value : baseSeed + i;
-                item.Sent = p;
-                item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
-                item.ServerPath = res[i].Path;
-                item.Done = true;
-                ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent, item.ServerPath);
+                long seed = known is >= 0 ? known.Value : baseSeed + i;
+                await FillResultAsync(item, bytes, res[i].Path, seed, p, what.Contains("Seed") ? what : $"{what} · Seed {seed}", i);
             }
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
             SaveIndex();
             _status.Text = $"Fertig: {res.Count} Bild(er) in {sw.Elapsed.TotalSeconds:F0} s – auch in der SwarmUI-Historie." + Queued();
         }
-        catch (OperationCanceledException)
+        catch (Exception) when (cts.IsCancellationRequested)
         {
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
             _status.Text = "Abgebrochen." + Queued();
+        }
+        catch (SwarmConnectionException ex) when (!ex.Started)
+        {
+            // Auftrag kam nie bei SwarmUI an: zurück an den Anfang der Warteschlange, anhalten bis die Verbindung wieder da ist
+            RequeueAndPause(job, ex.Message);
+        }
+        catch (Exception ex) when (ex is SwarmConnectionException or HttpRequestException or IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException)
+        {
+            // Verbindung weg, während SwarmUI schon arbeitete (z. B. App im Hintergrund eingefroren): Bilder später aus der Historie holen
+            var left = pending.Where(x => !x.Done).ToList();
+            if (left.Count > 0)
+            {
+                foreach (var it in left) { it.Caption = "Verbindung unterbrochen – hole Bild vom Server …"; it.Image = null; }
+                _lost.Add(new LostJob(p, job.Count, what, baseSeed, DateTime.UtcNow, left, pending.Where(x => x.Done).Select(x => x.Seed).ToHashSet(), true));
+            }
+            if (pending.Any(x => x.Done)) SaveIndex();
+            _status.Text = "Verbindung unterbrochen – fertige Bilder werden aus der SwarmUI-Historie geholt, der Rest neu eingereiht." + Queued();
+            SaveQueue();
+            _ = RecoverLostAsync();
         }
         catch (Exception ex)
         {
@@ -898,6 +965,173 @@ public sealed class MainPage : ContentPage
         {
             _progress.Progress = 0;
         }
+    }
+
+    private void RequeueAndPause(Job job, string why)
+    {
+        foreach (var it in job.Pending) { it.Caption = "Angehalten: " + job.What; it.Image = null; }
+        _queue.Insert(0, job);
+        _paused = true;
+        SaveQueue();
+        _status.Text = $"{why} – Warteschlange angehalten. „Fortsetzen“ tippen, sobald SwarmUI erreichbar ist.";
+    }
+
+    /// <summary>Fertiges Bild in eine Platzhalter-Kachel übernehmen und lokal (samt Seed/Parametern) speichern.</summary>
+    private async Task FillResultAsync(ResultItem item, byte[] bytes, string serverPath, long seed, JsonObject sent, string caption, int index)
+    {
+        item.LocalPath = Path.Combine(AndroidStore.ResultsFolder, $"swarm_{DateTime.Now:yyyyMMdd_HHmmss}_{index}{ResultStore.ExtensionOf(serverPath)}");
+        await File.WriteAllBytesAsync(item.LocalPath, bytes);
+        item.Image = ImageSource.FromFile(item.LocalPath);
+        item.Seed = seed;
+        item.Sent = sent;
+        item.Caption = caption;
+        item.ServerPath = serverPath;
+        item.Done = true;
+        ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent, item.ServerPath);
+    }
+
+    // ------------------------------------------------------------------ Nachholen
+
+    /// <summary>Verlorene Aufträge in der SwarmUI-Historie suchen (alle 10 s); was nach 30 s noch fehlt, neu einreihen.</summary>
+    private async Task RecoverLostAsync()
+    {
+        if (_recovering || _lost.Count == 0) return;
+        _recovering = true;
+        try
+        {
+            while (_lost.Count > 0)
+            {
+                if (_client == null) try { await ConnectAsync(); } catch { }
+                if (_client is { } client)
+                {
+                    List<SwarmHistoryImage>? hist = null;
+                    try { hist = await client.ListHistoryAsync(150); } catch { }
+                    if (hist != null)
+                        foreach (var lj in _lost.ToList())
+                            try { await TryRecoverAsync(client, lj, hist); } catch { }
+                }
+                bool requeued = false;
+                foreach (var lj in _lost.Where(l => DateTime.UtcNow - l.Since > TimeSpan.FromSeconds(30)).ToList())
+                {
+                    var open = lj.Pending.Where(x => !x.Done).ToList();
+                    _lost.Remove(lj);
+                    var missing = Enumerable.Range(0, lj.Count).Select(i => lj.BaseSeed + i).Where(sd => !lj.Found.Contains(sd)).ToList();
+                    if (lj.Requeue && open.Count > 0 && missing.Count > 0)
+                    {
+                        // Platzhalter behalten und als neuen Auftrag (nur die fehlenden Bilder, gleiche Seeds) vorne einreihen
+                        var p = lj.P.DeepClone().AsObject();
+                        int n = Math.Min(open.Count, missing.Count);
+                        p["images"] = n; p["seed"] = missing[0];
+                        foreach (var it in open.Skip(n)) _results.Remove(it);
+                        foreach (var it in open.Take(n)) it.Caption = "In der Warteschlange (neu): " + lj.What;
+                        _queue.Insert(0, new Job(p, n, lj.What, missing[0], open.Take(n).ToList()));
+                        requeued = true;
+                        _status.Text = $"{n} Bild(er) von „{lj.What}“ gingen beim Verbindungsabbruch verloren – neu eingereiht.";
+                    }
+                    else
+                    {
+                        foreach (var it in open) _results.Remove(it);
+                        if (open.Count > 0) _status.Text = $"{open.Count} Bild(er) von „{lj.What}“ gingen beim Verbindungsabbruch verloren.";
+                    }
+                }
+                if (requeued) StartPump();
+                SaveQueue();
+                UpdateQueueUi();
+                if (_lost.Count == 0) break;
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        }
+        finally { _recovering = false; }
+    }
+
+    private async Task TryRecoverAsync(SwarmClient client, LostJob lj, List<SwarmHistoryImage> hist)
+    {
+        string want = Norm(lj.P["prompt"]?.ToString());
+        var have = _results.Where(r => r.ServerPath != null).Select(r => client.RelativePath(r.ServerPath!)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int found = 0;
+        foreach (var h in hist)
+        {
+            if (lj.Pending.All(x => x.Done)) break;
+            if (h.Params is not { } prm || !long.TryParse(prm["seed"]?.ToString(), out long seed)) continue;
+            if (seed < lj.BaseSeed || seed >= lj.BaseSeed + lj.Count) continue;
+            if (Norm(prm["prompt"]?.ToString()) != want && Norm(h.OriginalPrompt) != want) continue;
+            if (!SameValue(lj.P, prm, "width") || !SameValue(lj.P, prm, "height")) continue;
+            if (lj.P.ContainsKey("refinercontrolpercentage") != prm.ContainsKey("refinercontrolpercentage")) continue;
+            if (!have.Add(client.RelativePath(h.Src))) continue;
+            var item = lj.Pending.First(x => !x.Done);
+            lj.Found.Add(seed);
+            var bytes = await client.DownloadAsync(h.Src);
+            await FillResultAsync(item, bytes, h.Src, seed, lj.P, lj.What.Contains("Seed") ? lj.What : $"{lj.What} · Seed {seed}", (int)(seed - lj.BaseSeed));
+            found++;
+        }
+        if (found > 0)
+        {
+            SaveIndex();
+            _status.Text = $"{found} Bild(er) von „{lj.What}“ aus der SwarmUI-Historie nachgeholt.";
+        }
+        if (lj.Pending.All(x => x.Done)) _lost.Remove(lj);
+
+        static string Norm(string? s) => string.Join(' ', (s ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        static bool SameValue(JsonObject a, JsonObject b, string key) =>
+            a[key] is not JsonNode x || b[key] is not JsonNode y || x.ToString() == y.ToString();
+    }
+
+    // ------------------------------------------------------------------ Warteschlange speichern
+
+    /// <summary>Warteschlange und verlorene Aufträge sichern – falls Android die App im Hintergrund beendet.
+    /// Der laufende Auftrag wird als „verloren“ vermerkt (beim nächsten Start aus der Historie nachholen).</summary>
+    private void SaveQueue()
+    {
+        try
+        {
+            static JsonObject J(JsonObject p, int count, string what, long seed) =>
+                new() { ["p"] = p.DeepClone(), ["count"] = count, ["what"] = what, ["seed"] = seed };
+            var lost = new JsonArray();
+            foreach (var l in _lost) { var o = J(l.P, l.Count, l.What, l.BaseSeed); o["open"] = l.Pending.Count(x => !x.Done); o["since"] = l.Since; lost.Add(o); }
+            if (_running is { } r) { var o = J(r.P, r.Count, r.What, r.BaseSeed); o["open"] = r.Pending.Count(x => !x.Done); o["since"] = DateTime.UtcNow; lost.Add(o); }
+            var waiting = new JsonArray();
+            foreach (var j in _queue) waiting.Add(J(j.P, j.Count, j.What, j.BaseSeed));
+            if (lost.Count == 0 && waiting.Count == 0) { if (File.Exists(QueueFile)) File.Delete(QueueFile); return; }
+            File.WriteAllText(QueueFile, new JsonObject { ["waiting"] = waiting, ["lost"] = lost }.ToJsonString());
+        }
+        catch { }
+    }
+
+    /// <summary>Beim Start: Aufträge wiederherstellen, die beim letzten Mal noch liefen oder warteten.</summary>
+    private async Task RestoreQueueAsync()
+    {
+        if (_restored) return;
+        _restored = true;
+        JsonObject? o = null;
+        try { if (File.Exists(QueueFile)) o = JsonNode.Parse(File.ReadAllText(QueueFile)) as JsonObject; } catch { }
+        if (o == null) return;
+        foreach (var l in o["lost"] as JsonArray ?? new JsonArray())
+        {
+            if (l?["p"] is not JsonObject p) continue;
+            int open = l["open"]?.GetValue<int>() ?? 0;
+            if (open <= 0) continue;
+            string what = l["what"]?.ToString() ?? "";
+            int count = l["count"]?.GetValue<int>() ?? open; long seed = l["seed"]?.GetValue<long>() ?? 0;
+            _lost.Add(new LostJob(p.DeepClone().AsObject(), count, what, seed, l["since"]?.GetValue<DateTime>() ?? DateTime.UtcNow,
+                AddPlaceholders(open, "Unterbrochen – hole Bild vom Server …"), Enumerable.Range(0, Math.Max(0, count - open)).Select(i => seed + i).ToHashSet(), false));
+        }
+        var waiting = (o["waiting"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Where(w => w["p"] is JsonObject).ToList();
+        bool resume = (waiting.Count > 0 || _lost.Count > 0) && await DisplayAlertAsync("Warteschlange",
+            $"Beim letzten Mal waren noch {waiting.Count + _lost.Count} Auftrag/Aufträge offen – Android hat die App vermutlich im Hintergrund beendet. "
+            + "Fertige Bilder holt die App aus der SwarmUI-Historie. Den Rest erneut generieren?", "Fortsetzen", "Verwerfen");
+        for (int i = 0; i < _lost.Count; i++) _lost[i] = _lost[i] with { Requeue = resume };
+        if (resume)
+        {
+            foreach (var w in waiting)
+            {
+                int count = w["count"]?.GetValue<int>() ?? 1;
+                string what = w["what"]?.ToString() ?? "";
+                _queue.Add(new Job(w["p"]!.DeepClone().AsObject(), count, what, w["seed"]?.GetValue<long>() ?? 0,
+                    AddPlaceholders(count, "In der Warteschlange: " + what, _results.Count(r => !r.Done))));
+            }
+        }
+        StartPump();
+        _ = RecoverLostAsync();
     }
 
     // ------------------------------------------------------------------ Ergebnisse

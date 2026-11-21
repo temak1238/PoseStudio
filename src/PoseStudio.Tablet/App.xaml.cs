@@ -21,4 +21,10 @@ public partial class App : Application
         base.OnSleep();
         _main?.SaveState();
     }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        _main?.OnAppResumed();
+    }
 }
