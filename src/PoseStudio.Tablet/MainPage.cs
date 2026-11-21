@@ -452,11 +452,11 @@ public sealed class MainPage : ContentPage
         try
         {
             _status.Text = "Lade Historie …";
-            var list = await _client.ListHistoryAsync(80);
+            var list = await _client.ListHistoryAsync(300);
             _status.Text = "";
             var tiles = list.Where(h => h.Params != null).Select(h => new Tile
             {
-                Label = h.Params?["model"]?.ToString() ?? "", Sub = h.OriginalPrompt ?? h.Params?["prompt"]?.ToString(), Image = Ui.Web(h.Url), Tag = h
+                Label = h.Params?["model"]?.ToString() ?? "", Sub = h.OriginalPrompt ?? h.Params?["prompt"]?.ToString(), Image = Ui.Web(h.PreviewUrl), Tag = h
             }).ToList();
             var page = new TilePickerPage("Einstellungen aus der SwarmUI-Historie übernehmen", tiles, tileWidth: 200, imageHeight: 260,
                 option: "Nur Prompts übernehmen", optionValue: _t.HistoryPromptsOnly);

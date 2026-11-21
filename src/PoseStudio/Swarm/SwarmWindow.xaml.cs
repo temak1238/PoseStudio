@@ -307,10 +307,10 @@ public partial class SwarmWindow : Window
         if (_client == null) return;
         try
         {
-            var list = await _client.ListHistoryAsync(60);
+            var list = await _client.ListHistoryAsync(300);
             HistoryList.ItemsSource = list.Where(h => h.Params != null).Select(h => new ThumbItem
             {
-                Key = h.Src, Label = h.Params?["model"]?.ToString() ?? "", Url = h.Url, Tag = h, DecodeWidth = 160,
+                Key = h.Src, Label = h.Params?["model"]?.ToString() ?? "", Url = h.PreviewUrl, Tag = h, DecodeWidth = 160,
                 ToolTip = (h.OriginalPrompt ?? h.Params?["prompt"]?.ToString() ?? "") + "\n\nLoRAs: " + string.Join(", ", h.Params?["loras"] as JsonArray ?? new JsonArray())
             }).ToList();
             _historyLoaded = true;

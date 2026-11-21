@@ -30,9 +30,22 @@ public static class ThumbCache
         catch { return LegacyFolder; }
     }
 
+    /// <summary>Bis 0.22.1 lagen hier ganze Historienbilder (mehrere MB); seitdem nur noch Vorschaubilder – große Einträge im Hintergrund löschen.</summary>
+    private static void PruneLarge()
+    {
+        string dir = Folder;
+        if (!Directory.Exists(dir)) return;
+        Task.Run(() =>
+        {
+            foreach (var f in Directory.EnumerateFiles(dir, "*.img"))
+                try { if (new FileInfo(f).Length > 1_000_000) File.Delete(f); } catch { }
+        });
+    }
+
     /// <summary>Alten Cache (%LOCALAPPDATA%\PoseStudio\SwarmCache, bis 0.21.4) in den Programmordner verschieben, im Hintergrund.</summary>
     public static void MigrateLegacy()
     {
+        PruneLarge();
         string old = LegacyFolder, dst = Folder;
         if (string.Equals(Path.GetFullPath(old), Path.GetFullPath(dst), StringComparison.OrdinalIgnoreCase) || !Directory.Exists(old)) return;
         Task.Run(() =>

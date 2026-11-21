@@ -17,7 +17,11 @@ public sealed record SwarmModel(string Name, string Title, string? PreviewUrl, s
 }
 
 /// <summary>Bild aus der SwarmUI-Historie mit seinen Generierungs-Parametern.</summary>
-public sealed record SwarmHistoryImage(string Src, string Url, JsonObject? Params, string? OriginalPrompt);
+public sealed record SwarmHistoryImage(string Src, string Url, JsonObject? Params, string? OriginalPrompt)
+{
+    /// <summary>Kleines Vorschaubild von SwarmUI (JPG, ca. 35 KB statt mehrerer MB) – für Kacheln.</summary>
+    public string PreviewUrl => Url.StartsWith("data:") ? Url : Url + (Url.Contains('?') ? "&" : "?") + "preview=true";
+}
 
 /// <summary>Fortschritt einer laufenden Generierung.</summary>
 public sealed record SwarmProgress(double Overall, double Current, string? PreviewDataUrl, string? Status);
