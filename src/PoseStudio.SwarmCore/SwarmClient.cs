@@ -274,6 +274,22 @@ public sealed class SwarmClient : IDisposable
         return null;
     }
 
+    /// <summary>Aktuelle Sitzungs-ID (für <see cref="SessionBusyAsync"/> nach einem Verbindungsabbruch).</summary>
+    public string? SessionId => _session;
+
+    /// <summary>Wie viele Generierungen einer Sitzung noch warten oder laufen. SwarmUI arbeitet Aufträge auch nach einem
+    /// Verbindungsabbruch zu Ende. 0, wenn die Sitzung nicht mehr existiert; Ausnahme, wenn der Server nicht erreichbar ist.</summary>
+    public async Task<int> SessionBusyAsync(string sessionId, CancellationToken ct = default)
+    {
+        // Ungültige Sitzung kommt als HTTP-Fehler mit error_id – daher Antwort unabhängig vom Statuscode lesen
+        using var content = new StringContent(new JsonObject { ["session_id"] = sessionId }.ToJsonString(), Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/API/GetCurrentStatus", content, ct);
+        var r = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct)) as JsonObject ?? new JsonObject();
+        if (r["error_id"]?.GetValue<string>() == "invalid_session_id") return 0;
+        if (r["status"] is not JsonObject st) throw new InvalidOperationException("SwarmUI: kein Status");
+        return (st["waiting_gens"]?.GetValue<int>() ?? 0) + (st["live_gens"]?.GetValue<int>() ?? 0);
+    }
+
     /// <summary>Laufende Generierungen dieser Sitzung abbrechen.</summary>
     public async Task InterruptAsync()
     {

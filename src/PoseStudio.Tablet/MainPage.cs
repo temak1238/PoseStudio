@@ -785,9 +785,10 @@ public sealed class MainPage : ContentPage
 
     /// <summary>Ein Auftrag: Parameter (Seed schon gewürfelt), Platzhalter-Kacheln in der Ergebnisliste.</summary>
     private sealed record Job(JsonObject P, int Count, string What, long BaseSeed, List<ResultItem> Pending);
-    /// <summary>Auftrag, dessen Verbindung abriss, nachdem er schon bei SwarmUI war. SwarmUI bricht ihn dann ab – was vorher schon
-    /// fertig war, steht aber in der Historie und wird nachgeholt (erkannt an Seed und Prompt); der Rest wird neu eingereiht.</summary>
-    private sealed record LostJob(JsonObject P, int Count, string What, long BaseSeed, DateTime Since, List<ResultItem> Pending, HashSet<long> Found, bool Requeue);
+    /// <summary>Auftrag, dessen Verbindung abriss, nachdem er schon bei SwarmUI war. SwarmUI arbeitet ihn trotzdem zu Ende (getestet) –
+    /// die Bilder werden aus der Historie nachgeholt (erkannt an Seed und Prompt). Erst wenn die Sitzung <see cref="Session"/> nichts
+    /// mehr rechnet und trotzdem Bilder fehlen, wird der Rest neu eingereiht.</summary>
+    private sealed record LostJob(JsonObject P, int Count, string What, long BaseSeed, DateTime Since, List<ResultItem> Pending, HashSet<long> Found, bool Requeue, string? Session);
     private readonly List<Job> _queue = new();
     private readonly List<LostJob> _lost = new();
     private Job? _running;
@@ -949,10 +950,10 @@ public sealed class MainPage : ContentPage
             if (left.Count > 0)
             {
                 foreach (var it in left) { it.Caption = "Verbindung unterbrochen – hole Bild vom Server …"; it.Image = null; }
-                _lost.Add(new LostJob(p, job.Count, what, baseSeed, DateTime.UtcNow, left, pending.Where(x => x.Done).Select(x => x.Seed).ToHashSet(), true));
+                _lost.Add(new LostJob(p, job.Count, what, baseSeed, DateTime.UtcNow, left, pending.Where(x => x.Done).Select(x => x.Seed).ToHashSet(), true, client.SessionId));
             }
             if (pending.Any(x => x.Done)) SaveIndex();
-            _status.Text = "Verbindung unterbrochen – fertige Bilder werden aus der SwarmUI-Historie geholt, der Rest neu eingereiht." + Queued();
+            _status.Text = "Verbindung unterbrochen – SwarmUI rechnet weiter, die Bilder werden aus der Historie geholt." + Queued();
             SaveQueue();
             _ = RecoverLostAsync();
         }
@@ -992,7 +993,8 @@ public sealed class MainPage : ContentPage
 
     // ------------------------------------------------------------------ Nachholen
 
-    /// <summary>Verlorene Aufträge in der SwarmUI-Historie suchen (alle 10 s); was nach 30 s noch fehlt, neu einreihen.</summary>
+    /// <summary>Verlorene Aufträge in der SwarmUI-Historie suchen (alle 10 s). Was noch fehlt, wenn SwarmUI für die Sitzung
+    /// nichts mehr rechnet, wird neu eingereiht – solange der Server nicht antwortet, wird nur gewartet.</summary>
     private async Task RecoverLostAsync()
     {
         if (_recovering || _lost.Count == 0) return;
@@ -1011,7 +1013,19 @@ public sealed class MainPage : ContentPage
                             try { await TryRecoverAsync(client, lj, hist); } catch { }
                 }
                 bool requeued = false;
-                foreach (var lj in _lost.Where(l => DateTime.UtcNow - l.Since > TimeSpan.FromSeconds(30)).ToList())
+                var finished = new List<LostJob>();
+                foreach (var lj in _lost.Where(l => DateTime.UtcNow - l.Since > TimeSpan.FromSeconds(20)).ToList())
+                {
+                    // SwarmUI noch beschäftigt (oder nicht erreichbar)? Dann weiter warten.
+                    if (_client is not { } c) continue;
+                    try { if (lj.Session != null && await c.SessionBusyAsync(lj.Session) > 0) continue; }
+                    catch { continue; }
+                    finished.Add(lj);
+                }
+                // Letzter Blick in die Historie, nachdem SwarmUI fertig ist
+                if (finished.Count > 0 && _client is { } c2)
+                    try { var h = await c2.ListHistoryAsync(150); foreach (var lj in finished) await TryRecoverAsync(c2, lj, h); } catch { finished.Clear(); }
+                foreach (var lj in finished.Where(_lost.Contains))
                 {
                     var open = lj.Pending.Where(x => !x.Done).ToList();
                     _lost.Remove(lj);
@@ -1087,8 +1101,8 @@ public sealed class MainPage : ContentPage
             static JsonObject J(JsonObject p, int count, string what, long seed) =>
                 new() { ["p"] = p.DeepClone(), ["count"] = count, ["what"] = what, ["seed"] = seed };
             var lost = new JsonArray();
-            foreach (var l in _lost) { var o = J(l.P, l.Count, l.What, l.BaseSeed); o["open"] = l.Pending.Count(x => !x.Done); o["since"] = l.Since; lost.Add(o); }
-            if (_running is { } r) { var o = J(r.P, r.Count, r.What, r.BaseSeed); o["open"] = r.Pending.Count(x => !x.Done); o["since"] = DateTime.UtcNow; lost.Add(o); }
+            foreach (var l in _lost) { var o = J(l.P, l.Count, l.What, l.BaseSeed); o["open"] = l.Pending.Count(x => !x.Done); o["since"] = l.Since; o["session"] = l.Session; lost.Add(o); }
+            if (_running is { } r) { var o = J(r.P, r.Count, r.What, r.BaseSeed); o["open"] = r.Pending.Count(x => !x.Done); o["since"] = DateTime.UtcNow; o["session"] = _client?.SessionId; lost.Add(o); }
             var waiting = new JsonArray();
             foreach (var j in _queue) waiting.Add(J(j.P, j.Count, j.What, j.BaseSeed));
             if (lost.Count == 0 && waiting.Count == 0) { if (File.Exists(QueueFile)) File.Delete(QueueFile); return; }
@@ -1113,7 +1127,7 @@ public sealed class MainPage : ContentPage
             string what = l["what"]?.ToString() ?? "";
             int count = l["count"]?.GetValue<int>() ?? open; long seed = l["seed"]?.GetValue<long>() ?? 0;
             _lost.Add(new LostJob(p.DeepClone().AsObject(), count, what, seed, l["since"]?.GetValue<DateTime>() ?? DateTime.UtcNow,
-                AddPlaceholders(open, "Unterbrochen – hole Bild vom Server …"), Enumerable.Range(0, Math.Max(0, count - open)).Select(i => seed + i).ToHashSet(), false));
+                AddPlaceholders(open, "Unterbrochen – hole Bild vom Server …"), Enumerable.Range(0, Math.Max(0, count - open)).Select(i => seed + i).ToHashSet(), false, l["session"]?.ToString()));
         }
         var waiting = (o["waiting"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Where(w => w["p"] is JsonObject).ToList();
         bool resume = (waiting.Count > 0 || _lost.Count > 0) && await DisplayAlertAsync("Warteschlange",
