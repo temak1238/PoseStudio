@@ -82,6 +82,13 @@ public sealed class SwarmSettings
 
     /// <summary>Einstellungen eines SwarmUI-Bildes übernehmen: sichtbare Felder setzen, den Rest als Grundlage merken.
     /// Refiner-Werte werden zur Vorgabe für „Nachbessern“.</summary>
+    /// <summary>Nur Prompt und Negativ-Prompt aus einem Historienbild übernehmen, alles andere bleibt.</summary>
+    public void ImportPromptsFrom(JsonObject p, string? originalPrompt)
+    {
+        Prompt = originalPrompt ?? p["prompt"]?.ToString() ?? Prompt;
+        Negative = p["negativeprompt"]?.ToString() ?? "";
+    }
+
     public void ImportFrom(JsonObject p, string? originalPrompt)
     {
         string? S(string k) => p[k]?.ToString();

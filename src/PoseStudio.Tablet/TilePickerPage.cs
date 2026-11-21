@@ -11,16 +11,20 @@ public sealed class TilePickerPage : ContentPage
     private readonly CollectionView _list = new() { SelectionMode = SelectionMode.Single };
     private readonly TaskCompletionSource<Tile?> _done = new();
     private readonly Action<Tile>? _onPick;
+    private readonly CheckBox _option = new() { Color = Ui.Accent, VerticalOptions = LayoutOptions.Center };
+
+    /// <summary>Zustand des optionalen Hakens (z. B. „Nur Prompts übernehmen“).</summary>
+    public bool OptionChecked => _option.IsChecked;
 
     /// <param name="multi">Mehrfachauswahl: Seite bleibt offen, jede Auswahl ruft onPick auf.</param>
-    public TilePickerPage(string title, List<Tile> tiles, Func<Tile, string>? folderOf = null, bool multi = false, Action<Tile>? onPick = null, double tileWidth = 170, double imageHeight = 170)
+    public TilePickerPage(string title, List<Tile> tiles, Func<Tile, string>? folderOf = null, bool multi = false, Action<Tile>? onPick = null, double tileWidth = 170, double imageHeight = 170, string? option = null, bool optionValue = false)
     {
         Title = title; BackgroundColor = Ui.Page;
         _all = tiles; _folderOf = folderOf; _multi = multi; _onPick = onPick;
 
         var close = new Button { Text = multi ? "Fertig" : "Abbrechen", BackgroundColor = multi ? Ui.Accent : Ui.PanelLight, TextColor = Colors.White };
         close.Clicked += async (_, _) => await CloseAsync(null);
-        var top = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 10, Padding = new Thickness(12, 10) };
+        var top = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 10, Padding = new Thickness(12, 10) };
         top.Add(_search, 0);
         if (folderOf != null)
         {
@@ -29,7 +33,14 @@ public sealed class TilePickerPage : ContentPage
             _folder.SelectedIndexChanged += (_, _) => Fill();
             top.Add(_folder, 1);
         }
-        top.Add(close, 2);
+        if (option != null)
+        {
+            _option.IsChecked = optionValue;
+            var lbl = new Label { Text = option, TextColor = Colors.White, VerticalOptions = LayoutOptions.Center };
+            var lt = new TapGestureRecognizer(); lt.Tapped += (_, _) => _option.IsChecked = !_option.IsChecked; lbl.GestureRecognizers.Add(lt);
+            top.Add(new HorizontalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center, Children = { _option, lbl } }, 2);
+        }
+        top.Add(close, 3);
         _search.TextChanged += (_, _) => Fill();
 
         _list.ItemTemplate = new DataTemplate(() =>

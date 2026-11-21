@@ -16,6 +16,10 @@ public sealed class TabletSettings
     public string? TemplateName { get; set; }
     /// <summary>Eigenes Bild (Kopie im App-Ordner).</summary>
     public string? ImagePath { get; set; }
+    /// <summary>Ergebnis-Ordner (Storage-Access-Framework-Adresse); darin der Unterordner „SwarmUI-Tablet“. Leer = nur intern.</summary>
+    public string? ResultFolder { get; set; }
+    /// <summary>Historie: nur Prompts übernehmen.</summary>
+    public bool HistoryPromptsOnly { get; set; }
     /// <summary>Seitenverhältnis ohne Vorlage (Index in Aspects).</summary>
     public int Aspect { get; set; }
 
@@ -36,6 +40,9 @@ public sealed class TabletSettings
         catch { }
         return new TabletSettings();
     }
+
+    public string ToJson() => JsonSerializer.Serialize(this, Json);
+    public static TabletSettings? FromJson(string json) => JsonSerializer.Deserialize<TabletSettings>(json, Json);
 
     public void Save()
     {

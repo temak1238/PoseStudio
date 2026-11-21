@@ -33,6 +33,8 @@ public sealed class MainPage : ContentPage
     private readonly Image _templateImg = new() { HeightRequest = 180, Aspect = Aspect.AspectFit, BackgroundColor = Ui.PanelLight };
     private readonly Label _templateName = new() { TextColor = Colors.White };
     private readonly Label _folderName = new() { TextColor = Ui.Muted, FontSize = 12 };
+    private readonly Label _resultFolderName = new() { TextColor = Ui.Muted, FontSize = 12 };
+    private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly Picker _look = new() { ItemsSource = TabletTemplate.LookNames };
     private readonly Image _ownImg = new() { HeightRequest = 180, Aspect = Aspect.AspectFit, BackgroundColor = Ui.PanelLight };
     private readonly Switch _useInit = new();
@@ -74,7 +76,8 @@ public sealed class MainPage : ContentPage
         ShowSettings();
         RefreshProfiles();
         LoadResults();
-        Loaded += async (_, _) => { await ConnectAsync(); await LoadTemplatesAsync(false); };
+        ShowResultFolder();
+        Loaded += async (_, _) => { await ConnectAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); };
     }
 
     // ------------------------------------------------------------------ Aufbau
@@ -165,6 +168,8 @@ public sealed class MainPage : ContentPage
                 Section("Nachbessern (Refiner)",
                     Row("Refiner-Anteil / Faktor", Cols(_refControl, _refUpscale)), Row("Hochskalieren mit", _refUpMethod), Row("Methode", _refMethod),
                     Row("Steps / CFG (0 = wie oben)", Cols(_refSteps, _refCfg))),
+                Section("Ablage und Sicherung", _resultFolderName, Btn("Ergebnis-Ordner …", PickResultFolderAsync),
+                    Cols(Btn("Einstellungen exportieren", ExportSettingsAsync), Btn("Einstellungen importieren", ImportSettingsAsync))),
             }
         };
     }
@@ -453,12 +458,16 @@ public sealed class MainPage : ContentPage
             {
                 Label = h.Params?["model"]?.ToString() ?? "", Sub = h.OriginalPrompt ?? h.Params?["prompt"]?.ToString(), Image = Ui.Web(h.Url), Tag = h
             }).ToList();
-            var pick = await TilePickerPage.ShowAsync(Navigation, new TilePickerPage("Einstellungen aus der SwarmUI-Historie übernehmen", tiles, tileWidth: 200, imageHeight: 260));
+            var page = new TilePickerPage("Einstellungen aus der SwarmUI-Historie übernehmen", tiles, tileWidth: 200, imageHeight: 260,
+                option: "Nur Prompts übernehmen", optionValue: _t.HistoryPromptsOnly);
+            var pick = await TilePickerPage.ShowAsync(Navigation, page);
+            _t.HistoryPromptsOnly = page.OptionChecked;
             if (pick?.Tag is not SwarmHistoryImage hi || hi.Params == null) return;
             ReadUi();
-            S.ImportFrom(hi.Params, hi.OriginalPrompt);
+            if (page.OptionChecked) S.ImportPromptsFrom(hi.Params, hi.OriginalPrompt);
+            else S.ImportFrom(hi.Params, hi.OriginalPrompt);
             ShowSettings();
-            _status.Text = "Einstellungen übernommen aus " + Path.GetFileName(hi.Src);
+            _status.Text = (page.OptionChecked ? "Prompts übernommen aus " : "Einstellungen übernommen aus ") + Path.GetFileName(hi.Src);
         }
         catch (Exception ex) { _status.Text = "Historie nicht lesbar: " + ex.Message; }
     }
@@ -713,12 +722,98 @@ public sealed class MainPage : ContentPage
 
     // ------------------------------------------------------------------ Ergebnisse
 
-    private void SaveIndex() => ResultStore.SaveIndex(AndroidStore.ResultsFolder, _results.Where(r => r.Done && r.LocalPath != null).Select(r => r.LocalPath!));
+    private List<string> ListedPaths() => _results.Where(r => r.Done && r.LocalPath != null).Select(r => r.LocalPath!).ToList();
+
+    private void SaveIndex()
+    {
+        ResultStore.SaveIndex(AndroidStore.ResultsFolder, ListedPaths());
+        _ = SyncResultsAsync(merge: false, report: false);
+    }
 
     private void LoadResults()
     {
+        _results.Clear();
         foreach (var r in ResultStore.Load(AndroidStore.ResultsFolder))
             _results.Add(new ResultItem { LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, Done = true, Image = ImageSource.FromFile(r.Path) });
+    }
+
+    private void ShowResultFolder()
+    {
+        _resultFolderName.Text = _t.ResultFolder == null
+            ? "Ergebnisse liegen nur in der App. Mit „Ergebnis-Ordner …“ einen synchronisierten Ordner wählen – die Bilder landen dann in dessen Unterordner „SwarmUI-Tablet“ und überstehen auch eine Neuinstallation."
+            : !ResultMirror.HasAccess(_t.ResultFolder)
+                ? $"Kein Zugriff mehr auf {AndroidStore.FolderLabel(_t.ResultFolder)} (z. B. nach Neuinstallation) – bitte „Ergebnis-Ordner …“ neu wählen."
+                : $"Ergebnisse: {AndroidStore.FolderLabel(_t.ResultFolder)}/{ResultMirror.SubFolder}";
+    }
+
+    /// <summary>Liste mit dem Ergebnis-Ordner abgleichen (siehe ResultMirror.Sync). Läuft im Hintergrund, nie parallel.</summary>
+    private async Task SyncResultsAsync(bool merge, bool report)
+    {
+        string? tree = _t.ResultFolder;
+        if (tree == null || !ResultMirror.HasAccess(tree)) { ShowResultFolder(); return; }
+        await _syncLock.WaitAsync();
+        try
+        {
+            string local = AndroidStore.ResultsFolder;
+            var names = ListedPaths().Select(Path.GetFileName).ToList();
+            bool busy = _results.Any(r => !r.Done);
+            var final = await Task.Run(() => ResultMirror.Sync(tree, local, names!, merge));
+            if (merge && !busy && !final.SequenceEqual(names))
+            {
+                ResultStore.SaveIndex(local, final.Select(n => Path.Combine(local, n)));
+                LoadResults();
+            }
+            if (report) _status.Text = $"Ergebnis-Ordner abgeglichen: {final.Count} Bild(er).";
+        }
+        catch (Exception ex) { _status.Text = "Ergebnis-Ordner: " + ex.Message; }
+        finally { _syncLock.Release(); ShowResultFolder(); }
+    }
+
+    private async Task PickResultFolderAsync()
+    {
+        var tree = await AndroidStore.PickFolderAsync();
+        if (tree == null) return;
+        _t.ResultFolder = tree;
+        _t.Save();
+        ShowResultFolder();
+        _status.Text = "Gleiche Ergebnisse mit dem Ordner ab …";
+        await SyncResultsAsync(merge: true, report: true);
+    }
+
+    private async Task ExportSettingsAsync()
+    {
+        if (_t.ResultFolder == null || !ResultMirror.HasAccess(_t.ResultFolder)) { await DisplayAlertAsync("Einstellungen", "Bitte zuerst den Ergebnis-Ordner wählen – die Datei wird dort abgelegt.", "OK"); return; }
+        ReadUi();
+        string tree = _t.ResultFolder, json = _t.ToJson();
+        try
+        {
+            await Task.Run(() => ResultMirror.WriteSettings(tree, json));
+            _status.Text = $"Einstellungen exportiert: {AndroidStore.FolderLabel(tree)}/{ResultMirror.SubFolder}/{ResultMirror.SettingsFile}";
+        }
+        catch (Exception ex) { await DisplayAlertAsync("Einstellungen", "Export fehlgeschlagen: " + ex.Message, "OK"); }
+    }
+
+    private async Task ImportSettingsAsync()
+    {
+        if (_t.ResultFolder == null || !ResultMirror.HasAccess(_t.ResultFolder)) { await DisplayAlertAsync("Einstellungen", "Bitte zuerst den Ergebnis-Ordner wählen, in dem die exportierte Datei liegt.", "OK"); return; }
+        string tree = _t.ResultFolder;
+        TabletSettings? imp;
+        try
+        {
+            var json = await Task.Run(() => ResultMirror.ReadSettings(tree));
+            if (json == null) { await DisplayAlertAsync("Einstellungen", $"Keine {ResultMirror.SettingsFile} im Ordner {ResultMirror.SubFolder} gefunden.", "OK"); return; }
+            imp = TabletSettings.FromJson(json);
+        }
+        catch (Exception ex) { await DisplayAlertAsync("Einstellungen", "Datei nicht lesbar: " + ex.Message, "OK"); return; }
+        if (imp == null) return;
+        if (!await DisplayAlertAsync("Einstellungen", "Alle Einstellungen (Server, Profile, Prompt, Generierung) durch die exportierten ersetzen? Die gewählten Ordner bleiben.", "Importieren", "Abbrechen")) return;
+        // Ordner-Freigaben gelten nur für diese Installation – die aktuellen behalten.
+        _t.Swarm = imp.Swarm; _t.Source = imp.Source; _t.Aspect = imp.Aspect; _t.TemplateName = imp.TemplateName; _t.HistoryPromptsOnly = imp.HistoryPromptsOnly;
+        _t.Save();
+        ShowSettings();
+        RefreshProfiles();
+        await ConnectAsync();
+        _status.Text = "Einstellungen importiert.";
     }
 
     private async Task OpenResultAsync(ResultItem r)
@@ -728,17 +823,33 @@ public sealed class MainPage : ContentPage
             case ViewerAction.Refine: await RefineAsync(r); break;
             case ViewerAction.UseSeed: _seed.Text = r.Seed.ToString(); _status.Text = $"Seed {r.Seed} übernommen."; break;
             case ViewerAction.UseAsImage: await UseImageAsync(await File.ReadAllBytesAsync(r.LocalPath!)); _status.Text = "Ergebnis als eigenes Bild gesetzt."; break;
-            case ViewerAction.Remove: _results.Remove(r); SaveIndex(); break;
+            case ViewerAction.Remove:
+                _results.Remove(r);
+                if (_t.ResultFolder != null && ResultMirror.HasAccess(_t.ResultFolder)) DeleteLocal(r);   // liegt im Ergebnis-Ordner, die lokale Kopie ist nur Zwischenspeicher
+                SaveIndex();
+                break;
         }
+    }
+
+    private static void DeleteLocal(ResultItem r)
+    {
+        try { File.Delete(r.LocalPath!); File.Delete(r.LocalPath + ".json"); } catch { }
     }
 
     private async Task ClearResultsAsync()
     {
         if (_results.Count == 0) return;
-        if (!await DisplayAlertAsync("Liste leeren", $"Alle {_results.Count} Ergebnisse aus der Liste entfernen?\n\nDie Bilder bleiben in der SwarmUI-Historie. Die lokalen Kopien auf dem Tablet werden gelöscht.", "Leeren", "Abbrechen")) return;
-        foreach (var r in _results.Where(r => r.LocalPath != null).ToList())
-            try { File.Delete(r.LocalPath!); File.Delete(r.LocalPath + ".json"); } catch { }
-        _results.Clear();
-        SaveIndex();
+        bool mirrored = _t.ResultFolder != null && ResultMirror.HasAccess(_t.ResultFolder);
+        string where = mirrored ? $"Die Bilder bleiben im Ergebnis-Ordner ({ResultMirror.SubFolder}) und in der SwarmUI-Historie." : "Die Bilder bleiben in der SwarmUI-Historie. Die lokalen Kopien auf dem Tablet werden gelöscht.";
+        if (!await DisplayAlertAsync("Liste leeren", $"Alle {_results.Count} Ergebnisse aus der Liste entfernen?\n\n{where}", "Leeren", "Abbrechen")) return;
+        if (mirrored) await _syncLock.WaitAsync();   // laufenden Upload abwarten, bevor die lokalen Kopien verschwinden
+        try
+        {
+            foreach (var r in _results.Where(r => r.LocalPath != null).ToList()) DeleteLocal(r);
+            _results.Clear();
+            ResultStore.SaveIndex(AndroidStore.ResultsFolder, Array.Empty<string>());
+        }
+        finally { if (mirrored) _syncLock.Release(); }
+        _ = SyncResultsAsync(merge: false, report: false);
     }
 }
