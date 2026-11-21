@@ -10,14 +10,14 @@ public class MainActivity : MauiAppCompatActivity
     private const int PickTreeRequest = 4711;
     private static TaskCompletionSource<Android.Net.Uri?>? _pickTree;
 
-    /// <summary>Ordner über den System-Dialog wählen (Storage Access Framework); Leserecht bleibt über Neustarts erhalten.</summary>
+    /// <summary>Ordner über den System-Dialog wählen (Storage Access Framework); Lese- und Schreibrecht bleiben über Neustarts erhalten (Schreiben für den Ergebnis-Ordner).</summary>
     public static Task<Android.Net.Uri?> PickTreeAsync()
     {
         var act = Platform.CurrentActivity as MainActivity ?? throw new InvalidOperationException("Keine Activity.");
         _pickTree?.TrySetResult(null);
         _pickTree = new TaskCompletionSource<Android.Net.Uri?>();
         var intent = new Intent(Intent.ActionOpenDocumentTree);
-        intent.AddFlags(ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantPersistableUriPermission);
+        intent.AddFlags(ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantWriteUriPermission | ActivityFlags.GrantPersistableUriPermission);
         act.StartActivityForResult(intent, PickTreeRequest);
         return _pickTree.Task;
     }
@@ -28,7 +28,8 @@ public class MainActivity : MauiAppCompatActivity
         if (requestCode != PickTreeRequest) return;
         var uri = resultCode == Result.Ok ? data?.Data : null;
         if (uri != null)
-            try { ContentResolver?.TakePersistableUriPermission(uri, ActivityFlags.GrantReadUriPermission); } catch { }
+            try { ContentResolver?.TakePersistableUriPermission(uri, ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantWriteUriPermission); }
+            catch { try { ContentResolver?.TakePersistableUriPermission(uri, ActivityFlags.GrantReadUriPermission); } catch { } }
         _pickTree?.TrySetResult(uri);
         _pickTree = null;
     }
