@@ -26,8 +26,8 @@ public sealed class MainPage : ContentPage
     private readonly Label _modelName = new() { TextColor = Colors.White, VerticalOptions = LayoutOptions.Center, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
     private readonly VerticalStackLayout _loraRows = new() { Spacing = 4 };
     private readonly Switch _autoTrigger = new();
-    private readonly Editor _prompt = new() { HeightRequest = 150, Placeholder = "Prompt" };
-    private readonly Editor _negative = new() { HeightRequest = 80, Placeholder = "Negativ-Prompt" };
+    private readonly Editor _prompt = new() { HeightRequest = 180, Placeholder = "Prompt" };
+    private readonly Editor _negative = new() { HeightRequest = 90, Placeholder = "Negativ-Prompt" };
     private readonly Picker _source = new() { ItemsSource = new[] { "Nur Prompt", "Posen-Vorlage aus Pose Studio", "Eigenes Bild" } };
     private readonly VerticalStackLayout _templateBox = new() { Spacing = 8 }, _imageBox = new() { Spacing = 8 }, _initBox = new() { Spacing = 8 }, _cnBox = new() { Spacing = 8 }, _aspectBox = new() { Spacing = 8 };
     private readonly Image _templateImg = new() { HeightRequest = 180, Aspect = Aspect.AspectFit, BackgroundColor = Ui.PanelLight };
@@ -177,7 +177,7 @@ public sealed class MainPage : ContentPage
                     Row("Profil", _profile), Cols(saveProfile, delProfile, Btn("Aus Historie …", PickHistoryAsync)), _baseText),
                 Section("Modell", modelTile, Btn("Modell wählen …", PickModelAsync)),
                 Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync), Row("Trigger-Wörter automatisch", _autoTrigger)),
-                Section("Prompt", _prompt, _negative),
+                Section("Prompt", _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
                 Section("Generierung",
                     Row("Seitenlänge", _side, _sizeText), Row("Anzahl", countRow), Row("Seed (-1 = zufällig)", _seed, dice),
@@ -449,6 +449,15 @@ public sealed class MainPage : ContentPage
     }
 
     // ------------------------------------------------------------------ Verbindung, Auswahl
+
+    private async Task EditPromptLargeAsync()
+    {
+        if (await PromptEditorPage.ShowAsync(Navigation, _prompt.Text ?? "", _negative.Text ?? "") is { } r)
+        {
+            _prompt.Text = r.Prompt; _negative.Text = r.Negative;
+            ReadUi(); _t.Save();
+        }
+    }
 
     private async Task RefreshServerAsync()
     {
