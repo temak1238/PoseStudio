@@ -855,6 +855,38 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
 
     double PoseStudio.Swarm.ISwarmScene.PreviewAspect => CurrentPreviewAspect();
 
+    /// <summary>Posen-Vorlage für die Tablet-App: Init Image in allen Darstellungen + ControlNet-Bilder in einen eigenen Unterordner.</summary>
+    private void ExportTablet_Click(object sender, RoutedEventArgs e)
+    {
+        string? dir = ExportTabletTemplate(FolderBox.Text.Trim());
+        if (dir != null) StatusText.Text = "Tablet-Vorlage gespeichert: " + dir;
+    }
+
+    internal string? ExportTabletTemplate(string exportFolder, string? stamp = null)
+    {
+        var scene = (PoseStudio.Swarm.ISwarmScene)this;
+        var probe = new PoseStudio.Swarm.SwarmSettings { SideLength = 1280 };
+        var (w, h) = probe.SizeFor(CurrentPreviewAspect());
+        stamp ??= DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+        string dir = Path.Combine(exportFolder, PoseStudio.Swarm.TabletTemplate.FolderName, $"{SafeFileName(PrefixBox.Text)}_{stamp}");
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            for (int look = 0; look < PoseStudio.Swarm.TabletTemplate.InitFiles.Length; look++)
+                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
+            SceneFactory.SavePng(scene.RenderControl(w, h, false), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.PoseFile));
+            SceneFactory.SavePng(scene.RenderControl(w, h, true), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.RegionsFile));
+            return dir;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Tablet-Vorlage fehlgeschlagen:\n" + ex.Message, "Export", MessageBoxButton.OK, MessageBoxImage.Error);
+            return null;
+        }
+        finally { Mouse.OverrideCursor = null; }
+    }
+
     /// <summary>Szene wie beim Export rendern (ohne Transparenz), wahlweise in einer anderen Darstellung.</summary>
     BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look)
     {
@@ -1438,6 +1470,8 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             var w2 = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
             sb.AppendLine($"Ergebnisse nach neuem Öffnen: {w2.ResultCount}, erstes: {w2.FirstResult}");
             sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");
+            string? tab = ExportTabletTemplate(tdir, "20260101_120000");
+            sb.AppendLine($"Tablet-Vorlage: {(tab == null ? "FEHLER" : Path.GetFileName(tab) + " → " + string.Join(", ", Directory.GetFiles(tab).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length / 1024} KB")))}");
             PoseStudio.Swarm.SwarmWindow.OutputOverride = null; Directory.Delete(tdir, true);
         }
         foreach (var useInit in new[] { true, false })

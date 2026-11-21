@@ -61,8 +61,17 @@ Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 
 Einstellungen werden in `%APPDATA%\PoseStudio\settings.json` gespeichert.
 
+## Tablet-App (Android): Pose Studio Swarm
+Generiert über SwarmUI vom Tablet aus (`publish\PoseStudioSwarm-<Version>.apk`, Android 8 oder neuer, Installation per Datei – „Unbekannte Apps installieren“ erlauben). Quer: Einstellungen links, Ergebnisse rechts; hoch: Ergebnisse oben.
+- Gleiche Bedienung wie das SwarmUI-Fenster: Modell- und LoRA-Galerie mit Vorschaubildern, Einstellungen aus der SwarmUI-Historie übernehmen, Profile, ControlNet, „Nachbessern“, Seed übernehmen. Ergebnisliste bleibt erhalten; „Liste leeren“ löscht auf dem Tablet auch die lokalen Kopien (in SwarmUI bleiben sie). Einzelbild: groß anzeigen, in die Galerie (Bilder/PoseStudio), teilen, als eigenes Bild weiterverwenden.
+- **Posen-Vorlagen:** In Pose Studio „Tablet“ klicken – legt im Export-Ordner unter `Tablet\<Präfix>_<Zeit>\` das Init Image in allen vier Darstellungen (`normal/cel/flach/strich.jpg`) und die ControlNet-Bilder (`pose.png`, `regionen.png`) ab. Den Export-Ordner mit dem Tablet synchronisieren (z. B. Syncthing), in der App unter Vorlage → „Ordner …“ den Export-Ordner oder seinen Unterordner `Tablet` wählen. Darstellung, Init Image und ControlNet sind in der App wählbar.
+- Ohne Vorlage: nur Prompt (Seitenverhältnis wählbar) oder ein eigenes Bild aus der Galerie als Init Image.
+- SwarmUI hat keine Anmeldung – die App erreicht den Server nur im Heimnetz (unterwegs per VPN).
+
 ## Entwicklung
 - .NET 10, WPF; einziges Paket: Microsoft.ML.OnnxRuntime (MIT) für die Posenerkennung. Modelle in `src/PoseStudio/Models` (siehe README-Modelle.txt)
 - Paket bauen: `build\Build-Package.ps1` (vorher Version in `Directory.Build.props` hochzählen)
+- Projekte: `src/PoseStudio` (WPF), `src/PoseStudio.SwarmCore` (SwarmUI-Client, Einstellungen, Ergebnisliste – gemeinsam), `src/PoseStudio.Tablet` (.NET MAUI, nur Android)
+- Tablet-APK bauen: `build\Build-Tablet.ps1` (Version: `ApplicationDisplayVersion`/`ApplicationVersion` im csproj hochzählen; braucht Workload `maui-android`, Android SDK unter `C:\Android\Sdk`, JDK 17; signiert immer mit demselben Schlüssel, damit Updates über die alte Version installierbar sind)
 - Selbsttest: `PoseStudio.exe --selftest <Ordner>` rendert alle Figurenstile und Vorlagen als Kontaktbogen (braucht eine Sitzung mit aktivem Display)
 - Planung Hintergründe: `docs/Plan-Hintergrund-Generierung.md`

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gliederpuppe in Pose mit Funken (Bildgenerierung) -->
+  <g fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M214 196 L222 262" />
+    <path d="M216 210 L172 176 L150 132" />
+    <path d="M218 212 L262 196 L296 214" />
+    <path d="M222 262 L190 304 L198 352" />
+    <path d="M222 262 L262 294 L292 330" />
+  </g>
+  <circle cx="208" cy="160" r="24" fill="#ffffff" />
+  <path d="M318 108 l10 28 l28 10 l-28 10 l-10 28 l-10 -28 l-28 -10 l28 -10 z" fill="#7FB2EE" />
+  <path d="M120 230 l6 16 l16 6 l-16 6 l-6 16 l-6 -16 l-16 -6 l16 -6 z" fill="#7FB2EE" />
+</svg>

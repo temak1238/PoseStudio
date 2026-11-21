@@ -449,11 +449,11 @@ public partial class SwarmWindow : Window
                 var item = i < pending.Count ? pending[i] : new SwarmResultItem();
                 if (i >= pending.Count) _results.Insert(i, item);
                 var bytes = await _client.DownloadAsync(res[i].Path);
-                string ext = res[i].Path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ? ".jpg" : res[i].Path.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? ".webp" : ".png";
+                string ext = ResultStore.ExtensionOf(res[i].Path);
                 item.LocalPath = Path.Combine(OutputFolder, $"swarm_{DateTime.Now:yyyyMMdd_HHmmss}_{i}{ext}");
                 await File.WriteAllBytesAsync(item.LocalPath, bytes);
                 item.Image = ThumbCache.Decode(bytes, 600);
-                long? known = SeedFrom(res[i].Metadata);
+                long? known = ResultStore.SeedFrom(res[i].Metadata);
                 if (known is null or < 0) known = await _client.LookupSeedAsync(res[i].Path);
                 item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
@@ -481,77 +481,37 @@ public partial class SwarmWindow : Window
         }
     }
 
-    private static long? SeedFrom(string? metadata)
-    {
-        try
-        {
-            if (metadata != null && JsonNode.Parse(metadata) is JsonObject m && m["sui_image_params"]?["seed"] is JsonNode s
-                && long.TryParse(s.ToString(), out var seed)) return seed;
-        }
-        catch { }
-        return null;
-    }
-
     private async void Cancel_Click(object sender, RoutedEventArgs e)
     {
         if (_client != null) await _client.InterruptAsync();
         _cts?.Cancel();
     }
 
-    // ------------------------------------------------------------------ Ergebnisse dauerhaft
+    // ------------------------------------------------------------------ Ergebnisse dauerhaft (Format gemeinsam mit der Tablet-App)
 
-    private string IndexFile => Path.Combine(OutputFolder, "results.json");
-
-    /// <summary>Zum Bild eine Begleitdatei mit Beschriftung, Seed und gesendeten Parametern (für „Nachbessern“ nach einem Neustart).</summary>
     private static void SaveResult(SwarmResultItem item)
     {
-        if (item.LocalPath == null) return;
-        try
-        {
-            var o = new JsonObject { ["caption"] = item.Caption, ["seed"] = item.Seed, ["sent"] = item.Sent?.DeepClone() };
-            File.WriteAllText(item.LocalPath + ".json", o.ToJsonString());
-        }
-        catch { /* Bild bleibt trotzdem in der Liste dieser Sitzung */ }
+        if (item.LocalPath != null) ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent);
     }
 
     /// <summary>Reihenfolge der Liste speichern (nur fertige Bilder).</summary>
-    private void SaveResultIndex()
-    {
-        try
-        {
-            Directory.CreateDirectory(OutputFolder);
-            var arr = new JsonArray(_results.Where(r => r.Done && r.LocalPath != null).Select(r => (JsonNode?)JsonValue.Create(Path.GetFileName(r.LocalPath!))).ToArray());
-            File.WriteAllText(IndexFile, arr.ToJsonString());
-        }
-        catch { }
-    }
+    private void SaveResultIndex() =>
+        ResultStore.SaveIndex(OutputFolder, _results.Where(r => r.Done && r.LocalPath != null).Select(r => r.LocalPath!));
 
     private void LoadResults()
     {
-        try
+        foreach (var r in ResultStore.Load(OutputFolder))
         {
-            if (!File.Exists(IndexFile) || JsonNode.Parse(File.ReadAllText(IndexFile)) is not JsonArray arr) return;
-            foreach (var n in arr)
+            try
             {
-                string path = Path.Combine(OutputFolder, n?.ToString() ?? "");
-                if (!File.Exists(path)) continue;
-                var item = new SwarmResultItem { LocalPath = path, Caption = Path.GetFileName(path) };
-                try
+                _results.Add(new SwarmResultItem
                 {
-                    if (File.Exists(path + ".json") && JsonNode.Parse(File.ReadAllText(path + ".json")) is JsonObject o)
-                    {
-                        item.Caption = o["caption"]?.ToString() ?? item.Caption;
-                        item.Seed = long.TryParse(o["seed"]?.ToString(), out var sd) ? sd : -1;
-                        item.Sent = o["sent"] as JsonObject is { } sent ? (JsonObject)sent.DeepClone() : null;
-                    }
-                    item.Image = ThumbCache.Decode(File.ReadAllBytes(path), 600);
-                }
-                catch { continue; }
-                item.Done = true;
-                _results.Add(item);
+                    LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, Done = true,
+                    Image = ThumbCache.Decode(File.ReadAllBytes(r.Path), 600)
+                });
             }
+            catch { }
         }
-        catch { }
     }
 
     // ------------------------------------------------------------------ Ergebnis-Aktionen

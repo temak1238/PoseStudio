@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SwarmUI-API-Client und Einstellungen, gemeinsam für Pose Studio (WPF) und die Tablet-App (Android) -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PoseStudio.Swarm</RootNamespace>
+  </PropertyGroup>
+</Project>

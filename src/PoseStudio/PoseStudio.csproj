@@ -20,9 +20,14 @@
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PoseStudio.SwarmCore\PoseStudio.SwarmCore.csproj" />
+  </ItemGroup>
+
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.32.0" />
   </ItemGroup>
 
 </Project>
+

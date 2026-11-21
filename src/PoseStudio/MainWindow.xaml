@@ -339,6 +339,7 @@
             <DockPanel DockPanel.Dock="Bottom" Margin="8,4,8,6">
                 <Button DockPanel.Dock="Right" Content="Ordner öffnen" Click="OpenFolder_Click" Margin="6,0,0,0" />
                 <Button DockPanel.Dock="Right" Content="SwarmUI…" Click="OpenSwarm_Click" Margin="6,0,0,0" ToolTip="Mit SwarmUI generieren: aktuelle Szene als Init Image, Modelle und LoRAs auswählen" />
+                <Button DockPanel.Dock="Right" Content="Tablet" Click="ExportTablet_Click" Margin="6,0,0,0" ToolTip="Posen-Vorlage für die Tablet-App: Init Image in allen Darstellungen und ControlNet-Bilder in den Unterordner „Tablet“ des Export-Ordners" />
                 <Button x:Name="ExportButton" Content="JPG exportieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
                         Background="#2B7BD6" Foreground="White" Click="Export_Click" />
             </DockPanel>
