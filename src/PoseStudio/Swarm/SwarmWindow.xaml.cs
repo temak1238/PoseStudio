@@ -21,6 +21,8 @@ public interface ISwarmScene
     BitmapSource RenderInit(int w, int h, int look);
     BitmapSource RenderControl(int w, int h, bool regions);
     void UseAsReference(string path);
+    /// <summary>Export-Ordner des Hauptfensters (SwarmUI-Ergebnisse landen im Unterordner „SwarmUI“).</summary>
+    string ExportFolder { get; }
 }
 
 /// <summary>Ein Ergebnis (oder Platzhalter während der Generierung).</summary>
@@ -50,7 +52,34 @@ public partial class SwarmWindow : Window
     private static readonly string[] LookNames = { "Wie im Hauptfenster", "Normal (3D)", "Cel-Shading", "2D flach", "Strichzeichnung" };
     /// <summary>Nur für Tests: anderer Ordner für Ergebnisse und Liste.</summary>
     internal static string? OutputOverride;
-    public static string OutputFolder => OutputOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmOutput");
+    /// <summary>Ordner für Bilder, Begleitdateien und Liste: Unterordner „SwarmUI“ im Export-Ordner (beim Öffnen festgelegt).</summary>
+    public string OutputFolder { get; }
+    public static string FolderFor(string? exportFolder) => Path.Combine(
+        string.IsNullOrWhiteSpace(exportFolder) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "PoseStudio") : exportFolder.Trim(), "SwarmUI");
+    private static string LegacyFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmOutput");
+
+    /// <summary>Ergebnisse aus dem alten Ordner (%LOCALAPPDATA%\PoseStudio\SwarmOutput, bis 0.21.3) in den neuen verschieben –
+    /// nur wenn der neue noch keine Liste hat. Vorhandene Dateien im Ziel werden nicht überschrieben.</summary>
+    public static string? MigrateLegacy(string target)
+    {
+        try
+        {
+            if (!Directory.Exists(LegacyFolder) || File.Exists(Path.Combine(target, "results.json"))) return null;
+            Directory.CreateDirectory(target);
+            int moved = 0;
+            foreach (var f in Directory.GetFiles(LegacyFolder))
+            {
+                string dst = Path.Combine(target, Path.GetFileName(f));
+                if (File.Exists(dst)) continue;
+                File.Move(f, dst); moved++;
+            }
+            if (Directory.GetFileSystemEntries(LegacyFolder).Length == 0) Directory.Delete(LegacyFolder);
+            return moved > 0 ? $"{moved} Datei(en) aus dem alten Ergebnisordner nach {target} verschoben." : null;
+        }
+        catch (Exception ex) { return "Alte Ergebnisse konnten nicht verschoben werden: " + ex.Message; }
+    }
+
+    internal void ShowStatus(string text) => StatusText.Text = text;
 
     /// <summary>Nur für Tests: fertiges Ergebnis hinzufügen (wie nach einer Generierung).</summary>
     internal void AddResultForTest(string path, string caption, long seed, JsonObject sent)
@@ -70,6 +99,7 @@ public partial class SwarmWindow : Window
         Left = wa.Left + (wa.Width - Width) / 2; Top = wa.Top + (wa.Height - Height) / 2;
         WindowStartupLocation = WindowStartupLocation.Manual;
         _s = settings; _scene = scene;
+        OutputFolder = OutputOverride ?? FolderFor(scene.ExportFolder);
         LookCombo.ItemsSource = LookNames;
         SideCombo.ItemsSource = new[] { "1024", "1152", "1280", "1408", "1536" };
         CnKindCombo.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" };
@@ -470,7 +500,7 @@ public partial class SwarmWindow : Window
 
     // ------------------------------------------------------------------ Ergebnisse dauerhaft
 
-    private static string IndexFile => Path.Combine(OutputFolder, "results.json");
+    private string IndexFile => Path.Combine(OutputFolder, "results.json");
 
     /// <summary>Zum Bild eine Begleitdatei mit Beschriftung, Seed und gesendeten Parametern (für „Nachbessern“ nach einem Neustart).</summary>
     private static void SaveResult(SwarmResultItem item)
