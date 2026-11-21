@@ -34,6 +34,7 @@ public sealed class MainPage : ContentPage
     private readonly Label _templateName = new() { TextColor = Colors.White };
     private readonly Label _folderName = new() { TextColor = Ui.Muted, FontSize = 12 };
     private readonly Label _resultFolderName = new() { TextColor = Ui.Muted, FontSize = 12 };
+    private readonly VerticalStackLayout _backupBox = new() { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly Picker _look = new() { ItemsSource = TabletTemplate.LookNames };
     private readonly Image _ownImg = new() { HeightRequest = 180, Aspect = Aspect.AspectFit, BackgroundColor = Ui.PanelLight };
@@ -168,8 +169,7 @@ public sealed class MainPage : ContentPage
                 Section("Nachbessern (Refiner)",
                     Row("Refiner-Anteil / Faktor", Cols(_refControl, _refUpscale)), Row("Hochskalieren mit", _refUpMethod), Row("Methode", _refMethod),
                     Row("Steps / CFG (0 = wie oben)", Cols(_refSteps, _refCfg))),
-                Section("Ablage und Sicherung", _resultFolderName, Btn("Ergebnis-Ordner …", PickResultFolderAsync),
-                    Cols(Btn("Einstellungen exportieren", ExportSettingsAsync), Btn("Einstellungen importieren", ImportSettingsAsync))),
+                Section("Ablage und Sicherung", _resultFolderName, Btn("Ergebnis-Ordner …", PickResultFolderAsync), BuildBackupBox()),
             }
         };
     }
@@ -737,6 +737,19 @@ public sealed class MainPage : ContentPage
             _results.Add(new ResultItem { LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, Done = true, Image = ImageSource.FromFile(r.Path) });
     }
 
+    private View BuildBackupBox()
+    {
+        _backupBox.Children.Add(new Label
+        {
+            TextColor = Ui.Muted, FontSize = 12,
+            Text = "Einstellungen sichern: Server, Profile, Prompts, LoRAs und Generierungswerte als Datei „einstellungen.json“ im Ergebnis-Ordner ablegen. "
+                 + "Sicherung laden: diese Werte zurückholen – z. B. nach einer Neuinstallation oder auf dem zweiten Tablet (dort denselben synchronisierten Ordner wählen). "
+                 + "Die App speichert ihre Einstellungen ohnehin automatisch; das hier ist nur die Kopie zum Mitnehmen."
+        });
+        _backupBox.Children.Add(Cols(Btn("Einstellungen sichern", ExportSettingsAsync), Btn("Sicherung laden", ImportSettingsAsync)));
+        return _backupBox;
+    }
+
     private void ShowResultFolder()
     {
         _resultFolderName.Text = _t.ResultFolder == null
@@ -744,6 +757,7 @@ public sealed class MainPage : ContentPage
             : !ResultMirror.HasAccess(_t.ResultFolder)
                 ? $"Kein Zugriff mehr auf {AndroidStore.FolderLabel(_t.ResultFolder)} (z. B. nach Neuinstallation) – bitte „Ergebnis-Ordner …“ neu wählen."
                 : $"Ergebnisse: {AndroidStore.FolderLabel(_t.ResultFolder)}/{ResultMirror.SubFolder}";
+        _backupBox.IsVisible = _t.ResultFolder != null && ResultMirror.HasAccess(_t.ResultFolder);
     }
 
     /// <summary>Liste mit dem Ergebnis-Ordner abgleichen (siehe ResultMirror.Sync). Läuft im Hintergrund, nie parallel.</summary>
@@ -788,7 +802,7 @@ public sealed class MainPage : ContentPage
         try
         {
             await Task.Run(() => ResultMirror.WriteSettings(tree, json));
-            _status.Text = $"Einstellungen exportiert: {AndroidStore.FolderLabel(tree)}/{ResultMirror.SubFolder}/{ResultMirror.SettingsFile}";
+            _status.Text = $"Einstellungen gesichert: {AndroidStore.FolderLabel(tree)}/{ResultMirror.SubFolder}/{ResultMirror.SettingsFile}";
         }
         catch (Exception ex) { await DisplayAlertAsync("Einstellungen", "Export fehlgeschlagen: " + ex.Message, "OK"); }
     }
@@ -801,19 +815,19 @@ public sealed class MainPage : ContentPage
         try
         {
             var json = await Task.Run(() => ResultMirror.ReadSettings(tree));
-            if (json == null) { await DisplayAlertAsync("Einstellungen", $"Keine {ResultMirror.SettingsFile} im Ordner {ResultMirror.SubFolder} gefunden.", "OK"); return; }
+            if (json == null) { await DisplayAlertAsync("Einstellungen", $"Noch keine Sicherung vorhanden ({ResultMirror.SettingsFile} im Ordner {ResultMirror.SubFolder}). Erst auf einem Tablet „Einstellungen sichern“ tippen.", "OK"); return; }
             imp = TabletSettings.FromJson(json);
         }
         catch (Exception ex) { await DisplayAlertAsync("Einstellungen", "Datei nicht lesbar: " + ex.Message, "OK"); return; }
         if (imp == null) return;
-        if (!await DisplayAlertAsync("Einstellungen", "Alle Einstellungen (Server, Profile, Prompt, Generierung) durch die exportierten ersetzen? Die gewählten Ordner bleiben.", "Importieren", "Abbrechen")) return;
+        if (!await DisplayAlertAsync("Einstellungen", "Die aktuellen Einstellungen (Server, Profile, Prompt, Generierung) durch die Sicherung ersetzen? Die gewählten Ordner bleiben.", "Laden", "Abbrechen")) return;
         // Ordner-Freigaben gelten nur für diese Installation – die aktuellen behalten.
         _t.Swarm = imp.Swarm; _t.Source = imp.Source; _t.Aspect = imp.Aspect; _t.TemplateName = imp.TemplateName; _t.HistoryPromptsOnly = imp.HistoryPromptsOnly;
         _t.Save();
         ShowSettings();
         RefreshProfiles();
         await ConnectAsync();
-        _status.Text = "Einstellungen importiert.";
+        _status.Text = "Sicherung geladen.";
     }
 
     private async Task OpenResultAsync(ResultItem r)
