@@ -88,6 +88,9 @@ public sealed class SwarmClient : IDisposable
     }
 
     /// <summary>Modelle ("Stable-Diffusion") oder LoRAs ("LoRA") mit Vorschaubild-Adresse und Trigger-Wörtern.</summary>
+    /// <summary>SwarmUI die Modell-Ordner neu einlesen lassen (neue Modelle/LoRAs auf der Platte), danach neu auflisten.</summary>
+    public async Task TriggerRefreshAsync(CancellationToken ct = default) => await PostAsync("TriggerRefresh", new JsonObject { ["strong"] = true }, ct);
+
     public async Task<List<SwarmModel>> ListModelsAsync(string subtype, CancellationToken ct = default)
     {
         var r = await PostAsync("ListModels", new JsonObject { ["path"] = "", ["depth"] = 8, ["subtype"] = subtype, ["dataImages"] = false }, ct);

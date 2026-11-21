@@ -61,7 +61,7 @@ public sealed class MainPage : ContentPage
     private readonly Label _status = new() { TextColor = Ui.Muted, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
     private readonly CollectionView _resultList = new() { SelectionMode = SelectionMode.None };
     private readonly Grid _root = new();
-    private readonly ScrollView _settingsView;
+    private readonly RefreshView _settingsView;
     private readonly Grid _resultsView;
 
     private static Entry Num() => new() { Keyboard = Keyboard.Numeric, HorizontalTextAlignment = TextAlignment.End };
@@ -71,7 +71,9 @@ public sealed class MainPage : ContentPage
         _t = TabletSettings.Load();
         BackgroundColor = Ui.Page;
         NavigationPage.SetHasNavigationBar(this, false);
-        _settingsView = new ScrollView { Content = BuildSettings(), Padding = new Thickness(10, 10, 6, 10) };
+        // Ganz oben nach unten ziehen: SwarmUI liest die Modell-Ordner neu ein, danach Modelle, LoRAs usw. neu laden.
+        _settingsView = new RefreshView { RefreshColor = Ui.Accent, Content = new ScrollView { Content = BuildSettings(), Padding = new Thickness(10, 10, 6, 10) } };
+        _settingsView.Refreshing += async (_, _) => { try { await RefreshServerAsync(); } finally { _settingsView.IsRefreshing = false; } };
         _resultsView = BuildResults();
         Content = _root;
         ShowSettings();
@@ -388,6 +390,17 @@ public sealed class MainPage : ContentPage
     }
 
     // ------------------------------------------------------------------ Verbindung, Auswahl
+
+    private async Task RefreshServerAsync()
+    {
+        if (_client != null)
+        {
+            _server.Text = "SwarmUI liest Modelle neu ein …";
+            try { await _client.TriggerRefreshAsync(); } catch (Exception ex) { _status.Text = "Neu einlesen fehlgeschlagen: " + ex.Message; }
+        }
+        await ConnectAsync();
+        _status.Text = _server.Text;
+    }
 
     private async Task ConnectAsync()
     {
