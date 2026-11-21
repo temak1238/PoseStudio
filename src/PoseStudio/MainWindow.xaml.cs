@@ -907,6 +907,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         SceneFactory.RenderControl(_figures, _cam, regions ? SceneFactory.ControlMode.Regions : SceneFactory.ControlMode.Pose3D, w, h);
 
     void PoseStudio.Swarm.ISwarmScene.UseAsReference(string path) => LoadReferenceImage(path);
+    string? PoseStudio.Swarm.ISwarmScene.ReferenceImagePath => _refPaths.TryGetValue(_figure, out var p) && File.Exists(p) ? p : null;
 
     private FigureStyle CurrentStyle => FigureStyleCombo.SelectedIndex >= 0 ? Styles[FigureStyleCombo.SelectedIndex].Style : FigureStyle.Mannequin;
 
@@ -1469,6 +1470,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             w1.AddResultForTest(img, "Testbild", 4242, new System.Text.Json.Nodes.JsonObject { ["prompt"] = "x", ["seed"] = 4242 });
             var w2 = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
             sb.AppendLine($"Ergebnisse nach neuem Öffnen: {w2.ResultCount}, erstes: {w2.FirstResult}");
+            string cnImg = Path.Combine(tdir, "steuerbild.png");
+            SceneFactory.SavePng(SceneFactory.Render(_figures, _cam, new SceneOptions(), 300, 150), cnImg);
+            sb.AppendLine("ControlNet aus Bild: " + w2.TestControlImage(cnImg));
             sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");
             string? tab = ExportTabletTemplate(tdir, "20260101_120000");
             sb.AppendLine($"Tablet-Vorlage: {(tab == null ? "FEHLER" : Path.GetFileName(tab) + " → " + string.Join(", ", Directory.GetFiles(tab).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length / 1024} KB")))}");

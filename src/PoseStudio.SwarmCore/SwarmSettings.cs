@@ -43,6 +43,8 @@ public sealed class SwarmSettings
     public double ControlStart { get; set; }
     public double ControlEnd { get; set; } = 1.0;
     // ControlNet mit eigenem Bild: SwarmUI erzeugt das Steuerbild per Preprocessor (Linien, Skizze, Tiefe, Pose)
+    /// <summary>Pose Studio (PC): ControlNet-Bild aus einem Bild (Referenzfoto/Datei) statt aus der Szene; Art = ImageControlKind.</summary>
+    public bool ControlFromImage { get; set; }
     public bool ImageUseControlNet { get; set; }
     public int ImageControlKind { get; set; }
     public string ImageControlModel { get; set; } = "";

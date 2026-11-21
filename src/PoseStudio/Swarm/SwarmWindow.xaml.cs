@@ -21,6 +21,8 @@ public interface ISwarmScene
     BitmapSource RenderInit(int w, int h, int look);
     BitmapSource RenderControl(int w, int h, bool regions);
     void UseAsReference(string path);
+    /// <summary>Referenzfoto der aktiven Figur (Pfad) oder null.</summary>
+    string? ReferenceImagePath { get; }
     /// <summary>Export-Ordner des Hauptfensters (SwarmUI-Ergebnisse landen im Unterordner „SwarmUI“).</summary>
     string ExportFolder { get; }
 }
@@ -102,13 +104,16 @@ public partial class SwarmWindow : Window
         OutputFolder = OutputOverride ?? FolderFor(scene.ExportFolder);
         LookCombo.ItemsSource = LookNames;
         SideCombo.ItemsSource = new[] { "1024", "1152", "1280", "1408", "1536" };
-        CnKindCombo.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" };
+        CnKindCombo.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" }.Concat(SwarmSettings.ImageControlKinds.Select(k => "Bild: " + k.Name)).ToList();
         LoraSelected.ItemsSource = _selectedLoras;
         ResultList.ItemsSource = _results;
         LoadResults();
         ShowSettings();
         RefreshProfiles();
         Loaded += async (_, _) => await ConnectAsync();
+        // erst nach ShowSettings anhängen (sonst feuert der Handler beim Füllen)
+        CnKindCombo.SelectionChanged += CnKind_Changed;
+        Activated += (_, _) => ShowCnImage();
         Closing += (_, _) => { ReadUi(); _cts?.Cancel(); };
     }
 
@@ -137,7 +142,8 @@ public partial class SwarmWindow : Window
         SchedulerCombo.Text = _s.Scheduler;
         VaeCombo.Text = _s.Vae;
         CnCheck.IsChecked = _s.UseControlNet;
-        CnKindCombo.SelectedIndex = _s.ControlRegions ? 1 : 0;
+        CnKindCombo.SelectedIndex = _s.ControlFromImage ? 2 + Math.Clamp(_s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1) : _s.ControlRegions ? 1 : 0;
+        ShowCnImage();
         CnModelCombo.Text = _s.ControlModel;
         CnStrengthBox.Text = F(_s.ControlStrength); CnStartBox.Text = F(_s.ControlStart); CnEndBox.Text = F(_s.ControlEnd);
         RefControlBox.Text = F(_s.RefinerControl); RefUpscaleBox.Text = F(_s.RefinerUpscale);
@@ -170,7 +176,10 @@ public partial class SwarmWindow : Window
         _s.Cfg = Math.Max(0, PD(CfgBox.Text, 0));
         _s.Sampler = SamplerCombo.Text.Trim(); _s.Scheduler = SchedulerCombo.Text.Trim(); _s.Vae = VaeCombo.Text.Trim();
         _s.UseControlNet = CnCheck.IsChecked == true;
-        _s.ControlRegions = CnKindCombo.SelectedIndex == 1;
+        int cnKind = Math.Max(0, CnKindCombo.SelectedIndex);
+        _s.ControlRegions = cnKind == 1;
+        _s.ControlFromImage = cnKind >= 2;
+        if (cnKind >= 2) _s.ImageControlKind = cnKind - 2;
         _s.ControlModel = CnModelCombo.Text.Trim();
         _s.ControlStrength = PD(CnStrengthBox.Text, 1); _s.ControlStart = PD(CnStartBox.Text, 0); _s.ControlEnd = PD(CnEndBox.Text, 1);
         _s.RefinerControl = PD(RefControlBox.Text, 0.1); _s.RefinerUpscale = PD(RefUpscaleBox.Text, 2);
@@ -400,17 +409,102 @@ public partial class SwarmWindow : Window
         ReadUi();
         if (_client == null || !_client.BaseUrl.Equals(new SwarmClient(_s.Url).BaseUrl, StringComparison.OrdinalIgnoreCase)) await ConnectAsync();
         if (_client == null) return;
-        var (w, h) = _s.SizeFor(_scene.PreviewAspect);
-        JsonObject p;
+        JsonObject p; string what;
         try
         {
             if (!_s.UseInitImage && !_s.UseControlNet) StatusText.Text = "Hinweis: weder Init Image noch ControlNet – die Pose aus Pose Studio wird nicht verwendet.";
-            string init = _s.UseInitImage ? ToDataUrl(_scene.RenderInit(w, h, _s.Look)) : "";
-            string? cn = _s.UseControlNet ? ToDataUrl(_scene.RenderControl(w, h, _s.ControlRegions)) : null;
-            p = _s.BuildParams(init, w, h, cn, LoraTriggers());
+            (p, what) = BuildGenerateParams();
         }
-        catch (Exception ex) { StatusText.Text = "Rendern fehlgeschlagen: " + ex.Message; return; }
-        await RunAsync(p, _s.Count, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" : "ohne Init Image") + (_s.UseControlNet ? $", ControlNet {F(_s.ControlStrength)}" : ""));
+        catch (Exception ex) { StatusText.Text = "Vorbereiten fehlgeschlagen: " + ex.Message; return; }
+        await RunAsync(p, _s.Count, what);
+    }
+
+    /// <summary>Auftrag aus den aktuellen Einstellungen: Init Image aus der Szene, ControlNet aus der Szene oder aus einem Bild (mit Preprocessor).</summary>
+    private (JsonObject P, string What) BuildGenerateParams()
+    {
+        string? cnPath = null;
+        byte[]? cnBytes = null;
+        if (_s.UseControlNet && _s.ControlFromImage)
+        {
+            cnPath = CnImagePath() ?? throw new InvalidOperationException("Kein Steuerbild: im Hauptfenster ein Referenzfoto laden oder im ControlNet-Bereich „Bild wählen…“.");
+            cnBytes = File.ReadAllBytes(cnPath);
+        }
+        // Ohne Init Image bestimmt das Steuerbild das Seitenverhältnis (sonst würde es verzerrt)
+        double aspect = _scene.PreviewAspect;
+        if (cnBytes != null && !_s.UseInitImage)
+        {
+            using var ms = new MemoryStream(cnBytes);
+            var fr = BitmapDecoder.Create(ms, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0];
+            if (fr.PixelWidth > 0 && fr.PixelHeight > 0) aspect = (double)fr.PixelWidth / fr.PixelHeight;
+        }
+        var (w, h) = _s.SizeFor(aspect);
+        string init = _s.UseInitImage ? ToDataUrl(_scene.RenderInit(w, h, _s.Look)) : "";
+        string? cn = null;
+        var kind = SwarmSettings.ImageControlKinds[Math.Clamp(_s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)];
+        if (_s.UseControlNet)
+            cn = cnBytes != null ? BytesToDataUrl(cnBytes) : ToDataUrl(_scene.RenderControl(w, h, _s.ControlRegions));
+        _s.ControlPreprocessor = cnBytes != null ? kind.Preprocessor : null;
+        try
+        {
+            var p = _s.BuildParams(init, w, h, cn, LoraTriggers());
+            string cnText = !_s.UseControlNet ? "" : cnBytes != null ? $", {kind.Name.Split(' ')[0]} aus {Path.GetFileName(cnPath)} {F(_s.ControlStrength)}" : $", ControlNet {F(_s.ControlStrength)}";
+            return (p, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" : "ohne Init Image") + cnText);
+        }
+        finally { _s.ControlPreprocessor = null; }
+    }
+
+    private static string BytesToDataUrl(byte[] data) =>
+        (data.Length > 3 && data[0] == 0xFF && data[1] == 0xD8 ? "data:image/jpeg;base64," : data.Length > 3 && data[0] == 'R' && data[1] == 'I' ? "data:image/webp;base64," : "data:image/png;base64,")
+        + Convert.ToBase64String(data);
+
+    // ------------------------------------------------------------------ ControlNet aus einem Bild
+
+    private string? _cnImagePath;   // null = Referenzfoto der aktiven Figur
+
+    private string? CnImagePath() => _cnImagePath != null && File.Exists(_cnImagePath) ? _cnImagePath : _scene.ReferenceImagePath;
+
+    private void ShowCnImage()
+    {
+        bool fromImage = CnKindCombo.SelectedIndex >= 2;
+        CnImagePanel.Visibility = fromImage ? Visibility.Visible : Visibility.Collapsed;
+        if (!fromImage) return;
+        string? path = CnImagePath();
+        CnImageText.Text = path == null ? "Steuerbild: keins – im Hauptfenster ein Referenzfoto laden oder „Bild wählen…“."
+            : _cnImagePath != null && File.Exists(_cnImagePath) ? $"Steuerbild: {Path.GetFileName(path)}"
+            : $"Steuerbild: Referenzfoto der aktiven Figur ({Path.GetFileName(path)})";
+    }
+
+    private void CnKind_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        int k = CnKindCombo.SelectedIndex;
+        var models = (CnModelCombo.ItemsSource as IEnumerable<string>)?.ToList() ?? new List<string>();
+        // passendes Modell vorschlagen: Bild-Arten → LLLite nach Art, Szene → anima_3dpose
+        string? suggest = k >= 2 ? SwarmSettings.SuggestImageControlModel(k - 2, models)
+            : k == 0 ? models.FirstOrDefault(m => m.Contains("3dpose", StringComparison.OrdinalIgnoreCase)) : null;
+        if (suggest != null) CnModelCombo.Text = suggest;
+        ShowCnImage();
+    }
+
+    private void CnPickImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Bilder|*.png;*.jpg;*.jpeg;*.webp;*.bmp|Alle Dateien|*.*", Title = "Steuerbild für ControlNet" };
+        if (dlg.ShowDialog(this) == true) { _cnImagePath = dlg.FileName; ShowCnImage(); }
+    }
+
+    private void CnUseReference_Click(object sender, RoutedEventArgs e) { _cnImagePath = null; ShowCnImage(); }
+
+    /// <summary>Testmodus: Parameter für ControlNet aus einem Bild (ohne Server).</summary>
+    internal string TestControlImage(string imagePath)
+    {
+        _cnImagePath = imagePath;
+        bool cn = _s.UseControlNet, fromImg = _s.ControlFromImage, init = _s.UseInitImage; int kind = _s.ImageControlKind; string model = _s.ControlModel;
+        try
+        {
+            _s.UseControlNet = true; _s.ControlFromImage = true; _s.UseInitImage = false; _s.ImageControlKind = 0; _s.ControlModel = "anima-lllite-any-test-like-v2.safetensors";
+            var (p, what) = BuildGenerateParams();
+            return $"Preprocessor {p["controlnetpreprocessor"]}, Modell {p["controlnetmodel"]}, Steuerbild {p.ContainsKey("controlnetimageinput")}, initimage {p.ContainsKey("initimage")}, Größe {p["width"]}×{p["height"]} | {what}";
+        }
+        finally { _s.UseControlNet = cn; _s.ControlFromImage = fromImg; _s.UseInitImage = init; _s.ImageControlKind = kind; _s.ControlModel = model; _cnImagePath = null; }
     }
 
     private async void Refine_Click(object sender, RoutedEventArgs e)

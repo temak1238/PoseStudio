@@ -188,7 +188,7 @@
 
                     <Expander Header="ControlNet (optional)" Margin="0,4">
                         <StackPanel Margin="6,2">
-                            <CheckBox x:Name="CnCheck" Content="ControlNet-Bild aus Pose Studio mitschicken" />
+                            <CheckBox x:Name="CnCheck" Content="ControlNet mitschicken" />
                             <DockPanel Margin="0,2">
                                 <TextBlock Text="Bild" Style="{StaticResource Lbl}" />
                                 <ComboBox x:Name="CnKindCombo" />
@@ -197,6 +197,15 @@
                                 <TextBlock Text="Modell" Style="{StaticResource Lbl}" />
                                 <ComboBox x:Name="CnModelCombo" IsEditable="True" />
                             </DockPanel>
+                            <StackPanel x:Name="CnImagePanel" Visibility="Collapsed" Margin="0,2">
+                                <TextBlock x:Name="CnImageText" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <Button Content="Bild wählen…" Click="CnPickImage_Click" Padding="6,1" />
+                                    <Button Content="Referenzfoto nehmen" Click="CnUseReference_Click" Padding="6,1" Margin="4,0,0,0" />
+                                </StackPanel>
+                                <TextBlock Foreground="#666" TextWrapping="Wrap" Margin="0,2,0,0"
+                                           Text="„Bild: …“-Arten: SwarmUI macht aus dem Bild zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich an dessen Aufbau. Modelle für Anima: anima-lllite-any-test-like-v2 (Linien/Skizze), anima-lllite-depth-1 (Tiefe). Ohne Init Image gilt das Seitenverhältnis des Steuerbilds." />
+                            </StackPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Stärke / Start / Ende" Style="{StaticResource Lbl}" Width="120" />
                                 <TextBox x:Name="CnStrengthBox" Width="44" />

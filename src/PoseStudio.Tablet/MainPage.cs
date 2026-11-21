@@ -61,6 +61,7 @@ public sealed class MainPage : ContentPage
     private readonly Label _baseText = new() { TextColor = Ui.Muted, FontSize = 12 };
     private readonly Button _generate = new() { Text = "Generieren", FontSize = 18, FontAttributes = FontAttributes.Bold, BackgroundColor = Ui.Accent, TextColor = Colors.White, HeightRequest = 56 };
     private readonly Button _cancel = new() { Text = "Abbrechen", IsEnabled = false, BackgroundColor = Ui.PanelLight, TextColor = Colors.White, HeightRequest = 56 };
+    private readonly Button _clearQueue = new() { IsVisible = false, BackgroundColor = Ui.PanelLight, TextColor = Colors.White, HeightRequest = 56, FontSize = 13 };
     private readonly ProgressBar _progress = new() { ProgressColor = Ui.Accent };
     private readonly Label _status = new() { TextColor = Ui.Muted, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
     private readonly CollectionView _resultList = new() { SelectionMode = SelectionMode.None };
@@ -192,9 +193,11 @@ public sealed class MainPage : ContentPage
     private Grid BuildResults()
     {
         _generate.Clicked += async (_, _) => await GenerateAsync();
-        _cancel.Clicked += async (_, _) => { if (_client != null) await _client.InterruptAsync(); _cts?.Cancel(); };
-        var top = new Grid { ColumnDefinitions = { new(GridLength.Star), new(new GridLength(140)) }, ColumnSpacing = 8 };
-        top.Add(_generate, 0); top.Add(_cancel, 1);
+        // Abbrechen: nur den laufenden Auftrag; die Warteschlange läuft danach weiter
+        _cancel.Clicked += async (_, _) => { if (_running == null) return; _cts?.Cancel(); if (_client != null) try { await _client.InterruptAsync(); } catch { } };
+        _clearQueue.Clicked += (_, _) => ClearQueue();
+        var top = new Grid { ColumnDefinitions = { new(GridLength.Star), new(new GridLength(140)), new(GridLength.Auto) }, ColumnSpacing = 8 };
+        top.Add(_generate, 0); top.Add(_cancel, 1); top.Add(_clearQueue, 2);
 
         _resultList.ItemsSource = _results;
         _resultList.ItemTemplate = new DataTemplate(() =>
@@ -457,7 +460,7 @@ public sealed class MainPage : ContentPage
     private async Task ConnectAsync()
     {
         ReadUi();
-        _client?.Dispose();
+        if (_running == null) _client?.Dispose();   // laufender Auftrag behält seine Verbindung
         _client = new SwarmClient(S.Url);
         _server.Text = "Verbinde …";
         try
@@ -733,23 +736,72 @@ public sealed class MainPage : ContentPage
         await RunAsync(S.BuildRefine(item.Sent, item.Seed), 1, $"Nachgebessert (Seed {item.Seed}, ×{Ui.F(S.RefinerUpscale)}, Refiner {Ui.F(S.RefinerControl * 100)} %)");
     }
 
-    private async Task RunAsync(JsonObject p, int count, string what)
+    // ------------------------------------------------------------------ Warteschlange
+
+    /// <summary>Ein Auftrag: Parameter (Seed schon gewürfelt), Platzhalter-Kacheln in der Ergebnisliste.</summary>
+    private sealed record Job(JsonObject P, int Count, string What, long BaseSeed, List<ResultItem> Pending);
+    private readonly Queue<Job> _queue = new();
+    private Job? _running;
+
+    /// <summary>Auftrag einreihen – „Generieren“ bleibt bedienbar, die Aufträge laufen nacheinander.</summary>
+    private Task RunAsync(JsonObject p, int count, string what)
     {
         // Zufallsseed selbst würfeln: so ist der Seed jedes Bildes bekannt (Nachbessern braucht ihn)
         if ((p["seed"]?.GetValue<long>() ?? -1) < 0) p["seed"] = (long)Random.Shared.Next(1, int.MaxValue);
-        long baseSeed = p["seed"]!.GetValue<long>();
-        _cts = new CancellationTokenSource();
-        _generate.IsEnabled = false; _cancel.IsEnabled = true;
         var pending = new List<ResultItem>();
-        for (int i = 0; i < count; i++) { var it = new ResultItem { Caption = "Warte auf SwarmUI …" }; pending.Add(it); _results.Insert(i, it); }
+        for (int i = 0; i < count; i++) { var it = new ResultItem { Caption = "In der Warteschlange: " + what }; pending.Add(it); _results.Insert(i, it); }
         _resultList.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
+        _queue.Enqueue(new Job(p, count, what, p["seed"]!.GetValue<long>(), pending));
+        if (_running == null) _ = PumpAsync();
+        else _status.Text = $"Eingereiht: {what}";
+        UpdateQueueUi();
+        return Task.CompletedTask;
+    }
+
+    private async Task PumpAsync()
+    {
+        while (_queue.TryDequeue(out var job))
+        {
+            _running = job;
+            UpdateQueueUi();
+            try { await ExecuteAsync(job); }
+            finally { _running = null; }
+        }
+        UpdateQueueUi();
+    }
+
+    private void UpdateQueueUi()
+    {
+        int waiting = _queue.Count;
+        _cancel.IsEnabled = _running != null;
+        _clearQueue.IsVisible = waiting > 0;
+        _clearQueue.Text = $"Warteschlange leeren ({waiting})";
+        _generate.Text = _running == null ? "Generieren" : waiting > 0 ? $"Einreihen ({waiting} warten)" : "Einreihen";
+    }
+
+    private void ClearQueue()
+    {
+        while (_queue.TryDequeue(out var job))
+            foreach (var it in job.Pending) _results.Remove(it);
+        _status.Text = "Warteschlange geleert." + (_running != null ? " Der laufende Auftrag läuft weiter." : "");
+        UpdateQueueUi();
+    }
+
+    private async Task ExecuteAsync(Job job)
+    {
+        var (p, _, what, baseSeed, pending) = job;
+        var client = _client;
+        if (client == null) { foreach (var it in pending) _results.Remove(it); _status.Text = "Keine Verbindung zu SwarmUI."; return; }
+        _cts = new CancellationTokenSource();
+        foreach (var it in pending) it.Caption = "Warte auf SwarmUI …";
         _progress.Progress = 0;
-        _status.Text = "Generiere: " + what;
+        string Queued() => _queue.Count > 0 ? $" · {_queue.Count} in der Warteschlange" : "";
+        _status.Text = "Generiere: " + what + Queued();
         var sw = Stopwatch.StartNew();
         var progress = new Progress<SwarmProgress>(pr =>
         {
             _progress.Progress = pr.Overall;
-            if (pr.Status != null) _status.Text = pr.Status;
+            if (pr.Status != null) _status.Text = pr.Status + Queued();
             if (pr.PreviewDataUrl != null && pending.FirstOrDefault(x => !x.Done) is { } first)
             {
                 try { first.Image = Ui.Web(pr.PreviewDataUrl); first.Caption = $"läuft … {pr.Overall:P0}"; } catch { }
@@ -757,18 +809,25 @@ public sealed class MainPage : ContentPage
         });
         try
         {
-            var res = await _client!.GenerateAsync(p, progress, _cts.Token);
+            var res = await client.GenerateAsync(p, progress, _cts.Token);
             string folder = AndroidStore.ResultsFolder;
             for (int i = 0; i < res.Count; i++)
             {
-                var item = i < pending.Count ? pending[i] : new ResultItem();
-                if (i >= pending.Count) _results.Insert(i, item);
-                var bytes = await _client.DownloadAsync(res[i].Path);
+                ResultItem item;
+                if (i < pending.Count) item = pending[i];
+                else
+                {
+                    item = new ResultItem();
+                    int at = pending.Count > 0 && _results.IndexOf(pending[^1]) is >= 0 and var last ? last + 1 : 0;
+                    _results.Insert(Math.Min(at, _results.Count), item);
+                    pending.Add(item);
+                }
+                var bytes = await client.DownloadAsync(res[i].Path);
                 item.LocalPath = Path.Combine(folder, $"swarm_{DateTime.Now:yyyyMMdd_HHmmss}_{i}{ResultStore.ExtensionOf(res[i].Path)}");
                 await File.WriteAllBytesAsync(item.LocalPath, bytes);
                 item.Image = ImageSource.FromFile(item.LocalPath);
                 long? known = ResultStore.SeedFrom(res[i].Metadata);
-                if (known is null or < 0) known = await _client.LookupSeedAsync(res[i].Path);
+                if (known is null or < 0) known = await client.LookupSeedAsync(res[i].Path);
                 item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
                 item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
@@ -777,21 +836,21 @@ public sealed class MainPage : ContentPage
             }
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
             SaveIndex();
-            _status.Text = $"Fertig: {res.Count} Bild(er) in {sw.Elapsed.TotalSeconds:F0} s – auch in der SwarmUI-Historie.";
+            _status.Text = $"Fertig: {res.Count} Bild(er) in {sw.Elapsed.TotalSeconds:F0} s – auch in der SwarmUI-Historie." + Queued();
         }
         catch (OperationCanceledException)
         {
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
-            _status.Text = "Abgebrochen.";
+            _status.Text = "Abgebrochen." + Queued();
         }
         catch (Exception ex)
         {
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
-            _status.Text = "Fehler: " + ex.Message;
+            _status.Text = "Fehler: " + ex.Message + Queued();
         }
         finally
         {
-            _generate.IsEnabled = true; _cancel.IsEnabled = false; _progress.Progress = 0;
+            _progress.Progress = 0;
         }
     }
 
@@ -927,15 +986,15 @@ public sealed class MainPage : ContentPage
 
     private async Task ClearResultsAsync()
     {
-        if (_results.Count == 0) return;
+        int done = _results.Count(r => r.Done);
+        if (done == 0) return;
         bool mirrored = _t.ResultFolder != null && ResultMirror.HasAccess(_t.ResultFolder);
         string where = mirrored ? $"Die Bilder bleiben im Ergebnis-Ordner ({ResultMirror.SubFolder}) und in der SwarmUI-Historie." : "Die Bilder bleiben in der SwarmUI-Historie. Die lokalen Kopien auf dem Tablet werden gelöscht.";
-        if (!await DisplayAlertAsync("Liste leeren", $"Alle {_results.Count} Ergebnisse aus der Liste entfernen?\n\n{where}", "Leeren", "Abbrechen")) return;
+        if (!await DisplayAlertAsync("Liste leeren", $"Alle {done} fertigen Ergebnisse aus der Liste entfernen? Laufende und wartende Aufträge bleiben.\n\n{where}", "Leeren", "Abbrechen")) return;
         if (mirrored) await _syncLock.WaitAsync();   // laufenden Upload abwarten, bevor die lokalen Kopien verschwinden
         try
         {
-            foreach (var r in _results.Where(r => r.LocalPath != null).ToList()) DeleteLocal(r);
-            _results.Clear();
+            foreach (var r in _results.Where(r => r.Done).ToList()) { if (r.LocalPath != null) DeleteLocal(r); _results.Remove(r); }
             ResultStore.SaveIndex(AndroidStore.ResultsFolder, Array.Empty<string>());
         }
         finally { if (mirrored) _syncLock.Release(); }
