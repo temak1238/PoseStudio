@@ -37,6 +37,12 @@ public sealed class SwarmResultItem : INotifyPropertyChanged
     public string? LocalPath { get; set; }
     public JsonObject? Sent { get; set; }
     public long Seed { get; set; } = -1;
+    private string? _serverPath; private bool _starred;
+    /// <summary>Pfad in SwarmUI (für den Stern); fehlt bei Ergebnissen vor 0.22.11.</summary>
+    public string? ServerPath { get => _serverPath; set { _serverPath = value; Changed(nameof(CanStar)); } }
+    public bool Starred { get => _starred; set { _starred = value; Changed(nameof(Starred)); Changed(nameof(StarText)); } }
+    public bool CanStar => ServerPath != null;
+    public string StarText => Starred ? "★ Stern" : "☆ Stern";
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Changed(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 }
@@ -86,11 +92,11 @@ public partial class SwarmWindow : Window
     /// <summary>Nur für Tests: fertiges Ergebnis hinzufügen (wie nach einer Generierung).</summary>
     internal void AddResultForTest(string path, string caption, long seed, JsonObject sent)
     {
-        var item = new SwarmResultItem { LocalPath = path, Caption = caption, Seed = seed, Sent = sent, Done = true, Image = ThumbCache.Decode(File.ReadAllBytes(path), 200) };
+        var item = new SwarmResultItem { LocalPath = path, Caption = caption, Seed = seed, Sent = sent, ServerPath = "View/local/raw/test.png", Starred = true, Done = true, Image = ThumbCache.Decode(File.ReadAllBytes(path), 200) };
         _results.Insert(0, item); SaveResult(item); SaveResultIndex();
     }
     internal int ResultCount => _results.Count;
-    internal (string Caption, long Seed, bool HasSent) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null);
+    internal (string Caption, long Seed, bool HasSent, string? Server, bool Starred) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null, _results[0].ServerPath, _results[0].Starred);
 
     public SwarmWindow(SwarmSettings settings, ISwarmScene scene)
     {
@@ -239,6 +245,7 @@ public partial class SwarmWindow : Window
             LoraFolderCombo.SelectedIndex = 0;
             FillLoraList();
             ShowModel();
+            _ = SyncStarsAsync();
         }
         catch (Exception ex)
         {
@@ -556,6 +563,7 @@ public partial class SwarmWindow : Window
                 item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
                 item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
+                item.ServerPath = res[i].Path;
                 item.Done = true;
                 SaveResult(item);
             }
@@ -589,7 +597,7 @@ public partial class SwarmWindow : Window
 
     private static void SaveResult(SwarmResultItem item)
     {
-        if (item.LocalPath != null) ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent);
+        if (item.LocalPath != null) ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent, item.ServerPath, item.Starred);
     }
 
     /// <summary>Reihenfolge der Liste speichern (nur fertige Bilder).</summary>
@@ -604,7 +612,7 @@ public partial class SwarmWindow : Window
             {
                 _results.Add(new SwarmResultItem
                 {
-                    LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, Done = true,
+                    LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, ServerPath = r.ServerPath, Starred = r.Starred, Done = true,
                     Image = ThumbCache.Decode(File.ReadAllBytes(r.Path), 600)
                 });
             }
@@ -613,6 +621,38 @@ public partial class SwarmWindow : Window
     }
 
     // ------------------------------------------------------------------ Ergebnis-Aktionen
+
+    private async void Star_Click(object sender, RoutedEventArgs e)
+    {
+        if (((Button)sender).Tag is not SwarmResultItem { ServerPath: { } sp } item) { StatusText.Text = "Für dieses Bild ist der Pfad in SwarmUI unbekannt (vor 0.22.11 erzeugt)."; return; }
+        if (_client == null) await ConnectAsync();
+        if (_client == null) return;
+        try
+        {
+            item.Starred = await _client.ToggleStarAsync(sp);
+            SaveResult(item);
+            StatusText.Text = item.Starred ? "Stern gesetzt – in SwarmUI unter „Starred“." : "Stern entfernt.";
+        }
+        catch (Exception ex) { StatusText.Text = "Stern nicht gesetzt: " + ex.Message; }
+    }
+
+    /// <summary>Sterne aus SwarmUI übernehmen (auch dort gesetzte oder entfernte).</summary>
+    private async Task SyncStarsAsync()
+    {
+        if (_client == null) return;
+        try
+        {
+            var starred = await _client.ListStarredAsync();
+            foreach (var r in _results.Where(x => x.Done && x.ServerPath != null))
+            {
+                bool s = starred.Contains(_client.RelativePath(r.ServerPath!));
+                if (s == r.Starred) continue;
+                r.Starred = s;
+                SaveResult(r);
+            }
+        }
+        catch { }
+    }
 
     private void ResultImage_Click(object sender, MouseButtonEventArgs e)
     {

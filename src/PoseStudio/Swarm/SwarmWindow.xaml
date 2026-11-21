@@ -272,6 +272,7 @@
                                     <WrapPanel IsEnabled="{Binding Done}">
                                         <Button Content="Nachbessern" Margin="0,0,4,2" Click="Refine_Click" Tag="{Binding}" ToolTip="Gleiches Bild mit Refiner und Hochskalierung" />
                                         <Button Content="Seed übernehmen" Margin="0,0,4,2" Click="UseSeed_Click" Tag="{Binding}" />
+                                        <Button Content="{Binding StarText}" IsEnabled="{Binding CanStar}" Margin="0,0,4,2" Click="Star_Click" Tag="{Binding}" Foreground="#B8860B" ToolTip="Stern in SwarmUI setzen/entfernen – SwarmUI legt das Bild dann zusätzlich unter „Starred“ ab" />
                                         <Button Content="Als Referenzbild" Margin="0,0,4,2" Click="UseAsReference_Click" Tag="{Binding}" ToolTip="Im Hauptfenster als Referenzfoto der aktiven Figur einblenden" />
                                         <Button Content="Ordner" Margin="0,0,4,2" Click="OpenFile_Click" Tag="{Binding}" ToolTip="Lokale Kopie im Explorer zeigen" />
                                     </WrapPanel>
