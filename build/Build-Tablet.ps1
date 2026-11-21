@@ -6,8 +6,8 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $proj = Join-Path $root 'src\PoseStudio.Tablet\PoseStudio.Tablet.csproj'
-[xml]$csproj = Get-Content $proj
-$version = ($csproj.Project.PropertyGroup | Where-Object { $_.ApplicationDisplayVersion } | Select-Object -First 1).ApplicationDisplayVersion
+[xml]$props = Get-Content (Join-Path $root 'Directory.Build.props')
+$version = $props.Project.PropertyGroup.Version   # gleiche Version wie das Windows-Programm
 $out = Join-Path $root "publish\tablet-$version"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 

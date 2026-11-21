@@ -2,7 +2,10 @@
 .SYNOPSIS
     Baut Pose Studio als einzelne, eigenständige EXE (kein .NET auf dem Zielrechner nötig)
     und packt sie als ZIP nach publish\.
+.PARAMETER Public
+    Ohne die optionalen RTMW3D-/YOLOX-Modelle (Lizenz: nur nicht-kommerziell, ~470 MB) – für das GitHub-Release.
 #>
+param([switch]$Public)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $proj = Join-Path $root 'src\PoseStudio\PoseStudio.csproj'
@@ -22,6 +25,7 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish fehlgeschlagen" }
 
 Get-ChildItem $out -Filter *.pdb | Remove-Item -Force
 Get-ChildItem $out -Filter *.lib | Remove-Item -Force   # Import-Bibliotheken aus ONNX Runtime, zur Laufzeit nicht nötig
+if ($Public) { Get-ChildItem (Join-Path $out 'Models') -Include 'rtmw3d*.onnx', 'yolox*.onnx' -Recurse | Remove-Item -Force }
 Copy-Item (Join-Path $root 'README.md') $out
 $zip = Join-Path $root "publish\PoseStudio-$version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }

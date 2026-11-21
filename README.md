@@ -2,8 +2,18 @@
 
 Windows-App zum Posieren einer 3D-Gliederpuppe und zum Export als JPG, z. B. als Posen-Vorlage für KI-Bildgenerierung (ControlNet, Image-to-Image, Referenzbilder).
 
-## Start
-`PoseStudio.exe` starten – keine Installation, kein .NET nötig.
+## Download und Start
+Fertige Pakete unter [Releases](https://github.com/temak1238/PoseStudio/releases/latest):
+- `PoseStudio-<Version>-win-x64.zip` – entpacken, `PoseStudio.exe` starten (keine Installation, kein .NET nötig).
+- `PoseStudioSwarm-<Version>.apk` – Tablet-App (Android 8+), siehe unten.
+
+**Tablet-App per Obtainium aktuell halten:** In [Obtainium](https://github.com/ImranR98/Obtainium) „App hinzufügen“ → Quelle `https://github.com/temak1238/PoseStudio` eintragen. Obtainium nimmt die APK aus dem neuesten Release und meldet neue Versionen. Windows-Programm und App tragen dieselbe Versionsnummer und erscheinen im selben Release.
+
+**Optionale Modelle für „Pose aus Foto“:** Das Paket enthält nur MediaPipe (Apache 2.0) – damit funktioniert „Pose übernehmen“ vollständig. Genauer bei Händen und Fingern ist RTMW3D; die beiden Dateien sind wegen ihrer Lizenz (Gewichte nur für nicht-kommerzielle bzw. Forschungsnutzung) und Größe (~470 MB) nicht enthalten. Wer sie nutzen möchte, lädt sie selbst und legt sie in den Ordner `Models` neben `PoseStudio.exe`:
+- `rtmw3d-x.onnx` – von [huggingface.co/Soykaf/RTMW3D-x](https://huggingface.co/Soykaf/RTMW3D-x) die Datei `rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx`, umbenannt
+- `yolox-m-humanart.onnx` – aus [yolox_m_8xb8-300e_humanart-c2c7a14a.zip](https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip) die Datei `end2end.onnx`, umbenannt
+
+Nach einem Neustart sind „Körper aus: RTMW3D“ und „Finger erkennen“ verfügbar. Details: `Models\README-Modelle.txt`.
 
 ## Bedienung
 **Ansicht (Mitte)** – der Rahmen entspricht exakt dem späteren Bildausschnitt.
@@ -74,6 +84,10 @@ Generiert über SwarmUI vom Tablet aus (`publish\PoseStudioSwarm-<Version>.apk`,
 - .NET 10, WPF; einziges Paket: Microsoft.ML.OnnxRuntime (MIT) für die Posenerkennung. Modelle in `src/PoseStudio/Models` (siehe README-Modelle.txt)
 - Paket bauen: `build\Build-Package.ps1` (vorher Version in `Directory.Build.props` hochzählen)
 - Projekte: `src/PoseStudio` (WPF), `src/PoseStudio.SwarmCore` (SwarmUI-Client, Einstellungen, Ergebnisliste – gemeinsam), `src/PoseStudio.Tablet` (.NET MAUI, nur Android)
-- Tablet-APK bauen: `build\Build-Tablet.ps1` (Version: `ApplicationDisplayVersion`/`ApplicationVersion` im csproj hochzählen; braucht Workload `maui-android`, Android SDK unter `C:\Android\Sdk`, JDK 17; signiert immer mit demselben Schlüssel, damit Updates über die alte Version installierbar sind)
+- Tablet-APK bauen: `build\Build-Tablet.ps1` (Version kommt aus `Directory.Build.props`, wie beim Windows-Programm; braucht Workload `maui-android`, Android SDK unter `C:\Android\Sdk`, JDK 17; signiert immer mit demselben Schlüssel, damit Updates über die alte Version installierbar sind)
+- Release auf GitHub: `build\Publish-GitHub.ps1` – baut Windows-Paket (ohne die optionalen RTMW3D-Modelle) und APK, pusht und legt das Release `v<Version>` mit beiden Dateien an (braucht `gh`, angemeldet)
 - Selbsttest: `PoseStudio.exe --selftest <Ordner>` rendert alle Figurenstile und Vorlagen als Kontaktbogen (braucht eine Sitzung mit aktivem Display)
 - Planung Hintergründe: `docs/Plan-Hintergrund-Generierung.md`
+
+## Lizenz
+MIT, siehe `LICENSE`. Modelle und Bibliotheken von Dritten stehen unter ihren eigenen Lizenzen (dort aufgeführt).

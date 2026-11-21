@@ -31,8 +31,9 @@
 		<ApplicationId>de.posestudio.swarm</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>0.2.2</ApplicationDisplayVersion>
-		<ApplicationVersion>4</ApplicationVersion>
+		<!-- Gleiche Version wie das Windows-Programm (Directory.Build.props); versionCode = Major*1000000 + Minor*1000 + Patch -->
+		<ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
+		<ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Multiply($([System.Version]::Parse('$(Version)').Major), 1000000)), $([MSBuild]::Add($([MSBuild]::Multiply($([System.Version]::Parse('$(Version)').Minor), 1000)), $([System.Version]::Parse('$(Version)').Build)))))</ApplicationVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
 
