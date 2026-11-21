@@ -20,13 +20,32 @@ public sealed class TabletSettings
     public string? ResultFolder { get; set; }
     /// <summary>Historie: nur Prompts übernehmen.</summary>
     public bool HistoryPromptsOnly { get; set; }
-    /// <summary>Seitenverhältnis ohne Vorlage (Index in Aspects).</summary>
+    /// <summary>Bis 0.22.6: Seitenverhältnis als Index in die alte Liste (wird beim Laden in Format/Portrait übernommen).</summary>
     public int Aspect { get; set; }
+    /// <summary>Format ohne Vorlage (Index in Formats), -1 = noch nicht gesetzt.</summary>
+    public int Format { get; set; } = -1;
+    /// <summary>Hochformat (sonst Querformat).</summary>
+    public bool Portrait { get; set; } = true;
 
-    public static readonly (string Name, double Value)[] Aspects =
+    /// <summary>Formate als Verhältnis lange : kurze Seite; Hoch/Quer kommt aus Portrait.</summary>
+    public static readonly (string Name, double Value)[] Formats =
     {
-        ("1:1", 1), ("3:4 hoch", 3 / 4.0), ("2:3 hoch", 2 / 3.0), ("9:16 hoch", 9 / 16.0), ("4:3 quer", 4 / 3.0), ("3:2 quer", 3 / 2.0), ("16:9 quer", 16 / 9.0)
+        ("1:1 (quadratisch)", 1), ("5:4", 5 / 4.0), ("4:3", 4 / 3.0), ("3:2", 3 / 2.0), ("16:9", 16 / 9.0), ("21:9", 21 / 9.0)
     };
+
+    /// <summary>Seitenverhältnis Breite/Höhe aus Format und Ausrichtung.</summary>
+    public double AspectValue()
+    {
+        double v = Formats[Math.Clamp(Format, 0, Formats.Length - 1)].Value;
+        return Portrait ? 1 / v : v;
+    }
+
+    /// <summary>Alte Auswahl (1:1, 3:4 hoch, 2:3 hoch, 9:16 hoch, 4:3 quer, 3:2 quer, 16:9 quer) übernehmen.</summary>
+    private void MigrateAspect()
+    {
+        if (Format >= 0) return;
+        (Format, Portrait) = Aspect switch { 1 => (2, true), 2 => (3, true), 3 => (4, true), 4 => (2, false), 5 => (3, false), 6 => (4, false), _ => (0, true) };
+    }
 
     private static string FilePath => Path.Combine(FileSystem.AppDataDirectory, "settings.json");
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -35,14 +54,14 @@ public sealed class TabletSettings
     {
         try
         {
-            if (File.Exists(FilePath) && JsonSerializer.Deserialize<TabletSettings>(File.ReadAllText(FilePath), Json) is { } s) return s;
+            if (File.Exists(FilePath) && JsonSerializer.Deserialize<TabletSettings>(File.ReadAllText(FilePath), Json) is { } s) { s.MigrateAspect(); return s; }
         }
         catch { }
-        return new TabletSettings();
+        var n = new TabletSettings(); n.MigrateAspect(); return n;
     }
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
-    public static TabletSettings? FromJson(string json) => JsonSerializer.Deserialize<TabletSettings>(json, Json);
+    public static TabletSettings? FromJson(string json) { var s = JsonSerializer.Deserialize<TabletSettings>(json, Json); s?.MigrateAspect(); return s; }
 
     public void Save()
     {

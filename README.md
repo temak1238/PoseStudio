@@ -7,7 +7,7 @@ Fertige Pakete unter [Releases](https://github.com/temak1238/PoseStudio/releases
 - `PoseStudio-<Version>-win-x64.zip` – entpacken, `PoseStudio.exe` starten (keine Installation, kein .NET nötig).
 - `PoseStudioSwarm-<Version>.apk` – Tablet-App (Android 8+), siehe unten.
 
-**Tablet-App per Obtainium aktuell halten:** In [Obtainium](https://github.com/ImranR98/Obtainium) „App hinzufügen“ → Quelle `https://github.com/temak1238/PoseStudio` eintragen. Obtainium nimmt die APK aus dem neuesten Release und meldet neue Versionen. Windows-Programm und App tragen dieselbe Versionsnummer und erscheinen im selben Release.
+**Tablet-App per Obtainium aktuell halten:** In [Obtainium](https://github.com/ImranR98/Obtainium) „App hinzufügen“ → Quelle `https://github.com/temak1238/PoseStudio` eintragen. Obtainium nimmt die APK aus dem neuesten Release und meldet neue Versionen. Windows-Programm und App tragen dieselbe Versionsnummer und erscheinen im selben Release. **Ab 0.22.7 ist die App mit einem eigenen Schlüssel signiert:** Wer eine ältere Version hat, muss sie einmal deinstallieren und neu installieren (vorher „Einstellungen sichern“, danach „Sicherung laden“; Ergebnisse kommen aus dem Ergebnis-Ordner zurück).
 
 **Optionale Modelle für „Pose aus Foto“:** Das Paket enthält nur MediaPipe (Apache 2.0) – damit funktioniert „Pose übernehmen“ vollständig. Genauer bei Händen und Fingern ist RTMW3D; die beiden Dateien sind wegen ihrer Lizenz (Gewichte nur für nicht-kommerzielle bzw. Forschungsnutzung) und Größe (~470 MB) nicht enthalten. Wer sie nutzen möchte, lädt sie selbst und legt sie in den Ordner `Models` neben `PoseStudio.exe`:
 - `rtmw3d-x.onnx` – von [huggingface.co/Soykaf/RTMW3D-x](https://huggingface.co/Soykaf/RTMW3D-x) die Datei `rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx`, umbenannt
@@ -78,14 +78,14 @@ Generiert über SwarmUI vom Tablet aus (`publish\PoseStudioSwarm-<Version>.apk`,
 - **Ergebnis-Ordner** (Abschnitt „Ablage und Sicherung“): einen synchronisierten Ordner wählen (z. B. den Export-Ordner) – Bilder, Begleitdateien und Ergebnisliste landen in dessen Unterordner `SwarmUI-Tablet` (gleiches Format wie Pose Studio, eigener Ordner, damit PC und Tablet nicht in dieselbe Liste schreiben). Die App arbeitet mit lokalen Kopien und gleicht beim Start und nach jedem Bild ab; nach einer Neuinstallation den Ordner neu wählen, die Liste kommt zurück. „Aus Liste entfernen“ und „Liste leeren“ nehmen Bilder nur aus der Liste – im Ordner bleiben sie. Ohne Ergebnis-Ordner bleibt alles in der App, „Liste leeren“ löscht dann die lokalen Kopien.
 - **Einstellungen sichern / Sicherung laden** (erscheint, sobald ein Ergebnis-Ordner gewählt ist): `einstellungen.json` im Ergebnis-Ordner – zum Wiederherstellen nach einer Neuinstallation oder zum Übertragen aufs zweite Tablet (die Ordner-Freigaben bleiben beim Laden erhalten). Die Android-Sicherung umfasst nur die Einstellungen, keine Bilder.
 - **Neu laden:** In der Einstellungsspalte ganz oben nach unten ziehen – SwarmUI liest die Modell-Ordner neu ein, danach werden Modelle, LoRAs, VAEs, ControlNets und Sampler neu geladen.
-- Ohne Vorlage: nur Prompt (Seitenverhältnis wählbar) oder ein eigenes Bild aus der Galerie als Init Image.
+- Ohne Vorlage: nur Prompt (Format 1:1, 5:4, 4:3, 3:2, 16:9 oder 21:9, jeweils Hoch- oder Querformat) oder ein eigenes Bild aus der Galerie als Init Image.
 - SwarmUI hat keine Anmeldung – die App erreicht den Server nur im Heimnetz (unterwegs per VPN).
 
 ## Entwicklung
 - .NET 10, WPF; einziges Paket: Microsoft.ML.OnnxRuntime (MIT) für die Posenerkennung. Modelle in `src/PoseStudio/Models` (siehe README-Modelle.txt)
 - Paket bauen: `build\Build-Package.ps1` (vorher Version in `Directory.Build.props` hochzählen)
 - Projekte: `src/PoseStudio` (WPF), `src/PoseStudio.SwarmCore` (SwarmUI-Client, Einstellungen, Ergebnisliste – gemeinsam), `src/PoseStudio.Tablet` (.NET MAUI, nur Android)
-- Tablet-APK bauen: `build\Build-Tablet.ps1` (Version kommt aus `Directory.Build.props`, wie beim Windows-Programm; braucht Workload `maui-android`, Android SDK unter `C:\Android\Sdk`, JDK 17; signiert immer mit demselben Schlüssel, damit Updates über die alte Version installierbar sind)
+- Tablet-APK bauen: `build\Build-Tablet.ps1` (Version kommt aus `Directory.Build.props`, wie beim Windows-Programm; braucht Workload `maui-android`, Android SDK unter `C:\Android\Sdk`, JDK 17; signiert immer mit demselben eigenen Schlüssel, damit Updates über die alte Version installierbar sind – Schlüssel und Kennwort liegen nicht im Repo, Pfad zur props-Datei per `-p:PoseStudioSigningProps=…`; ohne Schlüssel bricht der Release-Build ab)
 - Release auf GitHub: `build\Publish-GitHub.ps1` – baut Windows-Paket (ohne die optionalen RTMW3D-Modelle) und APK, pusht und legt das Release `v<Version>` mit beiden Dateien an (braucht `gh`, angemeldet)
 - Selbsttest: `PoseStudio.exe --selftest <Ordner>` rendert alle Figurenstile und Vorlagen als Kontaktbogen (braucht eine Sitzung mit aktivem Display)
 - Planung Hintergründe: `docs/Plan-Hintergrund-Generierung.md`

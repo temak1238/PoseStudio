@@ -58,15 +58,15 @@
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 	</ItemGroup>
-	<!-- Release immer mit demselben Schlüssel signieren (sonst lässt sich ein Update nicht über die alte Version installieren).
-	     Kopie des Debug-Schlüssels (Standard-Kennwort von Android), liegt außerhalb des Repos. -->
-	<PropertyGroup Condition="'$(Configuration)' == 'Release' And Exists('D:\Claude\Auth\PoseStudioSwarm-signing.keystore')">
-		<AndroidKeyStore>true</AndroidKeyStore>
-		<AndroidSigningKeyStore>D:\Claude\Auth\PoseStudioSwarm-signing.keystore</AndroidSigningKeyStore>
-		<AndroidSigningKeyAlias>androiddebugkey</AndroidSigningKeyAlias>
-		<AndroidSigningKeyPass>android</AndroidSigningKeyPass>
-		<AndroidSigningStorePass>android</AndroidSigningStorePass>
+	<!-- Release immer mit demselben eigenen Schlüssel signieren (sonst lässt sich ein Update nicht über die alte Version installieren).
+	     Schlüssel und Kennwort liegen außerhalb des Repos; Pfad zur props-Datei per -p:PoseStudioSigningProps=… änderbar. -->
+	<PropertyGroup>
+		<PoseStudioSigningProps Condition="'$(PoseStudioSigningProps)' == ''">D:\Claude\Auth\PoseStudioSwarm-release.props</PoseStudioSigningProps>
 	</PropertyGroup>
+	<Import Project="$(PoseStudioSigningProps)" Condition="'$(Configuration)' == 'Release' And Exists('$(PoseStudioSigningProps)')" />
+	<Target Name="RequireSigningKey" BeforeTargets="Build" Condition="'$(Configuration)' == 'Release' And !Exists('$(PoseStudioSigningProps)')">
+		<Error Text="Signierschlüssel fehlt: $(PoseStudioSigningProps). Ohne den eigenen Schlüssel lässt sich die APK nicht über die installierte Version aktualisieren." />
+	</Target>
 	<ItemGroup>
 		<ProjectReference Include="..\PoseStudio.SwarmCore\PoseStudio.SwarmCore.csproj" />
 	</ItemGroup>

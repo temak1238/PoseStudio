@@ -45,7 +45,8 @@ public sealed class MainPage : ContentPage
     private readonly Picker _cnKind = new() { ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" } };
     private readonly Picker _cnModel = new() { Title = "ControlNet-Modell" };
     private readonly Entry _cnStrength = Num(), _cnStart = Num(), _cnEnd = Num();
-    private readonly Picker _aspect = new() { ItemsSource = TabletSettings.Aspects.Select(a => a.Name).ToList() };
+    private readonly Picker _format = new() { ItemsSource = TabletSettings.Formats.Select(a => a.Name).ToList() };
+    private readonly Picker _orient = new() { ItemsSource = new[] { "Hochformat", "Querformat" } };
     private readonly Picker _side = new() { ItemsSource = new[] { "1024", "1152", "1280", "1408", "1536" } };
     private readonly Label _sizeText = new() { TextColor = Ui.Muted, FontSize = 12, VerticalOptions = LayoutOptions.Center };
     private readonly Stepper _count = new() { Minimum = 1, Maximum = 16, Increment = 1 };
@@ -133,7 +134,8 @@ public sealed class MainPage : ContentPage
         _creativity.ValueChanged += (_, e) => _creativityText.Text = Ui.F(Math.Round(e.NewValue, 2));
         _count.ValueChanged += (_, e) => _countText.Text = ((int)e.NewValue).ToString();
         _source.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Source = _source.SelectedIndex; UpdateSourceUi(); } };
-        _aspect.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Aspect = Math.Max(0, _aspect.SelectedIndex); UpdateSizeText(); } };
+        _format.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Format = Math.Max(0, _format.SelectedIndex); _orient.IsEnabled = _t.Format != 0; UpdateSizeText(); } };
+        _orient.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Portrait = _orient.SelectedIndex != 1; UpdateSizeText(); } };
         _side.SelectedIndexChanged += (_, _) => { if (!_suppress) UpdateSizeText(); };
         _look.SelectedIndexChanged += (_, _) => { if (!_suppress) { S.Look = _look.SelectedIndex; ShowTemplate(); } };
         _useInit.Toggled += (_, _) => _creativity.IsEnabled = _useInit.IsToggled;
@@ -150,7 +152,8 @@ public sealed class MainPage : ContentPage
         _cnBox.Children.Add(Row("Art", _cnKind));
         _cnBox.Children.Add(Row("Modell", _cnModel));
         _cnBox.Children.Add(Row("Stärke / Start / Ende", Cols(_cnStrength, _cnStart, _cnEnd)));
-        _aspectBox.Children.Add(Row("Seitenverhältnis", _aspect));
+        _aspectBox.Children.Add(Row("Format", _format));
+        _aspectBox.Children.Add(Row("Ausrichtung", _orient));
 
         var countRow = new HorizontalStackLayout { Spacing = 8, Children = { _countText, _count } };
 
@@ -271,7 +274,9 @@ public sealed class MainPage : ContentPage
         _cnKind.SelectedIndex = S.ControlRegions ? 1 : 0;
         SetItems(_cnModel, _cnModel.ItemsSource?.Cast<string>().Skip(1), S.ControlModel, "(keins)");
         _cnStrength.Text = Ui.F(S.ControlStrength); _cnStart.Text = Ui.F(S.ControlStart); _cnEnd.Text = Ui.F(S.ControlEnd);
-        _aspect.SelectedIndex = Math.Clamp(_t.Aspect, 0, TabletSettings.Aspects.Length - 1);
+        _format.SelectedIndex = Math.Clamp(_t.Format, 0, TabletSettings.Formats.Length - 1);
+        _orient.SelectedIndex = _t.Portrait ? 0 : 1;
+        _orient.IsEnabled = _format.SelectedIndex != 0;
         var sides = _side.ItemsSource.Cast<string>().ToList();
         string side = S.SideLength.ToString();
         if (!sides.Contains(side)) { sides.Add(side); _side.ItemsSource = sides; }
@@ -306,7 +311,8 @@ public sealed class MainPage : ContentPage
         S.ControlRegions = _cnKind.SelectedIndex == 1;
         S.ControlModel = GetItem(_cnModel);
         S.ControlStrength = Ui.PD(_cnStrength.Text, 1); S.ControlStart = Ui.PD(_cnStart.Text, 0); S.ControlEnd = Ui.PD(_cnEnd.Text, 1);
-        _t.Aspect = Math.Max(0, _aspect.SelectedIndex);
+        _t.Format = Math.Max(0, _format.SelectedIndex);
+        _t.Portrait = _orient.SelectedIndex != 1;
         S.SideLength = Math.Clamp((int)Ui.PD(_side.SelectedItem as string, S.SideLength), 256, 4096);
         S.Count = (int)_count.Value;
         S.Seed = long.TryParse(_seed.Text?.Trim(), out var seed) ? seed : -1;
@@ -349,7 +355,7 @@ public sealed class MainPage : ContentPage
             if (data != null && AndroidStore.ImageSize(data) is var (w, h) && w > 0 && h > 0) return (double)w / h;
         }
         catch { }
-        return TabletSettings.Aspects[Math.Clamp(_aspect.SelectedIndex, 0, TabletSettings.Aspects.Length - 1)].Value;
+        return _t.AspectValue();
     }
 
     private void UpdateSizeText()
@@ -835,7 +841,7 @@ public sealed class MainPage : ContentPage
         if (imp == null) return;
         if (!await DisplayAlertAsync("Einstellungen", "Die aktuellen Einstellungen (Server, Profile, Prompt, Generierung) durch die Sicherung ersetzen? Die gewählten Ordner bleiben.", "Laden", "Abbrechen")) return;
         // Ordner-Freigaben gelten nur für diese Installation – die aktuellen behalten.
-        _t.Swarm = imp.Swarm; _t.Source = imp.Source; _t.Aspect = imp.Aspect; _t.TemplateName = imp.TemplateName; _t.HistoryPromptsOnly = imp.HistoryPromptsOnly;
+        _t.Swarm = imp.Swarm; _t.Source = imp.Source; _t.Format = imp.Format; _t.Portrait = imp.Portrait; _t.TemplateName = imp.TemplateName; _t.HistoryPromptsOnly = imp.HistoryPromptsOnly;
         _t.Save();
         ShowSettings();
         RefreshProfiles();
