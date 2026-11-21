@@ -1,6 +1,6 @@
 namespace PoseStudio.Tablet;
 
-public enum ViewerAction { None, Refine, UseSeed, UseAsImage, Remove }
+public enum ViewerAction { None, Refine, UseSeed, UseAsImage, ToggleStar, Remove }
 
 /// <summary>Ergebnis groß anzeigen; Aktionen Nachbessern, Seed, als Bild verwenden, Galerie, Teilen, aus Liste entfernen.</summary>
 public sealed class ViewerPage : ContentPage
@@ -26,6 +26,7 @@ public sealed class ViewerPage : ContentPage
             {
                 B("Nachbessern", () => CloseAsync(ViewerAction.Refine), true),
                 B("Seed übernehmen", () => CloseAsync(ViewerAction.UseSeed)),
+                B(item.Starred ? "★ Stern entfernen" : "☆ Stern setzen", () => CloseAsync(ViewerAction.ToggleStar)),
                 B("Als Bild verwenden", () => CloseAsync(ViewerAction.UseAsImage)),
                 B("In Galerie", async () =>
                 {

@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace PoseStudio.Swarm;
 
 /// <summary>Gespeichertes Ergebnis: Bilddatei plus Beschriftung, Seed und gesendete Parameter (für „Nachbessern“).</summary>
-public sealed record StoredResult(string Path, string Caption, long Seed, JsonObject? Sent);
+public sealed record StoredResult(string Path, string Caption, long Seed, JsonObject? Sent, string? ServerPath = null, bool Starred = false);
 
 /// <summary>Ergebnisliste dauerhaft ablegen: je Bild eine Begleitdatei &lt;bild&gt;.json, die Reihenfolge in results.json.
 /// Gleiches Format in Pose Studio und der Tablet-App.</summary>
@@ -11,11 +11,12 @@ public static class ResultStore
 {
     public const string IndexName = "results.json";
 
-    public static void Save(string imagePath, string caption, long seed, JsonObject? sent)
+    /// <param name="serverPath">Pfad des Bildes in SwarmUI (für den Stern).</param>
+    public static void Save(string imagePath, string caption, long seed, JsonObject? sent, string? serverPath = null, bool starred = false)
     {
         try
         {
-            var o = new JsonObject { ["caption"] = caption, ["seed"] = seed, ["sent"] = sent?.DeepClone() };
+            var o = new JsonObject { ["caption"] = caption, ["seed"] = seed, ["sent"] = sent?.DeepClone(), ["server"] = serverPath, ["starred"] = starred };
             File.WriteAllText(imagePath + ".json", o.ToJsonString());
         }
         catch { /* Bild bleibt trotzdem in der Liste dieser Sitzung */ }
@@ -43,7 +44,7 @@ public static class ResultStore
             {
                 string path = System.IO.Path.Combine(folder, n?.ToString() ?? "");
                 if (!File.Exists(path)) continue;
-                string caption = System.IO.Path.GetFileName(path); long seed = -1; JsonObject? sent = null;
+                string caption = System.IO.Path.GetFileName(path); long seed = -1; JsonObject? sent = null; string? server = null; bool starred = false;
                 try
                 {
                     if (File.Exists(path + ".json") && JsonNode.Parse(File.ReadAllText(path + ".json")) is JsonObject o)
@@ -51,10 +52,12 @@ public static class ResultStore
                         caption = o["caption"]?.ToString() ?? caption;
                         seed = long.TryParse(o["seed"]?.ToString(), out var sd) ? sd : -1;
                         sent = o["sent"] is JsonObject s ? (JsonObject)s.DeepClone() : null;
+                        server = o["server"]?.ToString();
+                        starred = o["starred"]?.ToString() == "true";
                     }
                 }
                 catch { }
-                list.Add(new StoredResult(path, caption, seed, sent));
+                list.Add(new StoredResult(path, caption, seed, sent, server, starred));
             }
         }
         catch { }

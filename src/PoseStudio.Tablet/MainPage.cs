@@ -215,8 +215,12 @@ public sealed class MainPage : ContentPage
             var seed = new Button { Text = "Seed", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, FontSize = 13, Padding = new Thickness(8, 4) };
             seed.SetBinding(IsEnabledProperty, nameof(ResultItem.Done));
             seed.Clicked += (s, _) => { if (((BindableObject)s!).BindingContext is ResultItem r) { _seed.Text = r.Seed.ToString(); _status.Text = $"Seed {r.Seed} übernommen."; } };
-            var buttons = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) }, ColumnSpacing = 6 };
-            buttons.Add(refine, 0); buttons.Add(seed, 1);
+            var star = new Button { BackgroundColor = Ui.PanelLight, TextColor = Color.FromArgb("#FFD24A"), FontSize = 18, Padding = new Thickness(10, 0), MinimumWidthRequest = 44 };
+            star.SetBinding(Button.TextProperty, nameof(ResultItem.StarText));
+            star.SetBinding(IsEnabledProperty, nameof(ResultItem.CanStar));
+            star.Clicked += async (s, _) => { if (((BindableObject)s!).BindingContext is ResultItem r) await ToggleStarAsync(r); };
+            var buttons = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
+            buttons.Add(refine, 0); buttons.Add(seed, 1); buttons.Add(star, 2);
             var g = new VerticalStackLayout { Spacing = 4, Children = { img, cap, buttons } };
             return new Border { Content = g, BackgroundColor = Ui.Panel, StrokeThickness = 0, Padding = 6, Margin = 4 };
         });
@@ -484,6 +488,7 @@ public sealed class MainPage : ContentPage
             ShowCn(Math.Max(0, _source.SelectedIndex));
             ShowModel();
             ShowLoras();
+            _ = SyncStarsAsync();
         }
         catch (Exception ex)
         {
@@ -831,8 +836,9 @@ public sealed class MainPage : ContentPage
                 item.Seed = known is >= 0 ? known.Value : baseSeed + i;
                 item.Sent = p;
                 item.Caption = what.Contains("Seed") ? what : $"{what} · Seed {item.Seed}";
+                item.ServerPath = res[i].Path;
                 item.Done = true;
-                ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent);
+                ResultStore.Save(item.LocalPath, item.Caption, item.Seed, item.Sent, item.ServerPath);
             }
             foreach (var left in pending.Where(x => !x.Done)) _results.Remove(left);
             SaveIndex();
@@ -868,7 +874,7 @@ public sealed class MainPage : ContentPage
     {
         _results.Clear();
         foreach (var r in ResultStore.Load(AndroidStore.ResultsFolder))
-            _results.Add(new ResultItem { LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, Done = true, Image = ImageSource.FromFile(r.Path) });
+            _results.Add(new ResultItem { LocalPath = r.Path, Caption = r.Caption, Seed = r.Seed, Sent = r.Sent, ServerPath = r.ServerPath, Starred = r.Starred, Done = true, Image = ImageSource.FromFile(r.Path) });
     }
 
     private View BuildBackupBox()
@@ -971,12 +977,45 @@ public sealed class MainPage : ContentPage
             case ViewerAction.Refine: await RefineAsync(r); break;
             case ViewerAction.UseSeed: _seed.Text = r.Seed.ToString(); _status.Text = $"Seed {r.Seed} übernommen."; break;
             case ViewerAction.UseAsImage: await UseImageAsync(await File.ReadAllBytesAsync(r.LocalPath!)); _status.Text = "Ergebnis als eigenes Bild gesetzt."; break;
+            case ViewerAction.ToggleStar: await ToggleStarAsync(r); break;
             case ViewerAction.Remove:
                 _results.Remove(r);
                 if (_t.ResultFolder != null && ResultMirror.HasAccess(_t.ResultFolder)) DeleteLocal(r);   // liegt im Ergebnis-Ordner, die lokale Kopie ist nur Zwischenspeicher
                 SaveIndex();
                 break;
         }
+    }
+
+    /// <summary>Stern in SwarmUI umschalten (Bild landet dort zusätzlich im Ordner „Starred“).</summary>
+    private async Task ToggleStarAsync(ResultItem r)
+    {
+        if (r.ServerPath == null) { _status.Text = "Für dieses Bild ist der Pfad in SwarmUI unbekannt (vor 0.22.10 erzeugt)."; return; }
+        if (!await EnsureClientAsync()) return;
+        try
+        {
+            r.Starred = await _client!.ToggleStarAsync(r.ServerPath);
+            if (r.LocalPath != null) ResultStore.Save(r.LocalPath, r.Caption, r.Seed, r.Sent, r.ServerPath, r.Starred);
+            _status.Text = r.Starred ? "Stern gesetzt – in SwarmUI unter „Starred“." : "Stern entfernt.";
+        }
+        catch (Exception ex) { _status.Text = "Stern nicht gesetzt: " + ex.Message; }
+    }
+
+    /// <summary>Sterne aus SwarmUI übernehmen (auch dort gesetzte oder entfernte).</summary>
+    private async Task SyncStarsAsync()
+    {
+        if (_client == null) return;
+        try
+        {
+            var starred = await _client.ListStarredAsync();
+            foreach (var r in _results.Where(x => x.Done && x.ServerPath != null))
+            {
+                bool s = starred.Contains(_client.RelativePath(r.ServerPath!));
+                if (s == r.Starred) continue;
+                r.Starred = s;
+                if (r.LocalPath != null) ResultStore.Save(r.LocalPath, r.Caption, r.Seed, r.Sent, r.ServerPath, s);
+            }
+        }
+        catch { /* Sterne sind nur Zusatz */ }
     }
 
     private static void DeleteLocal(ResultItem r)

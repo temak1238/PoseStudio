@@ -75,8 +75,14 @@ public sealed class ResultItem : INotifyPropertyChanged
     private ImageSource? _image; private string _caption = ""; private bool _done;
     public ImageSource? Image { get => _image; set { _image = value; Changed(nameof(Image)); } }
     public string Caption { get => _caption; set { _caption = value; Changed(nameof(Caption)); } }
-    public bool Done { get => _done; set { _done = value; Changed(nameof(Done)); } }
+    public bool Done { get => _done; set { _done = value; Changed(nameof(Done)); Changed(nameof(CanStar)); } }
     public string? LocalPath { get; set; }
+    private string? _serverPath; private bool _starred;
+    /// <summary>Pfad in SwarmUI (für den Stern); fehlt bei Ergebnissen vor 0.22.10.</summary>
+    public string? ServerPath { get => _serverPath; set { _serverPath = value; Changed(nameof(CanStar)); } }
+    public bool Starred { get => _starred; set { _starred = value; Changed(nameof(Starred)); Changed(nameof(StarText)); } }
+    public bool CanStar => Done && ServerPath != null;
+    public string StarText => Starred ? "★" : "☆";
     public JsonObject? Sent { get; set; }
     public long Seed { get; set; } = -1;
     public event PropertyChangedEventHandler? PropertyChanged;

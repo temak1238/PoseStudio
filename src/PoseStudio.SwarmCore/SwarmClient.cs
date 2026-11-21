@@ -211,6 +211,34 @@ public sealed class SwarmClient : IDisposable
         return results;
     }
 
+    /// <summary>Pfad eines Ergebnisses relativ zum Ausgabeordner des Benutzers (z. B. „raw/2026-11-21/bild.png“).</summary>
+    public string RelativePath(string resultPath)
+    {
+        string p = Uri.UnescapeDataString(resultPath.TrimStart('/'));
+        int q = p.IndexOf('?'); if (q >= 0) p = p[..q];
+        if (p.StartsWith("View/", StringComparison.OrdinalIgnoreCase)) p = p[5..];
+        if (p.StartsWith(UserId + "/", StringComparison.OrdinalIgnoreCase)) p = p[(UserId.Length + 1)..];
+        if (p.StartsWith("Starred/", StringComparison.OrdinalIgnoreCase)) p = p[8..];
+        return p;
+    }
+
+    /// <summary>Stern in SwarmUI umschalten (SwarmUI kopiert das Bild nach „Starred/…“ bzw. entfernt die Kopie). Liefert den neuen Zustand.</summary>
+    public async Task<bool> ToggleStarAsync(string resultPath, CancellationToken ct = default)
+    {
+        var r = await PostAsync("ToggleImageStarred", new JsonObject { ["path"] = RelativePath(resultPath) }, ct);
+        return r["new_state"]?.GetValue<bool>() ?? false;
+    }
+
+    /// <summary>Alle Bilder mit Stern (relative Pfade wie <see cref="RelativePath"/>).</summary>
+    public async Task<HashSet<string>> ListStarredAsync(CancellationToken ct = default)
+    {
+        var r = await PostAsync("ListImages", new JsonObject { ["path"] = "Starred", ["depth"] = 6, ["sortBy"] = "Date", ["sortReverse"] = false }, ct);
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in r["files"] as JsonArray ?? new JsonArray())
+            if (f is JsonObject o && o["src"]?.GetValue<string>() is { } src) set.Add(RelativePath(src));
+        return set;
+    }
+
     /// <summary>Tatsächlichen Seed eines Ergebnisses aus der Historie lesen (die direkte Rückmeldung enthält nur den angefragten).</summary>
     public async Task<long?> LookupSeedAsync(string resultPath, CancellationToken ct = default)
     {
