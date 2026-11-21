@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Veröffentlicht die aktuelle Version auf GitHub: baut das Windows-Paket (ohne die optionalen
     RTMW3D-/YOLOX-Modelle) und die Tablet-APK, pusht master und legt das Release v<Version>
