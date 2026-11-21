@@ -31,8 +31,8 @@
 		<ApplicationId>de.posestudio.swarm</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>0.2.0</ApplicationDisplayVersion>
-		<ApplicationVersion>2</ApplicationVersion>
+		<ApplicationDisplayVersion>0.2.1</ApplicationDisplayVersion>
+		<ApplicationVersion>3</ApplicationVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
 

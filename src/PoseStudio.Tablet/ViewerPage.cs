@@ -11,9 +11,7 @@ public sealed class ViewerPage : ContentPage
     {
         BackgroundColor = Colors.Black;
         var img = new Image { Source = ImageSource.FromFile(item.LocalPath), Aspect = Aspect.AspectFit };
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await CloseAsync(ViewerAction.None);
-        img.GestureRecognizers.Add(tap);
+        var zoom = new ZoomView { Content = img };
 
         Button B(string text, Func<Task> act, bool accent = false)
         {
@@ -46,7 +44,7 @@ public sealed class ViewerPage : ContentPage
         };
         var caption = new Label { Text = item.Caption, TextColor = Ui.Muted, HorizontalOptions = LayoutOptions.Center, FontSize = 13 };
         var root = new Grid { RowDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto) } };
-        root.Add(img, 0, 0); root.Add(caption, 0, 1); root.Add(new ScrollView { Orientation = ScrollOrientation.Horizontal, Content = bar }, 0, 2);
+        root.Add(zoom, 0, 0); root.Add(caption, 0, 1); root.Add(new ScrollView { Orientation = ScrollOrientation.Horizontal, Content = bar }, 0, 2);
         Content = root;
     }
 
