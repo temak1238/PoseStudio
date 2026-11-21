@@ -18,6 +18,8 @@ public sealed class SwarmSettings
     public string Model { get; set; } = "";
     public List<SwarmLora> Loras { get; set; } = new();
     public bool AutoTrigger { get; set; } = true;
+    /// <summary>Historie: nur Prompt und Negativ-Prompt übernehmen.</summary>
+    public bool HistoryPromptsOnly { get; set; }
     public string Prompt { get; set; } = "";
     public string Negative { get; set; } = "";
     /// <summary>Darstellung des Init Image: -1 = wie im Hauptfenster, 0 = Normal, 1 = Cel, 2 = 2D flach, 3 = Strichzeichnung.</summary>

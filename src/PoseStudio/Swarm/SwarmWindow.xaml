@@ -63,6 +63,7 @@
                                 <StackPanel>
                                     <TextBlock TextWrapping="Wrap" Foreground="#666" Margin="0,2"
                                                Text="Klick auf ein Bild übernimmt dessen Modell, LoRAs, Prompts, Sampler und alle weiteren Einstellungen (z. B. FaceRefine). Init Image, Größe und Seed kommen von hier; Refiner-Werte werden zur Vorgabe für „Nachbessern“." />
+                                    <CheckBox x:Name="PromptsOnlyCheck" Content="Nur Prompts übernehmen (Prompt und Negativ-Prompt, alles andere bleibt)" Margin="0,2,0,4" />
                                     <ListBox x:Name="HistoryList" Height="300" ItemTemplate="{StaticResource ThumbTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="HistoryList_SelectionChanged" />
                                     <Button Content="Liste aktualisieren" HorizontalAlignment="Left" Margin="0,3" Click="RefreshHistory_Click" />

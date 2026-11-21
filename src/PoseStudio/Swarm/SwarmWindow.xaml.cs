@@ -124,6 +124,7 @@ public partial class SwarmWindow : Window
         PromptBox.Text = _s.Prompt;
         NegativeBox.Text = _s.Negative;
         AutoTriggerCheck.IsChecked = _s.AutoTrigger;
+        PromptsOnlyCheck.IsChecked = _s.HistoryPromptsOnly;
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);
         InitCheck.IsChecked = _s.UseInitImage;
         CreativitySlider.Value = _s.Creativity;
@@ -158,6 +159,7 @@ public partial class SwarmWindow : Window
         _s.Prompt = PromptBox.Text;
         _s.Negative = NegativeBox.Text;
         _s.AutoTrigger = AutoTriggerCheck.IsChecked == true;
+        _s.HistoryPromptsOnly = PromptsOnlyCheck.IsChecked == true;
         _s.Look = LookCombo.SelectedIndex - 1;
         _s.UseInitImage = InitCheck.IsChecked == true;
         _s.Creativity = CreativitySlider.Value;
@@ -320,9 +322,11 @@ public partial class SwarmWindow : Window
     {
         if (HistoryList.SelectedItem is not ThumbItem { Tag: SwarmHistoryImage h } || h.Params == null) return;
         ReadUi();
-        _s.ImportFrom(h.Params, h.OriginalPrompt);
+        bool promptsOnly = PromptsOnlyCheck.IsChecked == true;
+        if (promptsOnly) _s.ImportPromptsFrom(h.Params, h.OriginalPrompt);
+        else _s.ImportFrom(h.Params, h.OriginalPrompt);
         ShowSettings();
-        StatusText.Text = "Einstellungen übernommen aus " + Path.GetFileName(h.Src);
+        StatusText.Text = (promptsOnly ? "Prompts übernommen aus " : "Einstellungen übernommen aus ") + Path.GetFileName(h.Src);
         HistoryList.SelectedItem = null;
     }
 
