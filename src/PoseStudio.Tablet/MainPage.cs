@@ -44,7 +44,9 @@ public sealed class MainPage : ContentPage
     private readonly Switch _useCn = new();
     private readonly Picker _cnKind = new() { ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" } };
     private readonly Picker _cnModel = new() { Title = "ControlNet-Modell" };
-    private readonly Label _cnHint = new() { TextColor = Ui.Muted, FontSize = 12, Text = "SwarmUI macht aus dem Bild zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich beim Generieren an dessen Aufbau – Farben und Stil kommen aus dem Prompt. Für Posen ist eine Pose-Studio-Vorlage (3D-Pose) deutlich genauer." };
+    private readonly Label _cnHint = new() { TextColor = Ui.Muted, FontSize = 12, Text = "SwarmUI macht aus dem Bild (bei der Vorlage: aus der gewählten Darstellung) zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich beim Generieren an dessen Aufbau – Farben und Stil kommen aus dem Prompt. Für Posen ist eine Pose-Studio-Vorlage (3D-Pose) deutlich genauer." };
+    private readonly Picker _cnLook = new() { ItemsSource = TabletTemplate.LookNames };
+    private Grid? _cnLookRow;
     private int _cnShownFor = -1;
     private List<string> _cnIds = new();
     private readonly Entry _cnStrength = Num(), _cnStart = Num(), _cnEnd = Num();
@@ -140,9 +142,14 @@ public sealed class MainPage : ContentPage
         _source.SelectedIndexChanged += (_, _) => { if (!_suppress) { StoreCn(); _t.Source = _source.SelectedIndex; UpdateSourceUi(); } };
         _cnKind.SelectedIndexChanged += (_, _) =>
         {
-            if (_suppress || _cnShownFor != 2) return;
-            S.ImageControlKind = Math.Max(0, _cnKind.SelectedIndex);
-            if (SwarmSettings.SuggestImageControlModel(S.ImageControlKind, _cnIds) is { } m) { _suppress = true; SetItems(_cnModel, _cnIds, m, "(keins)"); _suppress = false; }
+            if (_suppress) return;
+            int k = Math.Max(0, _cnKind.SelectedIndex);
+            // Bild-Arten: Index in ImageControlKinds (bei der Vorlage nach 3D-Pose und Regionen)
+            int img = _cnShownFor == 2 ? k : k - 2;
+            string? m = img >= 0 ? SwarmSettings.SuggestImageControlModel(img, _cnIds)
+                : k == 0 ? _cnIds.FirstOrDefault(c => c.Contains("3dpose", StringComparison.OrdinalIgnoreCase)) : null;
+            if (m != null) { _suppress = true; SetItems(_cnModel, _cnIds, m, "(keins)"); _suppress = false; }
+            UpdateCnExtras();
         };
         _format.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Format = Math.Max(0, _format.SelectedIndex); _orient.IsEnabled = _t.Format != 0; UpdateSizeText(); } };
         _orient.SelectedIndexChanged += (_, _) => { if (!_suppress) { _t.Portrait = _orient.SelectedIndex != 1; UpdateSizeText(); } };
@@ -162,6 +169,8 @@ public sealed class MainPage : ContentPage
         _cnBox.Children.Add(_cnHint);
         _cnBox.Children.Add(Row("Art", _cnKind));
         _cnBox.Children.Add(Row("Modell", _cnModel));
+        _cnLookRow = Row("Steuerbild aus", _cnLook);
+        _cnBox.Children.Add(_cnLookRow);
         _cnBox.Children.Add(Row("Stärke / Start / Ende", Cols(_cnStrength, _cnStart, _cnEnd)));
         _aspectBox.Children.Add(Row("Format", _format));
         _aspectBox.Children.Add(Row("Ausrichtung", _orient));
@@ -351,11 +360,11 @@ public sealed class MainPage : ContentPage
         _cnShownFor = src;
         if (src != 1 && src != 2) return;
         bool old = _suppress; _suppress = true;
-        _cnHint.IsVisible = src == 2;
         if (src == 1)
         {
-            _cnKind.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" };
-            _cnKind.SelectedIndex = S.ControlRegions ? 1 : 0;
+            _cnKind.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" }.Concat(SwarmSettings.ImageControlKinds.Select(k => k.Name)).ToList();
+            _cnKind.SelectedIndex = S.ControlFromImage ? 2 + Math.Clamp(S.TemplateControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1) : S.ControlRegions ? 1 : 0;
+            _cnLook.SelectedIndex = Math.Clamp(S.ControlLook, 0, TabletTemplate.LookNames.Length - 1);
             _useCn.IsToggled = S.UseControlNet;
             SetItems(_cnModel, _cnIds, S.ControlModel, "(keins)");
         }
@@ -368,6 +377,15 @@ public sealed class MainPage : ContentPage
             SetItems(_cnModel, _cnIds, S.ImageControlModel, "(keins)");
         }
         _suppress = old;
+        UpdateCnExtras();
+    }
+
+    /// <summary>Hinweis und Darstellungs-Auswahl nur bei Bild-Arten (eigenes Bild bzw. Vorlage mit Linien/Skizze/Tiefe/Pose).</summary>
+    private void UpdateCnExtras()
+    {
+        bool tplImage = _cnShownFor == 1 && _cnKind.SelectedIndex >= 2;
+        _cnHint.IsVisible = _cnShownFor == 2 || tplImage;
+        if (_cnLookRow != null) _cnLookRow.IsVisible = tplImage;
     }
 
     /// <summary>ControlNet-Felder in die Einstellungen der gerade angezeigten Quelle zurückschreiben.</summary>
@@ -375,7 +393,10 @@ public sealed class MainPage : ContentPage
     {
         if (_cnShownFor == 1)
         {
-            S.UseControlNet = _useCn.IsToggled; S.ControlRegions = _cnKind.SelectedIndex == 1; S.ControlModel = GetItem(_cnModel);
+            int k = Math.Max(0, _cnKind.SelectedIndex);
+            S.UseControlNet = _useCn.IsToggled; S.ControlRegions = k == 1; S.ControlFromImage = k >= 2; S.ControlModel = GetItem(_cnModel);
+            if (k >= 2) S.TemplateControlKind = k - 2;
+            S.ControlLook = Math.Max(0, _cnLook.SelectedIndex);
         }
         else if (_cnShownFor == 2)
         {
@@ -705,7 +726,15 @@ public sealed class MainPage : ContentPage
             {
                 var t = CurrentTemplate() ?? throw new InvalidOperationException("Keine Posen-Vorlage gewählt.");
                 if (s.UseInitImage) init = Ui.DataUrl(AndroidStore.Read(InitUri(t) ?? throw new InvalidOperationException("Die Vorlage enthält kein Init Image.")));
-                if (s.UseControlNet)
+                if (s.UseControlNet && s.ControlFromImage)
+                {
+                    // Bild-Art: gewählte Darstellung der Vorlage (z. B. Strichzeichnung) als Steuerbild, SwarmUI-Preprocessor macht daraus Linien/Tiefe …
+                    string file = TabletTemplate.InitFiles[Math.Clamp(s.ControlLook, 0, TabletTemplate.InitFiles.Length - 1)];
+                    string uri = t.Files.GetValueOrDefault(file) ?? InitUri(t) ?? throw new InvalidOperationException("Die Vorlage enthält kein Bild für das Steuerbild.");
+                    cn = Ui.DataUrl(AndroidStore.Read(uri));
+                    s.ControlPreprocessor = SwarmSettings.ImageControlKinds[Math.Clamp(s.TemplateControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Preprocessor;
+                }
+                else if (s.UseControlNet)
                 {
                     string file = s.ControlRegions ? TabletTemplate.RegionsFile : TabletTemplate.PoseFile;
                     cn = Ui.DataUrl(AndroidStore.Read(t.Files.GetValueOrDefault(file) ?? throw new InvalidOperationException($"Die Vorlage enthält kein {file}.")));
@@ -735,7 +764,9 @@ public sealed class MainPage : ContentPage
                 what = $"{w}×{h}";
             }
             if (s.UseInitImage) what += $", Creativity {Ui.F(s.Creativity)}";
-            if (s.UseControlNet) what += s.ControlPreprocessor != null ? $", {SwarmSettings.ImageControlKinds[Math.Clamp(s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Name.Split(' ')[0]} {Ui.F(s.ControlStrength)}" : $", ControlNet {Ui.F(s.ControlStrength)}";
+            if (s.UseControlNet) what += s.ControlPreprocessor != null
+                ? $", {SwarmSettings.ImageControlKinds[Math.Clamp(src == 1 ? s.TemplateControlKind : s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Name.Split(' ')[0]} {Ui.F(s.ControlStrength)}"
+                : $", ControlNet {Ui.F(s.ControlStrength)}";
             var p = s.BuildParams(init, w, h, cn, LoraTriggers());
             await RunAsync(p, s.Count, what);
         }

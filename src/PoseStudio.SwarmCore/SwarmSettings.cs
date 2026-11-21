@@ -48,6 +48,9 @@ public sealed class SwarmSettings
     public bool ImageUseControlNet { get; set; }
     public int ImageControlKind { get; set; }
     public string ImageControlModel { get; set; } = "";
+    /// <summary>Tablet, Quelle Posen-Vorlage: Art bei ControlFromImage (Index in ImageControlKinds) und Darstellung des Steuerbilds (0 Normal … 3 Strich).</summary>
+    public int TemplateControlKind { get; set; }
+    public int ControlLook { get; set; } = 3;
     /// <summary>Preprocessor für diesen Auftrag (nur zur Laufzeit gesetzt); null = keiner (Pose-Studio-Renderbilder).</summary>
     [System.Text.Json.Serialization.JsonIgnore] public string? ControlPreprocessor { get; set; }
 
