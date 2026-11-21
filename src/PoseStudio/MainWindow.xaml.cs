@@ -845,6 +845,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     {
         if (_swarmWindow is { IsLoaded: true }) { _swarmWindow.Activate(); return; }
         string? moved = PoseStudio.Swarm.SwarmWindow.MigrateLegacy(PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text));
+        PoseStudio.Swarm.ThumbCache.MigrateLegacy();
         _swarmWindow = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this) { Owner = this };
         _swarmWindow.Show();
         if (moved != null) _swarmWindow.ShowStatus(moved);
@@ -1436,7 +1437,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             w1.AddResultForTest(img, "Testbild", 4242, new System.Text.Json.Nodes.JsonObject { ["prompt"] = "x", ["seed"] = 4242 });
             var w2 = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this);
             sb.AppendLine($"Ergebnisse nach neuem Öffnen: {w2.ResultCount}, erstes: {w2.FirstResult}");
-            sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)}");
+            sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");
             PoseStudio.Swarm.SwarmWindow.OutputOverride = null; Directory.Delete(tdir, true);
         }
         foreach (var useInit in new[] { true, false })

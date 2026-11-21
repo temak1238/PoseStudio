@@ -9,12 +9,44 @@ using System.Windows.Media.Imaging;
 namespace PoseStudio.Swarm;
 
 /// <summary>Vorschaubilder von SwarmUI nachladen: höchstens 6 gleichzeitig, auf der Platte zwischengespeichert
-/// (%LOCALAPPDATA%\PoseStudio\SwarmCache), verkleinert dekodiert.</summary>
+/// (Unterordner SwarmCache im Programmordner; nur falls dort nicht schreibbar unter %LOCALAPPDATA%), verkleinert dekodiert.</summary>
 public static class ThumbCache
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
     private static readonly SemaphoreSlim Gate = new(6);
-    public static string Folder { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmCache");
+    private static string LegacyFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PoseStudio", "SwarmCache");
+    public static string Folder { get; } = PickFolder();
+
+    private static string PickFolder()
+    {
+        string dir = Path.Combine(AppContext.BaseDirectory, "SwarmCache");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            string probe = Path.Combine(dir, ".write-test");
+            File.WriteAllText(probe, ""); File.Delete(probe);
+            return dir;
+        }
+        catch { return LegacyFolder; }
+    }
+
+    /// <summary>Alten Cache (%LOCALAPPDATA%\PoseStudio\SwarmCache, bis 0.21.4) in den Programmordner verschieben, im Hintergrund.</summary>
+    public static void MigrateLegacy()
+    {
+        string old = LegacyFolder, dst = Folder;
+        if (string.Equals(Path.GetFullPath(old), Path.GetFullPath(dst), StringComparison.OrdinalIgnoreCase) || !Directory.Exists(old)) return;
+        Task.Run(() =>
+        {
+            foreach (var f in Directory.EnumerateFiles(old))
+                try
+                {
+                    string t = Path.Combine(dst, Path.GetFileName(f));
+                    if (File.Exists(t)) File.Delete(f); else File.Move(f, t);
+                }
+                catch { /* gerade in Benutzung – beim nächsten Mal */ }
+            try { if (!Directory.EnumerateFileSystemEntries(old).Any()) Directory.Delete(old); } catch { }
+        });
+    }
 
     public static async Task<ImageSource?> LoadAsync(string url, int decodeWidth)
     {
