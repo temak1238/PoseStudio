@@ -31,7 +31,7 @@ if (-not $Notes) {
     $range = if ($last) { "$last..HEAD" } else { "HEAD" }
     $Notes = (git -C $root log $range --format='- %s' --no-merges | Select-Object -First 30) -join "`n"
 }
-$Notes += "`n`n**Dateien:** ``PoseStudio-$version-win-x64.zip`` (Windows, entpacken und starten) · ``PoseStudioSwarm-$version.apk`` (Tablet-App, Android 8+).`nDie optionalen RTMW3D-Modelle für „Pose aus Foto“ sind nicht enthalten – siehe README."
+$Notes += "`n`n**Dateien:** ``PoseStudio-$version-win-x64.zip`` (Windows, entpacken und starten) · ``PoseStudioSwarm-$version.apk`` (Tablet-App, Android 8+).`nDie optionalen RTMW3D-Modelle für 'Pose aus Foto' sind nicht enthalten – siehe README."
 
 git -C $root tag -a $tag -m "Pose Studio $version"
 git -C $root push origin master
