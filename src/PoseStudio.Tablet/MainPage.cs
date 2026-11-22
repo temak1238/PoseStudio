@@ -71,7 +71,18 @@ public sealed class MainPage : ContentPage
     private readonly RefreshView _settingsView;
     private readonly Grid _resultsView;
 
-    private static Entry Num() => new() { Keyboard = Keyboard.Numeric, HorizontalTextAlignment = TextAlignment.End };
+    /// <summary>Zahlenfeld: beim Antippen ist der ganze Wert markiert, sodass Tippen ihn ersetzt (erneutes Tippen setzt den Cursor).</summary>
+    private static Entry Num()
+    {
+        var e = new Entry { Keyboard = Keyboard.Numeric, HorizontalTextAlignment = TextAlignment.End };
+        e.HandlerChanged += (_, _) => (e.Handler?.PlatformView as Android.Widget.EditText)?.SetSelectAllOnFocus(true);
+        // Rückfallebene, falls das Antippen die Markierung gleich wieder aufhebt
+        e.Focused += (_, _) => e.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(60), () =>
+        {
+            if (e.IsFocused && e.SelectionLength == 0) { e.CursorPosition = 0; e.SelectionLength = e.Text?.Length ?? 0; }
+        });
+        return e;
+    }
 
     public MainPage()
     {
