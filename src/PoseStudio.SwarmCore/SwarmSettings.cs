@@ -57,10 +57,10 @@ public sealed class SwarmSettings
     /// <summary>Arten für ControlNet mit eigenem Bild: Anzeige, SwarmUI-Preprocessor, Namensteile passender Modelle (Anima-LLLite).</summary>
     public static readonly (string Name, string Preprocessor, string[] ModelHints)[] ImageControlKinds =
     {
-        ("Linien (Lineart)", "AnimeLineArtPreprocessor", new[] { "any-test", "lineart" }),
-        ("Skizze (Scribble)", "Scribble_PiDiNet_Preprocessor", new[] { "any-test", "scribble" }),
-        ("Tiefe (Depth)", "DepthAnythingV2Preprocessor", new[] { "depth" }),
-        ("Pose (DWPose, schwach)", "DWPreprocessor", new[] { "lllite-pose", "dwpose", "openpose" }),
+        ("Linien (Lineart)", "AnimeLineArtPreprocessor", new[] { "any-test", "lineart", "union", "promax" }),
+        ("Skizze (Scribble)", "Scribble_PiDiNet_Preprocessor", new[] { "any-test", "scribble", "union", "promax" }),
+        ("Tiefe (Depth)", "DepthAnythingV2Preprocessor", new[] { "depth", "union", "promax" }),
+        ("Pose (DWPose, schwach)", "DWPreprocessor", new[] { "lllite-pose", "dwpose", "openpose", "union", "promax" }),
     };
 
     /// <summary>Passendes Modell zur Art aus der Liste der ControlNets (erstes nach Reihenfolge der Hinweise).</summary>
@@ -71,6 +71,32 @@ public sealed class SwarmSettings
             if (list.FirstOrDefault(m => m.Contains(hint, StringComparison.OrdinalIgnoreCase)) is { } m) return m;
         return null;
     }
+    /// <summary>Zuletzt genutzte VAE und ControlNet-Modelle je Modellfamilie (SwarmModel.Family). Beim Wechsel z. B. von Anima auf
+    /// Illustrious werden sie getauscht, damit keine VAE/kein ControlNet der falschen Familie mitgeschickt wird.</summary>
+    public Dictionary<string, string> VaeByFamily { get; set; } = new();
+    public Dictionary<string, string> ControlModelByFamily { get; set; } = new();
+    public Dictionary<string, string> ImageControlModelByFamily { get; set; } = new();
+
+    /// <summary>VAE „Automatic“: SwarmUI nimmt die zum Modell passende Standard-VAE (bzw. die im Modell enthaltene).</summary>
+    public const string AutoVae = "Automatic";
+
+    /// <summary>Modellfamilie gewechselt: Werte der alten Familie merken, die der neuen holen (neu: VAE Automatic, kein ControlNet).
+    /// Gibt true zurück, wenn sich etwas geändert hat.</summary>
+    public bool SwitchFamily(string oldFamily, string newFamily)
+    {
+        if (newFamily == "" || oldFamily == newFamily) return false;
+        if (oldFamily != "")
+        {
+            VaeByFamily[oldFamily] = Vae;
+            ControlModelByFamily[oldFamily] = ControlModel;
+            ImageControlModelByFamily[oldFamily] = ImageControlModel;
+        }
+        Vae = VaeByFamily.GetValueOrDefault(newFamily) ?? AutoVae;
+        ControlModel = ControlModelByFamily.GetValueOrDefault(newFamily) ?? "";
+        ImageControlModel = ImageControlModelByFamily.GetValueOrDefault(newFamily) ?? "";
+        return true;
+    }
+
     // Nachbessern (Refiner)
     public double RefinerControl { get; set; } = 0.1;
     public double RefinerUpscale { get; set; } = 2.0;
@@ -89,6 +115,9 @@ public sealed class SwarmSettings
         c.Base = Base?.DeepClone() as JsonObject;
         c.Loras = Loras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
         c.Profiles = new();
+        c.VaeByFamily = new(VaeByFamily);
+        c.ControlModelByFamily = new(ControlModelByFamily);
+        c.ImageControlModelByFamily = new(ImageControlModelByFamily);
         return c;
     }
 

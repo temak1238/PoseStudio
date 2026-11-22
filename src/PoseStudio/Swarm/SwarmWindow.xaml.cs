@@ -53,7 +53,7 @@ public partial class SwarmWindow : Window
     private readonly ISwarmScene _scene;
     private SwarmClient? _client;
     private CancellationTokenSource? _cts;
-    private List<SwarmModel> _models = new(), _loras = new();
+    private List<SwarmModel> _models = new(), _loras = new(), _cns = new();
     private readonly ObservableCollection<SwarmLora> _selectedLoras = new();
     private readonly ObservableCollection<SwarmResultItem> _results = new();
     private bool _suppress;
@@ -204,13 +204,38 @@ public partial class SwarmWindow : Window
 
     private void Side_Changed(object sender, RoutedEventArgs e) { if (!_suppress) Dispatcher.BeginInvoke(UpdateSizeText); }
 
+    private SwarmModel? FindModel(string name) => string.IsNullOrWhiteSpace(name) ? null
+        : _models.FirstOrDefault(x => x.Id.Equals(name, StringComparison.OrdinalIgnoreCase) || x.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                                      || Path.GetFileNameWithoutExtension(x.Name).Equals(name, StringComparison.OrdinalIgnoreCase));
+
     private void ShowModel()
     {
-        var m = _models.FirstOrDefault(x => x.Id.Equals(_s.Model, StringComparison.OrdinalIgnoreCase) || x.Name.Equals(_s.Model, StringComparison.OrdinalIgnoreCase)
-                                             || Path.GetFileNameWithoutExtension(x.Name).Equals(_s.Model, StringComparison.OrdinalIgnoreCase));
+        var m = FindModel(_s.Model);
         ModelText.Text = string.IsNullOrWhiteSpace(_s.Model) ? "(Standardmodell von SwarmUI)" : m != null ? Path.GetFileNameWithoutExtension(m.Name) : _s.Model;
+        if (m != null && m.Family != "") ModelText.Text += $"  ({SwarmModel.FamilyLabel(m.Family)})";
         ModelImage.Source = null;
         if (m?.PreviewUrl != null) _ = SetImageAsync(ModelImage, m.PreviewUrl);
+        UpdateCnList();
+    }
+
+    /// <summary>ControlNet-Liste auf die Familie des gewählten Modells beschränken und einen Hinweis zeigen, wenn nichts passt.</summary>
+    private void UpdateCnList()
+    {
+        if (_cns.Count == 0 && _models.Count == 0) { CnFamilyText.Visibility = Visibility.Collapsed; return; }
+        string family = FindModel(_s.Model)?.Family ?? "";
+        var fitting = family == "" ? _cns : _cns.Where(c => c.Family == family).ToList();
+        KeepText(CnModelCombo, fitting.Select(c => c.Id).ToList());
+        string cur = CnModelCombo.Text.Trim();
+        var curCn = _cns.FirstOrDefault(c => c.Id.Equals(cur, StringComparison.OrdinalIgnoreCase) || c.Name.Equals(cur, StringComparison.OrdinalIgnoreCase));
+        string label = SwarmModel.FamilyLabel(family);
+        string hint = "";
+        if (family != "" && fitting.Count == 0)
+            hint = $"Für {label} ist in SwarmUI kein ControlNet installiert. Pose Studio ist vorbereitet: ein ControlNet dieser Familie (für SDXL/Illustrious z. B. ein Union-Modell wie „controlnet-union-sdxl-1.0 promax“ oder ein OpenPose-/Depth-/Lineart-Modell für SDXL) "
+                 + "in SwarmUI unter Models/controlnet ablegen und neu verbinden – dann erscheint es hier und wird für die „Bild: …“-Arten vorgeschlagen. „3D-Pose“ (anima_3dpose) gibt es nur für Anima.";
+        else if (family != "" && curCn != null && curCn.Family != family)
+            hint = $"„{curCn.Id}“ gehört zu {SwarmModel.FamilyLabel(curCn.Family)} und passt nicht zum gewählten Modell ({label}).";
+        CnFamilyText.Text = hint;
+        CnFamilyText.Visibility = hint == "" ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static async Task SetImageAsync(Image target, string url) => target.Source = await ThumbCache.LoadAsync(url, 112);
@@ -232,14 +257,16 @@ public partial class SwarmWindow : Window
             _loras = await _client.ListModelsAsync("LoRA");
             var vaes = await _client.ListModelsAsync("VAE");
             var cns = await _client.ListModelsAsync("ControlNet");
-            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod" });
+            _cns = cns;
+            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae" });
             ServerText.Text = $"Verbunden mit SwarmUI {ver}: {_models.Count} Modelle, {_loras.Count} LoRAs.";
             KeepText(SamplerCombo, values.GetValueOrDefault("sampler"));
             KeepText(SchedulerCombo, values.GetValueOrDefault("scheduler"));
             KeepText(RefUpscaleMethodCombo, values.GetValueOrDefault("refinerupscalemethod"));
             KeepText(RefMethodCombo, values.GetValueOrDefault("refinermethod"));
-            KeepText(VaeCombo, vaes.Select(v => v.Id).ToList());
-            KeepText(CnModelCombo, cns.Select(v => v.Id).ToList());
+            KeepText(VaeCombo, SwarmClient.VaeChoices(values.GetValueOrDefault("vae"), vaes));
+            ModelFolderCombo.ItemsSource = new[] { "Alle Ordner" }.Concat(_models.Select(m => m.Folder).Where(f => f != "").Distinct().OrderBy(f => f)).ToList();
+            ModelFolderCombo.SelectedIndex = 0;
             FillModelList();
             LoraFolderCombo.ItemsSource = new[] { "Alle Ordner" }.Concat(_loras.Select(l => l.Folder).Where(f => f != "").Distinct().OrderBy(f => f)).ToList();
             LoraFolderCombo.SelectedIndex = 0;
@@ -264,8 +291,14 @@ public partial class SwarmWindow : Window
     private void FillModelList()
     {
         string q = ModelSearch.Text.Trim();
-        ModelList.ItemsSource = _models.Where(m => q == "" || m.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || m.Title.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .Select(m => new ThumbItem { Key = m.Id, Label = Path.GetFileNameWithoutExtension(m.Name), ToolTip = m.Name + (string.IsNullOrWhiteSpace(m.Title) ? "" : Environment.NewLine + m.Title), Url = m.PreviewUrl, Tag = m }).ToList();
+        string? folder = ModelFolderCombo.SelectedIndex > 0 ? ModelFolderCombo.SelectedItem as string : null;
+        ModelList.ItemsSource = _models.Where(m => (folder == null || m.Folder == folder)
+                                                   && (q == "" || m.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || m.Title.Contains(q, StringComparison.OrdinalIgnoreCase)))
+            .Select(m => new ThumbItem
+            {
+                Key = m.Id, Label = Path.GetFileNameWithoutExtension(m.Name), Url = m.PreviewUrl, Tag = m,
+                ToolTip = m.Name + (string.IsNullOrWhiteSpace(m.Title) ? "" : Environment.NewLine + m.Title) + (m.Family == "" ? "" : Environment.NewLine + "Familie: " + SwarmModel.FamilyLabel(m.Family))
+            }).ToList();
     }
 
     private void FillLoraList()
@@ -283,13 +316,22 @@ public partial class SwarmWindow : Window
 
     private void ModelPick_Click(object sender, RoutedEventArgs e) => ModelPicker.Visibility = ModelPickToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     private void LoraPick_Click(object sender, RoutedEventArgs e) => LoraPicker.Visibility = LoraPickToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-    private void ModelSearch_Changed(object sender, TextChangedEventArgs e) => FillModelList();
+    private void ModelSearch_Changed(object sender, EventArgs e) { if (IsLoaded) FillModelList(); }
     private void LoraFilter_Changed(object sender, EventArgs e) { if (IsLoaded) FillLoraList(); }
 
     private void ModelList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ModelList.SelectedItem is not ThumbItem t) return;
+        ReadUi();
+        string oldFamily = FindModel(_s.Model)?.Family ?? "";
         _s.Model = t.Key;
+        if (_s.SwitchFamily(oldFamily, (t.Tag as SwarmModel)?.Family ?? ""))
+        {
+            // andere Familie (z. B. Anima → Illustrious): VAE und ControlNet der neuen Familie, neu = VAE Automatic
+            VaeCombo.Text = _s.Vae;
+            CnModelCombo.Text = _s.ControlModel;
+            StatusText.Text = $"Modellfamilie {SwarmModel.FamilyLabel((t.Tag as SwarmModel)!.Family)}: VAE „{(_s.Vae == "" ? "(Standard)" : _s.Vae)}“, ControlNet „{(_s.ControlModel == "" ? "(keins)" : _s.ControlModel)}“.";
+        }
         ShowModel();
         ModelPickToggle.IsChecked = false;
         ModelPicker.Visibility = Visibility.Collapsed;

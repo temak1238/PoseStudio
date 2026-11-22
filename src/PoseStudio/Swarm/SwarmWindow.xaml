@@ -91,7 +91,10 @@
                                 </StackPanel>
                             </DockPanel>
                             <StackPanel x:Name="ModelPicker" Visibility="Collapsed" Margin="0,4,0,0">
-                                <TextBox x:Name="ModelSearch" TextChanged="ModelSearch_Changed" ToolTip="Suchen" />
+                                <DockPanel>
+                                    <ComboBox x:Name="ModelFolderCombo" DockPanel.Dock="Right" Width="170" Margin="4,0,0,0" SelectionChanged="ModelSearch_Changed" ToolTip="Nur Modelle aus diesem Ordner zeigen" />
+                                    <TextBox x:Name="ModelSearch" TextChanged="ModelSearch_Changed" ToolTip="Suchen" />
+                                </DockPanel>
                                 <ListBox x:Name="ModelList" Height="320" ItemTemplate="{StaticResource ThumbTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="ModelList_SelectionChanged" />
                             </StackPanel>
@@ -181,7 +184,7 @@
                             </DockPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="VAE" Style="{StaticResource Lbl}" />
-                                <ComboBox x:Name="VaeCombo" IsEditable="True" />
+                                <ComboBox x:Name="VaeCombo" IsEditable="True" ToolTip="Automatic = zum Modell passende Standard-VAE, None = die im Modell enthaltene. Wird je Modellfamilie (Anima, SDXL/Illustrious …) gemerkt." />
                             </DockPanel>
                         </StackPanel>
                     </GroupBox>
@@ -195,8 +198,9 @@
                             </DockPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Modell" Style="{StaticResource Lbl}" />
-                                <ComboBox x:Name="CnModelCombo" IsEditable="True" />
+                                <ComboBox x:Name="CnModelCombo" IsEditable="True" ToolTip="Nur ControlNets, die zur Familie des gewählten Modells passen. Die Wahl wird je Familie gemerkt." />
                             </DockPanel>
+                            <TextBlock x:Name="CnFamilyText" Foreground="#A05000" TextWrapping="Wrap" Margin="0,2" Visibility="Collapsed" />
                             <StackPanel x:Name="CnImagePanel" Visibility="Collapsed" Margin="0,2">
                                 <TextBlock x:Name="CnImageText" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,2">

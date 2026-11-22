@@ -1473,6 +1473,15 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             string cnImg = Path.Combine(tdir, "steuerbild.png");
             SceneFactory.SavePng(SceneFactory.Render(_figures, _cam, new SceneOptions(), 300, 150), cnImg);
             sb.AppendLine("ControlNet aus Bild: " + w2.TestControlImage(cnImg));
+            {
+                var fs = new PoseStudio.Swarm.SwarmSettings { Vae = "qwen_image_vae", ControlModel = "anima_3dpose_6200" };
+                fs.SwitchFamily("anima", "stable-diffusion-xl-v1");
+                string toXl = $"{fs.Vae}/{(fs.ControlModel == "" ? "-" : fs.ControlModel)}";
+                fs.Vae = "None"; fs.SwitchFamily("stable-diffusion-xl-v1", "anima");
+                string back = $"{fs.Vae}/{fs.ControlModel}";
+                bool ok = toXl == "Automatic/-" && back == "qwen_image_vae/anima_3dpose_6200" && fs.CloneProfile().VaeByFamily["stable-diffusion-xl-v1"] == "None";
+                sb.AppendLine($"Modellfamilie: Anima→SDXL {toXl}, zurück {back}{(ok ? "" : " FEHLER")} | VAE-Liste {string.Join(",", PoseStudio.Swarm.SwarmClient.VaeChoices(null, new[] { new PoseStudio.Swarm.SwarmModel("Flux/ae.safetensors", "", null, null, null) }))}");
+            }
             sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");
             string? tab = ExportTabletTemplate(tdir, "20260101_120000");
             sb.AppendLine($"Tablet-Vorlage: {(tab == null ? "FEHLER" : Path.GetFileName(tab) + " → " + string.Join(", ", Directory.GetFiles(tab).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length / 1024} KB")))}");

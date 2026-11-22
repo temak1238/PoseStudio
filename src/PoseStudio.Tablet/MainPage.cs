@@ -48,7 +48,9 @@ public sealed class MainPage : ContentPage
     private readonly Picker _cnLook = new() { ItemsSource = TabletTemplate.LookNames };
     private Grid? _cnLookRow;
     private int _cnShownFor = -1;
-    private List<string> _cnIds = new();
+    private List<SwarmModel> _cns = new();
+    /// <summary>ControlNets, die zur Familie des gewählten Modells passen (Familie unbekannt: alle).</summary>
+    private List<string> _cnIds => (FindModel(S.Model)?.Family ?? "") is var f && f != "" ? _cns.Where(c => c.Family == f).Select(c => c.Id).ToList() : _cns.Select(c => c.Id).ToList();
     private readonly Entry _cnStrength = Num(), _cnStart = Num(), _cnEnd = Num();
     private readonly Picker _format = new() { ItemsSource = TabletSettings.Formats.Select(a => a.Name).ToList() };
     private readonly Picker _orient = new() { ItemsSource = new[] { "Hochformat", "Querformat" } };
@@ -515,15 +517,15 @@ public sealed class MainPage : ContentPage
             _loras = await _client.ListModelsAsync("LoRA");
             var vaes = await _client.ListModelsAsync("VAE");
             var cns = await _client.ListModelsAsync("ControlNet");
-            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod" });
+            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae" });
             _server.Text = $"Verbunden mit SwarmUI {ver}: {_models.Count} Modelle, {_loras.Count} LoRAs.";
             ReadUi();
             SetItems(_sampler, values.GetValueOrDefault("sampler"), S.Sampler);
             SetItems(_scheduler, values.GetValueOrDefault("scheduler"), S.Scheduler);
             SetItems(_refUpMethod, values.GetValueOrDefault("refinerupscalemethod"), S.RefinerUpscaleMethod);
             SetItems(_refMethod, values.GetValueOrDefault("refinermethod"), S.RefinerMethod);
-            SetItems(_vae, vaes.Select(v => v.Id), S.Vae);
-            _cnIds = cns.Select(v => v.Id).ToList();
+            SetItems(_vae, SwarmClient.VaeChoices(values.GetValueOrDefault("vae"), vaes), S.Vae);
+            _cns = cns;
             if (S.ControlModel == "" && _cnIds.FirstOrDefault(c => c.Contains("3dpose", StringComparison.OrdinalIgnoreCase)) is { } pose) S.ControlModel = pose;
             _cnShownFor = -1;
             ShowCn(Math.Max(0, _source.SelectedIndex));
@@ -542,7 +544,21 @@ public sealed class MainPage : ContentPage
         if (_models.Count == 0) { await DisplayAlertAsync("Modell", "Noch keine Verbindung zu SwarmUI.", "OK"); return; }
         var tiles = _models.Select(m => new Tile { Label = Path.GetFileNameWithoutExtension(m.Name), Sub = m.Title, Image = Ui.Web(m.PreviewUrl), Tag = m }).ToList();
         var pick = await TilePickerPage.ShowAsync(Navigation, new TilePickerPage("Modell", tiles, t => ((SwarmModel)t.Tag).Folder, tileWidth: 190, imageHeight: 240));
-        if (pick?.Tag is SwarmModel m) { S.Model = m.Id; ShowModel(); }
+        if (pick?.Tag is SwarmModel m)
+        {
+            ReadUi();
+            string oldFamily = FindModel(S.Model)?.Family ?? "";
+            S.Model = m.Id;
+            if (S.SwitchFamily(oldFamily, m.Family))
+            {
+                // andere Modellfamilie (z. B. Anima → Illustrious): VAE und ControlNet der neuen Familie, neu = VAE Automatic
+                _suppress = true; SetItems(_vae, _vae.ItemsSource?.Cast<string>().Skip(1), S.Vae); _suppress = false;
+                _status.Text = $"Modellfamilie {SwarmModel.FamilyLabel(m.Family)}: VAE „{(S.Vae == "" ? "(Standard)" : S.Vae)}“" + (_cnIds.Count == 0 ? " – kein passendes ControlNet installiert." : ".");
+            }
+            _cnShownFor = -1;
+            ShowCn(Math.Max(0, _source.SelectedIndex));
+            ShowModel();
+        }
     }
 
     private async Task PickLorasAsync()

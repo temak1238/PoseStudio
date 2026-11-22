@@ -8,8 +8,18 @@ using System.Text.Json.Nodes;
 namespace PoseStudio.Swarm;
 
 /// <summary>Modell oder LoRA aus SwarmUI (ListModels).</summary>
-public sealed record SwarmModel(string Name, string Title, string? PreviewUrl, string? Trigger, string? Architecture)
+public sealed record SwarmModel(string Name, string Title, string? PreviewUrl, string? Trigger, string? Architecture, string? CompatClass = null)
 {
+    /// <summary>Modellfamilie (z. B. „anima“, „stable-diffusion-xl-v1“ für SDXL/Illustrious): Modelle und ControlNets passen zusammen, wenn sie gleich ist.</summary>
+    public string Family => !string.IsNullOrWhiteSpace(CompatClass) ? CompatClass! : (Architecture ?? "").Split('/')[0];
+    /// <summary>Lesbarer Name der Familie für Hinweise.</summary>
+    public static string FamilyLabel(string family) => family switch
+    {
+        "" => "unbekannt",
+        "stable-diffusion-xl-v1" => "SDXL / Illustrious",
+        "anima" => "Anima",
+        _ => family,
+    };
     /// <summary>Name ohne Endung, so wie SwarmUI ihn in Parametern erwartet.</summary>
     public string Id => Name.EndsWith(".safetensors", StringComparison.OrdinalIgnoreCase) ? Name[..^12] : Name;
     public string Folder => Name.Contains('/') ? Name[..Name.LastIndexOf('/')] : "";
@@ -109,9 +119,18 @@ public sealed class SwarmClient : IDisposable
             string name = o["name"]?.GetValue<string>() ?? "";
             string? prev = o["preview_image"]?.GetValue<string>();
             if (prev != null && prev.StartsWith("/")) prev = BaseUrl + prev;
-            list.Add(new SwarmModel(name, o["title"]?.GetValue<string>() ?? "", prev, o["trigger_phrase"]?.GetValue<string>(), o["architecture"]?.GetValue<string>()));
+            list.Add(new SwarmModel(name, o["title"]?.GetValue<string>() ?? "", prev, o["trigger_phrase"]?.GetValue<string>(), o["architecture"]?.GetValue<string>(), o["compat_class"]?.GetValue<string>()));
         }
         return list.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Auswahl für das VAE-Feld: Werte des Parameters „vae“ (enthält Automatic und None), sonst Automatic, None und die VAE-Dateien.</summary>
+    public static List<string> VaeChoices(List<string>? paramValues, IEnumerable<SwarmModel> vaeFiles)
+    {
+        var list = new List<string> { SwarmSettings.AutoVae, "None" };
+        foreach (var v in paramValues is { Count: > 0 } ? paramValues : vaeFiles.Select(f => f.Id))
+            if (!list.Contains(v, StringComparer.OrdinalIgnoreCase)) list.Add(v);
+        return list;
     }
 
     /// <summary>Auswahlwerte eines Parameters (z. B. sampler, scheduler, vae, refinerupscalemethod).</summary>
