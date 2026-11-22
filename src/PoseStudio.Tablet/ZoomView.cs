@@ -54,9 +54,35 @@ public sealed class ZoomView : ContentView
         }
     }
 
+    /// <summary>Wischen nach links/rechts (nur unvergrößert): +1 = nächstes Bild (nach links gewischt), -1 = vorheriges.</summary>
+    public event Action<int>? Swiped;
+    private double _swipeX, _swipeY;
+    private bool _swiping;
+
     private void OnPan(object? sender, PanUpdatedEventArgs e)
     {
-        if (!IsZoomed) return;
+        if (!IsZoomed)
+        {
+            switch (e.StatusType)
+            {
+                case GestureStatus.Started: _swiping = true; _swipeX = _swipeY = 0; break;
+                case GestureStatus.Running:
+                    if (!_swiping) break;
+                    _swipeX = e.TotalX; _swipeY = e.TotalY;   // Completed liefert auf Android keine Strecke – letzten Stand merken
+                    if (Content != null) Content.TranslationX = _swipeX * 0.5;   // Bild folgt dem Finger etwas
+                    break;
+                case GestureStatus.Completed:
+                case GestureStatus.Canceled:
+                    if (!_swiping) break;
+                    _swiping = false;
+                    if (Content != null) Content.TranslationX = 0;
+                    double min = Math.Max(60, Width * 0.12);
+                    if (e.StatusType == GestureStatus.Completed && Math.Abs(_swipeX) > min && Math.Abs(_swipeX) > Math.Abs(_swipeY) * 1.5)
+                        Swiped?.Invoke(_swipeX < 0 ? 1 : -1);
+                    break;
+            }
+            return;
+        }
         switch (e.StatusType)
         {
             case GestureStatus.Started: _panX = _x; _panY = _y; break;

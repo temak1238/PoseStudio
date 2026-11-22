@@ -1349,9 +1349,14 @@ public sealed class MainPage : ContentPage
         _status.Text = "Sicherung geladen.";
     }
 
-    private async Task OpenResultAsync(ResultItem r)
+    private async Task OpenResultAsync(ResultItem clicked)
     {
-        switch (await ViewerPage.ShowAsync(Navigation, r))
+        // alle fertigen Bilder in Listenreihenfolge, damit man im Viewer weiterblättern kann
+        var items = _results.Where(x => x.Done && x.LocalPath != null && File.Exists(x.LocalPath)).ToList();
+        int index = items.IndexOf(clicked);
+        if (index < 0) { items = new List<ResultItem> { clicked }; index = 0; }
+        var (action, r) = await ViewerPage.ShowAsync(Navigation, items, index);
+        switch (action)
         {
             case ViewerAction.Refine: await RefineAsync(r); break;
             case ViewerAction.UseSeed: _seed.Text = r.Seed.ToString(); _status.Text = $"Seed {r.Seed} übernommen."; break;

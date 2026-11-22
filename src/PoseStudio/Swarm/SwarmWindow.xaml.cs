@@ -95,6 +95,28 @@ public partial class SwarmWindow : Window
         var item = new SwarmResultItem { LocalPath = path, Caption = caption, Seed = seed, Sent = sent, ServerPath = "View/local/raw/test.png", Starred = true, Done = true, Image = ThumbCache.Decode(File.ReadAllBytes(path), 200) };
         _results.Insert(0, item); SaveResult(item); SaveResultIndex();
     }
+    /// <summary>Testmodus: Bildfenster mit zwei Bildern öffnen, per Pfeil weiterblättern.</summary>
+    internal string TestViewer(string img1, string img2)
+    {
+        var items = new List<SwarmResultItem>
+        {
+            new() { LocalPath = img1, Caption = "eins", Done = true },
+            new() { LocalPath = img2, Caption = "zwei", Done = true },
+        };
+        var w = ShowViewer(items, 0);
+        try
+        {
+            string t0 = w.Title;
+            var buttons = ((Grid)((DockPanel)w.Content).Children[1]).Children.OfType<Button>().ToList();
+            string vis0 = $"{buttons[0].Visibility}/{buttons[1].Visibility}";
+            buttons[1].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            string t1 = w.Title, vis1 = $"{buttons[0].Visibility}/{buttons[1].Visibility}";
+            bool ok = t0.Contains("(1 / 2)") && t1.Contains("(2 / 2)") && vis0 == "Hidden/Visible" && vis1 == "Visible/Hidden";
+            return $"{t0} [{vis0}] → {t1} [{vis1}]{(ok ? "" : " FEHLER")}";
+        }
+        finally { w.Close(); }
+    }
+
     internal int ResultCount => _results.Count;
     internal (string Caption, long Seed, bool HasSent, string? Server, bool Starred) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null, _results[0].ServerPath, _results[0].Starred);
 
@@ -723,11 +745,69 @@ public partial class SwarmWindow : Window
 
     private void ResultImage_Click(object sender, MouseButtonEventArgs e)
     {
-        if (((FrameworkElement)sender).Tag is not SwarmResultItem { LocalPath: { } path }) return;
-        var img = new Image { Source = ThumbCache.Decode(File.ReadAllBytes(path), 0), Stretch = Stretch.Uniform };
-        var w = new Window { Title = Path.GetFileName(path), Owner = this, Width = 1300, Height = 900, Background = Brushes.Black, Content = img, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        if (((FrameworkElement)sender).Tag is not SwarmResultItem { LocalPath: { } } clicked) return;
+        var items = _results.Where(r => r.Done && r.LocalPath != null && File.Exists(r.LocalPath)).ToList();
+        int index = items.IndexOf(clicked);
+        if (index < 0) { items = new List<SwarmResultItem> { clicked }; index = 0; }
+        ShowViewer(items, index);
+    }
+
+    /// <summary>Ergebnis groß zeigen; Pfeile am Rand bzw. ←/→ (auch Bild↑/Bild↓, Pos1/Ende) wechseln das Bild, Esc oder Klick schließt.</summary>
+    private Window ShowViewer(List<SwarmResultItem> items, int index)
+    {
+        var img = new Image { Stretch = Stretch.Uniform };
+        var caption = new TextBlock { Foreground = Brushes.Gainsboro, Margin = new Thickness(8, 4, 8, 6), HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        Button Arrow(string text, HorizontalAlignment side)
+        {
+            var b = new Button
+            {
+                Content = text, FontSize = 34, Width = 48, Height = 84, Margin = new Thickness(8, 0, 8, 0), Cursor = Cursors.Hand,
+                HorizontalAlignment = side, VerticalAlignment = VerticalAlignment.Center, Focusable = false,
+                Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)), BorderThickness = new Thickness(0),
+            };
+            return b;
+        }
+        var prev = Arrow("‹", HorizontalAlignment.Left);
+        var next = Arrow("›", HorizontalAlignment.Right);
+        var stage = new Grid();
+        stage.Children.Add(img); stage.Children.Add(prev); stage.Children.Add(next);
+        var root = new DockPanel { Background = Brushes.Black };
+        DockPanel.SetDock(caption, Dock.Bottom);
+        root.Children.Add(caption); root.Children.Add(stage);
+        var w = new Window { Owner = IsVisible ? this : null, Width = 1300, Height = 900, Background = Brushes.Black, Content = root, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+
+        void Show()
+        {
+            var it = items[index];
+            try { img.Source = ThumbCache.Decode(File.ReadAllBytes(it.LocalPath!), 0); }
+            catch (Exception ex) { img.Source = null; caption.Text = ex.Message; }
+            w.Title = $"{Path.GetFileName(it.LocalPath)}  ({index + 1} / {items.Count})";
+            caption.Text = (items.Count > 1 ? $"{index + 1} / {items.Count} · " : "") + it.Caption;
+            prev.Visibility = index > 0 ? Visibility.Visible : Visibility.Hidden;
+            next.Visibility = index < items.Count - 1 ? Visibility.Visible : Visibility.Hidden;
+        }
+        void Go(int to) { to = Math.Clamp(to, 0, items.Count - 1); if (to != index) { index = to; Show(); } }
+
+        prev.Click += (_, _) => Go(index - 1);
+        next.Click += (_, _) => Go(index + 1);
         img.MouseLeftButtonUp += (_, _) => w.Close();
+        w.PreviewKeyDown += (_, e) =>
+        {
+            switch (e.Key)
+            {
+                case Key.Left: case Key.PageUp: Go(index - 1); break;
+                case Key.Right: case Key.PageDown: case Key.Space: Go(index + 1); break;
+                case Key.Home: Go(0); break;
+                case Key.End: Go(items.Count - 1); break;
+                case Key.Escape: w.Close(); break;
+                default: return;
+            }
+            e.Handled = true;
+        };
+        w.MouseWheel += (_, e) => Go(index + (e.Delta < 0 ? 1 : -1));
+        Show();
         w.Show();
+        return w;
     }
 
     private void UseSeed_Click(object sender, RoutedEventArgs e)
