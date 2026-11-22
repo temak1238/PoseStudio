@@ -271,7 +271,20 @@ public partial class App : Application
             Dispatcher.InvokeAsync(async () =>
             {
                 string r;
-                try { r = await Swarm.AnimaDexWindow.SelfTestAsync(e.Args[1]); }
+                try
+                {
+                    r = await Swarm.AnimaDexWindow.SelfTestAsync(e.Args[1]);
+                    if (e.Args.Length >= 4)
+                    {
+                        // optional: Fenster außerhalb des Bildschirms anzeigen und als PNG speichern (4. Argument), Design im 5.
+                        if (e.Args.Length >= 5) Theme.Apply(e.Args[4]);
+                        var dex = new Swarm.AnimaDexWindow(new Swarm.SwarmSettings { AnimaDexUrl = e.Args[1] }, _ => { }, false)
+                        { ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0 };
+                        dex.Show(); dex.Left = -20000;
+                        await System.Threading.Tasks.Task.Delay(6000);
+                        PoseStudio.MainWindow.SaveWindowShot(dex, e.Args[3]);
+                    }
+                }
                 catch (Exception ex) { r = "FEHLER: " + ex; }
                 File.WriteAllText(e.Args[2], r);
                 Shutdown();

@@ -174,7 +174,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm.png"));
     }
 
-    private static void SaveWindowShot(Window w, string path)
+    internal static void SaveWindowShot(Window w, string path)
     {
         var v = (FrameworkElement)w.Content;
         int pw = (int)Math.Ceiling(v.ActualWidth), ph = (int)Math.Ceiling(v.ActualHeight);

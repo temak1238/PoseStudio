@@ -18,6 +18,11 @@
 #     --save-token     Token in /etc/animadex/token ablegen (nur root lesbar),
 #                      damit animadex-update ohne Nachfrage läuft
 #     --branch <name>  Git-Branch (Standard: Standard-Branch des Repos)
+#     --no-auto-update keinen wöchentlichen Update-Timer einrichten
+#
+#  Automatische Aktualisierung: ein systemd-Timer führt einmal pro Woche
+#  animadex-update aus (Code + Katalog-Änderungen). Für den Katalog braucht er
+#  das gespeicherte Token (--save-token); ohne Token wird nur der Code aktualisiert.
 #
 #  Kann gefahrlos erneut ausgeführt werden: vorhandene Installation wird
 #  aktualisiert, config.toml und Daten bleiben erhalten.
@@ -30,6 +35,7 @@ PORT=5000
 APP_DIR=/srv/animadex
 DO_IMPORT=1
 SAVE_TOKEN=0
+AUTO_UPDATE=1
 BRANCH=""
 REPO_URL="https://github.com/zetaneko/AnimaDex.git"
 SVC_USER=animadex
@@ -42,7 +48,8 @@ while [ $# -gt 0 ]; do
         --skip-import) DO_IMPORT=0; shift ;;
         --save-token)  SAVE_TOKEN=1; shift ;;
         --branch)      BRANCH="$2"; shift 2 ;;
-        -h|--help)     sed -n '2,27p' "$0"; exit 0 ;;
+        --no-auto-update) AUTO_UPDATE=0; shift ;;
+        -h|--help)     sed -n '2,32p' "$0"; exit 0 ;;
         *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done
@@ -198,15 +205,50 @@ set -euo pipefail
 APP_DIR='$APP_DIR'; SVC_USER='$SVC_USER'
 runuser -u "\$SVC_USER" -- git -C "\$APP_DIR" pull --ff-only
 runuser -u "\$SVC_USER" -- bash -c "cd '\$APP_DIR' && . .venv/bin/activate && python -m pip install -q -r requirements.txt && python -m pip install -q -e . gunicorn && python -m animadex db-init"
-if [ -s '$ETC_DIR/token' ]; then TOKEN="\$(cat '$ETC_DIR/token')"; else read -rsp "Export-Token (leer = Katalog nicht aktualisieren): " TOKEN; echo; fi
+TOKEN=""
+if [ -s '$ETC_DIR/token' ]; then TOKEN="\$(cat '$ETC_DIR/token')"
+elif [ -t 0 ]; then read -rsp "Export-Token (leer = Katalog nicht aktualisieren): " TOKEN; echo
+else echo "Kein gespeichertes Token (/etc/animadex/token) – Katalog wird nicht aktualisiert."; fi
 if [ -n "\$TOKEN" ]; then
     runuser -u "\$SVC_USER" -- env ANIMADEX_IMPORT_TOKEN="\$TOKEN" \\
-        bash -c "cd '\$APP_DIR' && . .venv/bin/activate && python scripts/import_from_site.py --token \"\\\$ANIMADEX_IMPORT_TOKEN\""
+        bash -c "cd '\$APP_DIR' && . .venv/bin/activate && python scripts/import_from_site.py --token \"\\\$ANIMADEX_IMPORT_TOKEN\" </dev/null"
 fi
 systemctl restart animadex
-echo "AnimaDex aktualisiert."
+echo "AnimaDex aktualisiert: \$(date '+%F %T')"
 EOF
 chmod 755 /usr/local/bin/animadex-update
+
+# --- 7b. Wöchentliche Aktualisierung --------------------------------------
+if [ "$AUTO_UPDATE" = 1 ]; then
+    say "Wöchentliche Aktualisierung (systemd-Timer)"
+    cat > /etc/systemd/system/animadex-update.service <<EOF
+[Unit]
+Description=AnimaDex aktualisieren (Code + Katalog-Änderungen)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/animadex-update
+EOF
+    cat > /etc/systemd/system/animadex-update.timer <<EOF
+[Unit]
+Description=AnimaDex wöchentlich aktualisieren
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now animadex-update.timer >/dev/null 2>&1
+    [ -s "$ETC_DIR/token" ] || echo "Hinweis: kein gespeichertes Token – der Timer aktualisiert nur den Code. Für den Katalog einmal mit --save-token ausführen."
+else
+    systemctl disable --now animadex-update.timer >/dev/null 2>&1 || true
+fi
 
 # --- 8. Prüfen ---------------------------------------------------------------
 say "Prüfen"
@@ -235,6 +277,7 @@ cat <<EOF
   Dienst:         systemctl status animadex
   Log:            journalctl -u animadex -f
   Aktualisieren:  animadex-update   (Code + Katalog-Änderungen)
+  Automatisch:    sonntags ~4 Uhr (systemctl list-timers animadex-update.timer)
   Konfiguration:  $APP_DIR/config.toml  (Original: config.toml.orig)
   Daten:          $DATA_DIR
 ============================================================

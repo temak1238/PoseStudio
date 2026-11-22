@@ -75,6 +75,8 @@ Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 
 **Warteschlange (SwarmUI-Fenster):** Ein Klick auf „Generieren“, während noch ein Auftrag läuft, reiht den nächsten ein – mit dem Stand von Szene und Einstellungen in diesem Moment. Der Knopf zeigt „Einreihen (n warten)“. „Abbrechen“ stoppt nur den laufenden Auftrag, „Leeren“ verwirft die wartenden. „Nachbessern“ reiht sich ebenfalls ein.
 
+**Charakter- und Künstler-Finder (AnimaDex):** Über dem Prompt (SwarmUI-Fenster und Tablet-App) öffnen „Charakter …“ und „Künstler / Stil …“ eine Kachelauswahl aus einer eigenen [AnimaDex](https://github.com/zetaneko/AnimaDex)-Instanz im Heimnetz: Suche, Filter (Haar- und Augenfarbe, Haarlänge, Geschlecht), Sortierung. Ein Klick fügt den Eintrag an der Cursorstelle in den Prompt ein – Charakter als „name, serie“ (optional mit Aussehen-Tags), Künstler als „@name“; Klammern werden maskiert. AnimaDex läuft z. B. in einem Proxmox-LXC-Container: `tools/animadex/setup-animadex-lxc.sh` richtet ihn ein, importiert den Katalog von animadex.net und aktualisiert ihn wöchentlich.
+
 **Design:** Unten rechts im Hauptfenster „Hell“, „Dunkel“ oder „System“ (folgt dem App-Modus von Windows). Gilt für alle Fenster und wird sofort umgeschaltet.
 
 **Ergebnisse groß ansehen:** Ein Klick auf ein Ergebnis im SwarmUI-Fenster öffnet es groß. Mit den Pfeilen am Rand, den Tasten ←/→ (auch Bild↑/Bild↓, Leertaste, Pos1/Ende) oder dem Mausrad wechselt man zwischen den Ergebnissen. Esc oder ein Klick ins Bild schließt das Fenster.
