@@ -117,12 +117,24 @@ public partial class SwarmWindow : Window
         finally { w.Close(); }
     }
 
+    /// <summary>Gruppen hier etwas schmaler als im Hauptfenster; auf dem aktuellen Design-Stil aufbauen (auch nach dem Umschalten).</summary>
+    private void ApplyGroupStyle()
+    {
+        var s = new Style(typeof(GroupBox), Application.Current.TryFindResource(typeof(GroupBox)) as Style);
+        s.Setters.Add(new Setter(MarginProperty, new Thickness(0, 4, 0, 4)));
+        s.Setters.Add(new Setter(PaddingProperty, new Thickness(6, 4, 6, 4)));
+        Resources[typeof(GroupBox)] = s;
+    }
+
     internal int ResultCount => _results.Count;
     internal (string Caption, long Seed, bool HasSent, string? Server, bool Starred) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null, _results[0].ServerPath, _results[0].Starred);
 
     public SwarmWindow(SwarmSettings settings, ISwarmScene scene)
     {
         InitializeComponent();
+        ApplyGroupStyle();
+        Theme.Changed += ApplyGroupStyle;
+        Closed += (_, _) => Theme.Changed -= ApplyGroupStyle;
         // nie größer als der Bildschirm (sonst liegt „Generieren“ außerhalb)
         var wa = SystemParameters.WorkArea;
         Width = Math.Min(Width, wa.Width - 20); Height = Math.Min(Height, wa.Height - 20);

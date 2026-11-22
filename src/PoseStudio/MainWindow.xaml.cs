@@ -76,7 +76,10 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
 
     public MainWindow()
     {
+        if (!Theme.Locked) Theme.Apply(_settings.UiTheme);
         InitializeComponent();
+        ThemeCombo.ItemsSource = Theme.Modes;
+        ThemeCombo.SelectedItem = Theme.Mode;
         Title = $"Pose Studio {GetVersion()}";
 
         _scene.Children.Add(_lights);
@@ -148,6 +151,44 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     }
 
     private bool _noSaveOnClose;
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (ThemeCombo.SelectedItem is string m && m != Theme.Mode) Theme.Apply(m);
+    }
+
+    /// <summary>Testmodus --theme-shot: Haupt- und SwarmUI-Fenster außerhalb des Bildschirms anzeigen und als PNG speichern (schreibt keine Einstellungen).</summary>
+    internal async Task ThemeShotAsync(string dir, string tag)
+    {
+        _noSaveOnClose = true;
+        Directory.CreateDirectory(dir);
+        WindowStartupLocation = WindowStartupLocation.Manual; ShowActivated = false; ShowInTaskbar = false;
+        Width = 1520; Height = 920; Left = -20000; Top = 0;
+        Show(); Left = -20000;
+        await Task.Delay(2500);
+        SaveWindowShot(this, Path.Combine(dir, tag + "-main.png"));
+        PoseStudio.Swarm.SwarmWindow.OutputOverride = Path.Combine(Path.GetTempPath(), "PoseStudioThemeShot");
+        var sw = new PoseStudio.Swarm.SwarmWindow(_swarmSettings, this) { ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+        sw.Show(); sw.Left = -20000; sw.Top = 0;
+        await Task.Delay(2500);
+        SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm.png"));
+    }
+
+    private static void SaveWindowShot(Window w, string path)
+    {
+        var v = (FrameworkElement)w.Content;
+        int pw = (int)Math.Ceiling(v.ActualWidth), ph = (int)Math.Ceiling(v.ActualHeight);
+        var rtb = new RenderTargetBitmap(Math.Max(1, pw), Math.Max(1, ph), 96, 96, PixelFormats.Pbgra32);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(w.Background ?? Brushes.Transparent, null, new Rect(0, 0, pw, ph));
+            dc.DrawRectangle(new VisualBrush(v), null, new Rect(0, 0, pw, ph));
+        }
+        rtb.Render(dv);
+        var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(rtb));
+        using var fs = File.Create(path); enc.Save(fs);
+    }
 
     private async void CheckUpdates_Click(object sender, RoutedEventArgs e) => await Update.WindowsUpdater.CheckAsync(this, _settings, true, RestartForUpdate);
 
@@ -1116,6 +1157,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         s.FilePrefix = PrefixBox.Text;
         s.HairColor = ToHex(_figure.HairColor);
         s.DynamicsMode = Math.Max(0, DynamicsCombo.SelectedIndex);
+        s.UiTheme = Theme.Mode;
         s.Swarm = _swarmSettings;
         s.Guides = GuidesCheck.IsChecked == true;
         s.OutputPng = PngRadio.IsChecked == true;

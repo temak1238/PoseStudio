@@ -33,6 +33,8 @@ public sealed class AppSettings
     public int ActiveFigure { get; set; }
     public bool ControlNet3D { get; set; } = true;
     public string? ReferenceImage { get; set; }
+    /// <summary>Design: System, Hell oder Dunkel.</summary>
+    public string UiTheme { get; set; } = "System";
     /// <summary>Update-Prüfung beim Start; übersprungene Version (Release-Tag).</summary>
     public bool CheckUpdates { get; set; } = true;
     public string? SkipUpdateVersion { get; set; }

@@ -249,6 +249,21 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--theme-shot")
+        {
+            // --theme-shot <ordner> <Hell|Dunkel|Klassisch>: Fenster im gewählten Design als PNG (außerhalb des Bildschirms, ohne Einstellungen zu schreiben)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Theme.Apply(e.Args[2]); Theme.Locked = true;
+            var mw = new MainWindow();
+            Dispatcher.InvokeAsync(async () =>
+            {
+                try { await mw.ThemeShotAsync(e.Args[1], e.Args[2]); }
+                catch (Exception ex) { File.WriteAllText(Path.Combine(e.Args[1], "FEHLER.txt"), ex.ToString()); }
+                Environment.Exit(0);   // ohne Closing-Handler, damit nichts gespeichert wird
+            });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--update-test")
         {
             // --update-test <testordner> <ausgabe.txt>: neuestes Release laden und in den Testordner einspielen (nicht in den Programmordner)

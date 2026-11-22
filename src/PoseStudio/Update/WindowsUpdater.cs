@@ -190,11 +190,13 @@ public static class WindowsUpdater
             Text = UpdateChecker.ShortNotes(info.Notes, 3000), IsReadOnly = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 260, Margin = new Thickness(0, 8, 0, 8),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent,
         });
-        panel.Children.Add(new TextBlock
+        var hint = new TextBlock
         {
             Text = "„Jetzt aktualisieren“ lädt das Paket von GitHub, ersetzt die Programmdateien und startet Pose Studio neu. Einstellungen und Vorlagen bleiben erhalten.",
-            Foreground = System.Windows.Media.Brushes.DimGray, TextWrapping = TextWrapping.Wrap,
-        });
+            TextWrapping = TextWrapping.Wrap,
+        };
+        hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
+        panel.Children.Add(hint);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         Button B(string text, Choice c, bool isDefault = false)
         {
