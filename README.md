@@ -73,6 +73,10 @@ Gestrichelte **Hilfslinien** in der Vorschau zeigen den Ausschnitt der anderen a
 **ControlNet für ComfyUI:** zusätzlich (oder ausschließlich) PNGs im gleichen Ausschnitt: *3D-Pose* (Figuren einfarbig glänzend auf Schwarz, jede Figur eigene Farbe – für toyxyz/Anima_ControlNet-LLLite `anima_3dpose`) und *Regionen-Karte* (flache Farbfläche je Figur – für `anima_regional`). Ohne Haare, Objekte, Boden und Kulisse.
 Dateiname: `<Präfix>_<Datum>_<Uhrzeit>_<Format>.jpg|png`
 
+**Warteschlange (SwarmUI-Fenster):** Ein Klick auf „Generieren“, während noch ein Auftrag läuft, reiht den nächsten ein – mit dem Stand von Szene und Einstellungen in diesem Moment. Der Knopf zeigt „Einreihen (n warten)“. „Abbrechen“ stoppt nur den laufenden Auftrag, „Leeren“ verwirft die wartenden. „Nachbessern“ reiht sich ebenfalls ein.
+
+**Design:** Unten rechts im Hauptfenster „Hell“, „Dunkel“ oder „System“ (folgt dem App-Modus von Windows). Gilt für alle Fenster und wird sofort umgeschaltet.
+
 **Ergebnisse groß ansehen:** Ein Klick auf ein Ergebnis im SwarmUI-Fenster öffnet es groß. Mit den Pfeilen am Rand, den Tasten ←/→ (auch Bild↑/Bild↓, Leertaste, Pos1/Ende) oder dem Mausrad wechselt man zwischen den Ergebnissen. Esc oder ein Klick ins Bild schließt das Fenster.
 
 **Modellfamilien (Anima, Illustrious/SDXL):** Das SwarmUI-Fenster und die Tablet-App merken sich VAE und ControlNet je Modellfamilie. Beim Wechsel z. B. von einem Anima- auf ein Illustrious-Modell werden die Werte der neuen Familie eingesetzt (beim ersten Mal VAE `None` = die im Modell enthaltene VAE). Die ControlNet-Liste zeigt nur passende Modelle. Gibt es kein `anima_3dpose`, wählt Pose Studio „Bild: Tiefe“ mit der Szene als Steuerbild. Für Illustrious/NoobAI eignen sich [Laxhar/noob_openpose](https://huggingface.co/Laxhar/noob_openpose) sowie die NoobAI-ControlNets von Eugeoter für Tiefe, Lineart und Scribble (`noob-sdxl-controlnet-*`), abgelegt im ControlNet-Ordner von SwarmUI. Die Modellauswahl lässt sich nach Ordner filtern.

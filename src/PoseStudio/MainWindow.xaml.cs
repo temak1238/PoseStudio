@@ -1539,6 +1539,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             SceneFactory.SavePng(SceneFactory.Render(_figures, _cam, new SceneOptions(), 300, 150), cnImg);
             sb.AppendLine("ControlNet aus Bild: " + w2.TestControlImage(cnImg));
             sb.AppendLine("Bildfenster: " + w2.TestViewer(img, cnImg));
+            sb.AppendLine("Warteschlange: " + w2.TestQueue());
             {
                 var fs = new PoseStudio.Swarm.SwarmSettings { Vae = "qwen_image_vae", ControlModel = "anima_3dpose_6200" };
                 fs.SwitchFamily("anima", "stable-diffusion-xl-v1");

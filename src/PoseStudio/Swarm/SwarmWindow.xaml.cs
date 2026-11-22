@@ -154,7 +154,17 @@ public partial class SwarmWindow : Window
         // erst nach ShowSettings anhängen (sonst feuert der Handler beim Füllen)
         CnKindCombo.SelectionChanged += CnKind_Changed;
         Activated += (_, _) => ShowCnImage();
-        Closing += (_, _) => { ReadUi(); _cts?.Cancel(); };
+        Closing += (_, e) =>
+        {
+            if (_running || _queue.Count > 0)
+            {
+                string state = (_running ? "1 läuft" : "") + (_queue.Count > 0 ? (_running ? ", " : "") + $"{_queue.Count} warten" : "");
+                if (MessageBox.Show(this, $"Es sind noch Aufträge offen ({state}).\n\nFenster schließen und die Aufträge abbrechen?", "SwarmUI",
+                        MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) { e.Cancel = true; return; }
+            }
+            _queue.Clear();
+            ReadUi(); _cts?.Cancel();
+        };
     }
 
     // ------------------------------------------------------------------ Einstellungen ↔ Oberfläche
@@ -501,7 +511,72 @@ public partial class SwarmWindow : Window
             (p, what) = BuildGenerateParams();
         }
         catch (Exception ex) { StatusText.Text = "Vorbereiten fehlgeschlagen: " + ex.Message; return; }
-        await RunAsync(p, _s.Count, what);
+        Enqueue(p, _s.Count, what);
+    }
+
+    // ------------------------------------------------------------------ Warteschlange (wie in der Tablet-App)
+
+    private sealed record QueuedJob(JsonObject P, int Count, string What);
+    private readonly List<QueuedJob> _queue = new();
+    private bool _running;
+
+    /// <summary>Auftrag einreihen; die Parameter (Szene, Einstellungen) sind zu diesem Zeitpunkt festgehalten.</summary>
+    private void Enqueue(JsonObject p, int count, string what)
+    {
+        _queue.Add(new QueuedJob(p, count, what));
+        if (_running) StatusText.Text = $"Eingereiht ({_queue.Count} wartend): {what}";
+        UpdateQueueUi();
+        if (!_running) _ = PumpAsync();
+    }
+
+    private async Task PumpAsync()
+    {
+        if (_running) return;
+        _running = true;
+        try
+        {
+            while (_queue.Count > 0)
+            {
+                var job = _queue[0];
+                _queue.RemoveAt(0);
+                UpdateQueueUi();
+                await RunAsync(job.P, job.Count, job.What);
+            }
+        }
+        finally { _running = false; UpdateQueueUi(); }
+    }
+
+    private void UpdateQueueUi()
+    {
+        GenerateButton.Content = !_running ? "Generieren" : _queue.Count > 0 ? $"Einreihen ({_queue.Count} warten)" : "Einreihen";
+        GenerateButton.ToolTip = _running ? "Läuft gerade etwas, wird der Auftrag mit dem jetzigen Stand der Szene eingereiht." : null;
+        CancelButton.IsEnabled = _running;
+        ClearQueueButton.Visibility = _queue.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClearQueueButton.Content = $"Leeren ({_queue.Count})";
+    }
+
+    private void ClearQueue_Click(object sender, RoutedEventArgs e)
+    {
+        int n = _queue.Count;
+        _queue.Clear();
+        UpdateQueueUi();
+        StatusText.Text = $"{n} wartende(r) Auftrag/Aufträge verworfen." + (_running ? " Der laufende läuft weiter." : "");
+    }
+
+    /// <summary>Testmodus: Warteschlange ohne Server – Einreihen, Anzeige, Leeren.</summary>
+    internal string TestQueue()
+    {
+        _running = true;   // so tun, als liefe ein Auftrag
+        try
+        {
+            Enqueue(new JsonObject(), 1, "A"); Enqueue(new JsonObject(), 2, "B");
+            string t1 = $"{GenerateButton.Content} | {ClearQueueButton.Content} {ClearQueueButton.Visibility}";
+            ClearQueue_Click(this, new RoutedEventArgs());
+            string t2 = $"{GenerateButton.Content} | {ClearQueueButton.Visibility}";
+            bool ok = t1 == "Einreihen (2 warten) | Leeren (2) Visible" && t2 == "Einreihen | Collapsed" && _queue.Count == 0;
+            return $"{t1} → {t2}{(ok ? "" : " FEHLER")}";
+        }
+        finally { _running = false; _queue.Clear(); UpdateQueueUi(); }
     }
 
     /// <summary>Auftrag aus den aktuellen Einstellungen: Init Image aus der Szene, ControlNet aus der Szene oder aus einem Bild (mit Preprocessor).</summary>
@@ -621,7 +696,7 @@ public partial class SwarmWindow : Window
         ReadUi();
         if (_client == null) await ConnectAsync();
         if (_client == null) return;
-        await RunAsync(_s.BuildRefine(sent, item.Seed), 1, $"Nachgebessert (Seed {item.Seed}, ×{F(_s.RefinerUpscale)}, Refiner {F(_s.RefinerControl * 100)} %)");
+        Enqueue(_s.BuildRefine(sent, item.Seed), 1,$"Nachgebessert (Seed {item.Seed}, ×{F(_s.RefinerUpscale)}, Refiner {F(_s.RefinerControl * 100)} %)");
     }
 
     private async Task RunAsync(JsonObject p, int count, string what)
@@ -630,7 +705,6 @@ public partial class SwarmWindow : Window
         if ((p["seed"]?.GetValue<long>() ?? -1) < 0) p["seed"] = (long)Random.Shared.Next(1, int.MaxValue);
         long baseSeed = p["seed"]!.GetValue<long>();
         _cts = new CancellationTokenSource();
-        GenerateButton.IsEnabled = false; CancelButton.IsEnabled = true;
         var pending = new List<SwarmResultItem>();
         for (int i = 0; i < count; i++) { var it = new SwarmResultItem { Caption = "Warte auf SwarmUI …" }; pending.Add(it); _results.Insert(i, it); }
         Progress.Value = 0;
@@ -684,7 +758,7 @@ public partial class SwarmWindow : Window
         }
         finally
         {
-            GenerateButton.IsEnabled = true; CancelButton.IsEnabled = false; Progress.Value = 0;
+            Progress.Value = 0;
         }
     }
 

@@ -36,7 +36,8 @@
                 <ProgressBar x:Name="Progress" Height="8" Minimum="0" Maximum="1" />
                 <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,3" Foreground="{DynamicResource StatusText}" />
                 <DockPanel>
-                    <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Abbrechen" Margin="6,0,0,0" Padding="10,6" Click="Cancel_Click" IsEnabled="False" />
+                    <Button x:Name="ClearQueueButton" DockPanel.Dock="Right" Content="Leeren" Margin="6,0,0,0" Padding="10,6" Click="ClearQueue_Click" Visibility="Collapsed" ToolTip="Wartende Aufträge verwerfen (der laufende läuft weiter)" />
+                    <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Abbrechen" Margin="6,0,0,0" Padding="10,6" Click="Cancel_Click" IsEnabled="False" ToolTip="Laufenden Auftrag abbrechen (wartende bleiben in der Warteschlange)" />
                     <Button x:Name="GenerateButton" Content="Generieren" FontSize="15" FontWeight="SemiBold" Padding="10,8"
                             Background="#2B7BD6" Foreground="White" Click="Generate_Click" />
                 </DockPanel>
