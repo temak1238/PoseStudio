@@ -77,10 +77,10 @@ public sealed class SwarmSettings
     public Dictionary<string, string> ControlModelByFamily { get; set; } = new();
     public Dictionary<string, string> ImageControlModelByFamily { get; set; } = new();
 
-    /// <summary>VAE „Automatic“: SwarmUI nimmt die zum Modell passende Standard-VAE (bzw. die im Modell enthaltene).</summary>
-    public const string AutoVae = "Automatic";
+    /// <summary>VAE „None“: die im Modell enthaltene VAE (Standard bei SDXL/Illustrious). „Automatic“ nimmt die SwarmUI-API nicht an.</summary>
+    public const string AutoVae = "None";
 
-    /// <summary>Modellfamilie gewechselt: Werte der alten Familie merken, die der neuen holen (neu: VAE Automatic, kein ControlNet).
+    /// <summary>Modellfamilie gewechselt: Werte der alten Familie merken, die der neuen holen (neu: VAE None = im Modell enthalten, kein ControlNet).
     /// Gibt true zurück, wenn sich etwas geändert hat.</summary>
     public bool SwitchFamily(string oldFamily, string newFamily)
     {
@@ -214,7 +214,7 @@ public sealed class SwarmSettings
         if (Cfg > 0) p["cfgscale"] = Cfg;
         if (!string.IsNullOrWhiteSpace(Sampler)) p["sampler"] = Sampler;
         if (!string.IsNullOrWhiteSpace(Scheduler)) p["scheduler"] = Scheduler;
-        if (!string.IsNullOrWhiteSpace(Vae)) p["vae"] = Vae;
+        if (!string.IsNullOrWhiteSpace(Vae) && !Vae.Equals("Automatic", StringComparison.OrdinalIgnoreCase)) p["vae"] = Vae;   // Automatic lehnt die API ab
         if (Loras.Count > 0)
         {
             p["loras"] = new JsonArray(Loras.Select(l => (JsonNode?)JsonValue.Create(l.Name)).ToArray());

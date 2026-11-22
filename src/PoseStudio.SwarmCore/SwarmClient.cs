@@ -124,12 +124,12 @@ public sealed class SwarmClient : IDisposable
         return list.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>Auswahl für das VAE-Feld: Werte des Parameters „vae“ (enthält Automatic und None), sonst Automatic, None und die VAE-Dateien.</summary>
+    /// <summary>Auswahl für das VAE-Feld: None (im Modell enthaltene VAE) und die VAE-Dateien; „Automatic“ fehlt, weil die API es ablehnt.</summary>
     public static List<string> VaeChoices(List<string>? paramValues, IEnumerable<SwarmModel> vaeFiles)
     {
-        var list = new List<string> { SwarmSettings.AutoVae, "None" };
+        var list = new List<string> { "None" };
         foreach (var v in paramValues is { Count: > 0 } ? paramValues : vaeFiles.Select(f => f.Id))
-            if (!list.Contains(v, StringComparer.OrdinalIgnoreCase)) list.Add(v);
+            if (!list.Contains(v, StringComparer.OrdinalIgnoreCase) && !v.Equals("Automatic", StringComparison.OrdinalIgnoreCase)) list.Add(v);
         return list;
     }
 

@@ -184,7 +184,7 @@
                             </DockPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="VAE" Style="{StaticResource Lbl}" />
-                                <ComboBox x:Name="VaeCombo" IsEditable="True" ToolTip="Automatic = zum Modell passende Standard-VAE, None = die im Modell enthaltene. Wird je Modellfamilie (Anima, SDXL/Illustrious …) gemerkt." />
+                                <ComboBox x:Name="VaeCombo" IsEditable="True" ToolTip="None = die im Modell enthaltene VAE (richtig für Illustrious/SDXL), leer = SwarmUI-Standard. Wird je Modellfamilie (Anima, SDXL/Illustrious …) gemerkt." />
                             </DockPanel>
                         </StackPanel>
                     </GroupBox>
@@ -206,9 +206,10 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <Button Content="Bild wählen…" Click="CnPickImage_Click" Padding="6,1" />
                                     <Button Content="Referenzfoto nehmen" Click="CnUseReference_Click" Padding="6,1" Margin="4,0,0,0" />
+                                    <Button Content="Szene nehmen" Click="CnUseScene_Click" Padding="6,1" Margin="4,0,0,0" ToolTip="Die Figuren aus Pose Studio als Steuerbild – der Preprocessor macht daraus Tiefe, Linien oder ein Skelett" />
                                 </StackPanel>
                                 <TextBlock Foreground="#666" TextWrapping="Wrap" Margin="0,2,0,0"
-                                           Text="„Bild: …“-Arten: SwarmUI macht aus dem Bild zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich an dessen Aufbau. Modelle für Anima: anima-lllite-any-test-like-v2 (Linien/Skizze), anima-lllite-depth-1 (Tiefe). Ohne Init Image gilt das Seitenverhältnis des Steuerbilds." />
+                                           Text="„Bild: …“-Arten: SwarmUI macht aus dem Bild zuerst ein Steuerbild (Linien, Skizze, Tiefenkarte oder Skelett) und hält sich an dessen Aufbau. Ohne Foto nimmt Pose Studio die Szene. Anima: anima-lllite-any-test-like-v2 (Linien/Skizze), anima-lllite-depth-1 (Tiefe). Illustrious/SDXL: noob-depth (am zuverlässigsten für die Pose), noob-lineart-anime, noob-scribble-pidinet, noob-openpose. Ohne Init Image gilt das Seitenverhältnis des Steuerbilds." />
                             </StackPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Stärke / Start / Ende" Style="{StaticResource Lbl}" Width="120" />

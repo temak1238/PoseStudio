@@ -1477,9 +1477,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
                 var fs = new PoseStudio.Swarm.SwarmSettings { Vae = "qwen_image_vae", ControlModel = "anima_3dpose_6200" };
                 fs.SwitchFamily("anima", "stable-diffusion-xl-v1");
                 string toXl = $"{fs.Vae}/{(fs.ControlModel == "" ? "-" : fs.ControlModel)}";
-                fs.Vae = "None"; fs.SwitchFamily("stable-diffusion-xl-v1", "anima");
+                fs.Vae = "Flux/ae"; fs.SwitchFamily("stable-diffusion-xl-v1", "anima");
                 string back = $"{fs.Vae}/{fs.ControlModel}";
-                bool ok = toXl == "Automatic/-" && back == "qwen_image_vae/anima_3dpose_6200" && fs.CloneProfile().VaeByFamily["stable-diffusion-xl-v1"] == "None";
+                bool ok = toXl == "None/-" && back == "qwen_image_vae/anima_3dpose_6200" && fs.CloneProfile().VaeByFamily["stable-diffusion-xl-v1"] == "Flux/ae";
                 sb.AppendLine($"Modellfamilie: Anima→SDXL {toXl}, zurück {back}{(ok ? "" : " FEHLER")} | VAE-Liste {string.Join(",", PoseStudio.Swarm.SwarmClient.VaeChoices(null, new[] { new PoseStudio.Swarm.SwarmModel("Flux/ae.safetensors", "", null, null, null) }))}");
             }
             sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");

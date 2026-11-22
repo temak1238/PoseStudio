@@ -551,9 +551,17 @@ public sealed class MainPage : ContentPage
             S.Model = m.Id;
             if (S.SwitchFamily(oldFamily, m.Family))
             {
-                // andere Modellfamilie (z. B. Anima → Illustrious): VAE und ControlNet der neuen Familie, neu = VAE Automatic
+                // andere Modellfamilie (z. B. Anima → Illustrious): VAE und ControlNet der neuen Familie, neu = VAE None
                 _suppress = true; SetItems(_vae, _vae.ItemsSource?.Cast<string>().Skip(1), S.Vae); _suppress = false;
-                _status.Text = $"Modellfamilie {SwarmModel.FamilyLabel(m.Family)}: VAE „{(S.Vae == "" ? "(Standard)" : S.Vae)}“" + (_cnIds.Count == 0 ? " – kein passendes ControlNet installiert." : ".");
+                var fit = _cnIds;
+                // Vorlage ohne anima_3dpose (z. B. Illustrious): Tiefe aus dem Renderbild per Preprocessor, passendes Modell wählen
+                if (S.ControlModel == "" && fit.Count > 0 && !fit.Any(c => c.Contains("3dpose", StringComparison.OrdinalIgnoreCase)))
+                {
+                    S.ControlFromImage = true; S.ControlRegions = false; S.TemplateControlKind = 2; S.ControlLook = 0;
+                    S.ControlModel = SwarmSettings.SuggestImageControlModel(2, fit) ?? fit[0];
+                }
+                _status.Text = $"Modellfamilie {SwarmModel.FamilyLabel(m.Family)}: VAE „{(S.Vae == "" ? "(Standard)" : S.Vae)}“, ControlNet „{(S.ControlModel == "" ? "(keins)" : S.ControlModel)}“"
+                             + (fit.Count == 0 ? " – kein passendes ControlNet installiert." : ".");
             }
             _cnShownFor = -1;
             ShowCn(Math.Max(0, _source.SelectedIndex));
