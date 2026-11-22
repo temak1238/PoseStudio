@@ -134,9 +134,32 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         // Alt allein soll nicht das Systemmenü aktivieren (Alt + ziehen bewegt das Licht).
         PreviewKeyDown += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
         PreviewKeyUp += (_, e) => { if (e.Key == Key.System && e.SystemKey is Key.LeftAlt or Key.RightAlt) e.Handled = true; };
-        Closing += (_, _) => { try { SaveSettings(); } catch { /* beim Beenden nie blockieren */ } };
+        Closing += (_, _) => { if (_noSaveOnClose) return; try { SaveSettings(); } catch { /* beim Beenden nie blockieren */ } };
         Closed += (_, _) => ShutdownCleanly();
         Loaded += (_, _) => { UpdateFrameSize(); RefreshAll(); };
+        if (App.NormalStart)
+            ContentRendered += async (_, _) =>
+            {
+                Update.WindowsUpdater.CleanupOld();
+                if (!_settings.CheckUpdates) return;
+                await Task.Delay(2500);
+                await Update.WindowsUpdater.CheckAsync(this, _settings, false, RestartForUpdate);
+            };
+    }
+
+    private bool _noSaveOnClose;
+
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e) => await Update.WindowsUpdater.CheckAsync(this, _settings, true, RestartForUpdate);
+
+    /// <summary>Nach dem Update: Einstellungen sichern, neue Version starten, dieses Fenster schließen.</summary>
+    private void RestartForUpdate(string message)
+    {
+        SaveSettings();
+        _noSaveOnClose = true;
+        MessageBox.Show(this, message, "Pose Studio", MessageBoxButton.OK, MessageBoxImage.Information);
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Update.WindowsUpdater.AppDir, Update.WindowsUpdater.ExeName)) { UseShellExecute = false, WorkingDirectory = Update.WindowsUpdater.AppDir }); }
+        catch (Exception ex) { MessageBox.Show(this, "Neustart fehlgeschlagen – bitte Pose Studio selbst starten: " + ex.Message, "Pose Studio"); }
+        Close();
     }
 
     private static string GetVersion()

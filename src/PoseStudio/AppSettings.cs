@@ -33,6 +33,9 @@ public sealed class AppSettings
     public int ActiveFigure { get; set; }
     public bool ControlNet3D { get; set; } = true;
     public string? ReferenceImage { get; set; }
+    /// <summary>Update-Prüfung beim Start; übersprungene Version (Release-Tag).</summary>
+    public bool CheckUpdates { get; set; } = true;
+    public string? SkipUpdateVersion { get; set; }
     public double ReferenceOpacity { get; set; } = 50;
     /// <summary>Pose aus Foto: Körper aus RTMW3D statt MediaPipe; Finger mit RTMW3D erkennen.</summary>
     public bool PhotoBodyRtmw3d { get; set; }

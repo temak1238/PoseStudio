@@ -100,7 +100,7 @@ public sealed class MainPage : ContentPage
         RefreshProfiles();
         LoadResults();
         ShowResultFolder();
-        Loaded += async (_, _) => { await ConnectAsync(); await RestoreQueueAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); };
+        Loaded += async (_, _) => { ApkInstaller.Cleanup(); await ConnectAsync(); await RestoreQueueAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); await CheckUpdatesAsync(false); };
     }
 
     // ------------------------------------------------------------------ Aufbau
@@ -208,6 +208,8 @@ public sealed class MainPage : ContentPage
                     Row("Refiner-Anteil / Faktor", Cols(_refControl, _refUpscale)), Row("Hochskalieren mit", _refUpMethod), Row("Methode", _refMethod),
                     Row("Steps / CFG (0 = wie oben)", Cols(_refSteps, _refCfg))),
                 Section("Ablage und Sicherung", _resultFolderName, Btn("Ergebnis-Ordner …", PickResultFolderAsync), BuildBackupBox()),
+                Section("Update", new Label { Text = $"Installiert: Version {AppInfo.VersionString}. Die App gleicht beim Start mit dem neuesten Release auf GitHub ab.", TextColor = Ui.Muted, FontSize = 12 },
+                    Btn("Nach Updates suchen", () => CheckUpdatesAsync(true))),
             }
         };
     }
@@ -1211,6 +1213,60 @@ public sealed class MainPage : ContentPage
         });
         _backupBox.Children.Add(Cols(Btn("Einstellungen sichern", ExportSettingsAsync), Btn("Sicherung laden", ImportSettingsAsync)));
         return _backupBox;
+    }
+
+    // ------------------------------------------------------------------ Update
+
+    private bool _updating;
+
+    /// <summary>Mit dem neuesten GitHub-Release abgleichen; nach Rückfrage APK laden und den Android-Installer öffnen.
+    /// manual = über den Knopf (meldet auch „aktuell“ und Fehler, ignoriert „überspringen“).</summary>
+    private async Task CheckUpdatesAsync(bool manual)
+    {
+        if (_updating) return;
+        _updating = true;
+        try
+        {
+            Update.UpdateInfo info;
+            try { info = await Update.UpdateChecker.GetLatestAsync(); }
+            catch (Exception ex) { if (manual) await DisplayAlertAsync("Update", "Update-Prüfung fehlgeschlagen: " + ex.Message, "OK"); return; }
+            var current = Update.UpdateChecker.ParseVersion(AppInfo.VersionString) ?? new Version(0, 0, 0);
+            if (!Update.UpdateChecker.IsNewer(info, current))
+            {
+                if (manual) await DisplayAlertAsync("Update", $"Die App ist aktuell (Version {current.ToString(3)}).", "OK");
+                return;
+            }
+            if (!manual && _t.SkipUpdateVersion == info.Tag) return;
+            bool busy = _running != null || _queue.Count > 0 || _lost.Count > 0;
+            if (busy && !manual) return;   // beim nächsten Start bzw. über den Knopf
+
+            const string now = "Jetzt aktualisieren", skip = "Diese Version überspringen";
+            string notes = Update.UpdateChecker.ShortNotes(info.Notes, 500);
+            string? pick = await DisplayActionSheetAsync($"Update auf {info.VersionText} (installiert {current.ToString(3)})\n\n{notes}", "Später", null, now, skip);
+            if (pick == skip) { _t.SkipUpdateVersion = info.Tag; SaveState(); return; }
+            if (pick != now) return;
+            if (_running != null || _queue.Count > 0 || _lost.Count > 0)
+            {
+                await DisplayAlertAsync("Update", "Es laufen noch Aufträge. Bitte warten, bis die Warteschlange leer ist, und dann „Nach Updates suchen“ tippen.", "OK");
+                return;
+            }
+            if (info.AndroidApk is not { } apk) { await DisplayAlertAsync("Update", "Im Release fehlt die APK.", "OK"); return; }
+            if (!ApkInstaller.CanInstall())
+            {
+                await DisplayAlertAsync("Update", "Android fragt einmalig, ob diese App Updates installieren darf. Auf der folgenden Seite „Dieser Quelle vertrauen“ einschalten, zurückkehren und erneut „Nach Updates suchen“ tippen.", "Weiter");
+                ApkInstaller.OpenInstallPermission();
+                return;
+            }
+
+            string path = Path.Combine(ApkInstaller.DownloadDir, apk.Name);
+            _status.Text = $"Lade Update {info.VersionText} …";
+            await Update.UpdateChecker.DownloadAsync(apk, path, new Progress<double>(f => _status.Text = $"Lade Update {info.VersionText} … {f:P0}"));
+            SaveState();
+            _status.Text = $"Update {info.VersionText} geladen – bitte im Android-Dialog „Installieren“ tippen.";
+            ApkInstaller.Install(path);
+        }
+        catch (Exception ex) { _status.Text = "Update fehlgeschlagen: " + ex.Message; }
+        finally { _updating = false; }
     }
 
     private void ShowResultFolder()

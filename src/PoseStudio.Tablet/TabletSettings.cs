@@ -20,6 +20,8 @@ public sealed class TabletSettings
     public string? ResultFolder { get; set; }
     /// <summary>Historie: nur Prompts übernehmen.</summary>
     public bool HistoryPromptsOnly { get; set; }
+    /// <summary>Update: übersprungene Version (Release-Tag).</summary>
+    public string? SkipUpdateVersion { get; set; }
     /// <summary>Bis 0.22.6: Seitenverhältnis als Index in die alte Liste (wird beim Laden in Format/Portrait übernommen).</summary>
     public int Aspect { get; set; }
     /// <summary>Format ohne Vorlage (Index in Formats), -1 = noch nicht gesetzt.</summary>

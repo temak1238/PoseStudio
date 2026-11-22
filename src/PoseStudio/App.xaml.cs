@@ -249,10 +249,29 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--update-test")
+        {
+            // --update-test <testordner> <ausgabe.txt>: neuestes Release laden und in den Testordner einspielen (nicht in den Programmordner)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () =>
+            {
+                var log = new System.Text.StringBuilder();
+                try { log.Append(await Update.UpdateSelfTest.RunAsync(e.Args[1])); }
+                catch (Exception ex) { log.AppendLine("FEHLER: " + ex); }
+                File.WriteAllText(e.Args[2], log.ToString());
+                Shutdown();
+            });
+            return;
+        }
+
+        NormalStart = e.Args.Length == 0;
         var w = new MainWindow();
         MainWindow = w;
         w.Show();
     }
+
+    /// <summary>Gewöhnlicher Start ohne Testmodus – nur dann wird nach Updates gesucht.</summary>
+    public static bool NormalStart { get; private set; }
 
     /// <summary>Alle Pose-Vorlagen als Kontaktbogen (je Vorlage 3/4-Ansicht und Seite).</summary>
     /// <summary>Testmodus --pose-review &lt;Ordner&gt; [ab Index]: Vorlagen groß, je vorne/schräg/seitlich, 4 Vorlagen pro Zeile, 16 pro Blatt.</summary>
