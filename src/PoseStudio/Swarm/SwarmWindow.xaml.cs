@@ -126,6 +126,32 @@ public partial class SwarmWindow : Window
         Resources[typeof(GroupBox)] = s;
     }
 
+    // ------------------------------------------------------------------ AnimaDex (Charakter- und Künstler-Finder)
+
+    private AnimaDexWindow? _dex;
+
+    private void AnimaDexChars_Click(object sender, RoutedEventArgs e) => OpenAnimaDex(false);
+    private void AnimaDexArtists_Click(object sender, RoutedEventArgs e) => OpenAnimaDex(true);
+
+    private void OpenAnimaDex(bool artists)
+    {
+        if (_dex is { IsLoaded: true }) { _dex.Activate(); return; }
+        _dex = new AnimaDexWindow(_s, InsertIntoPrompt, artists) { Owner = this };
+        _dex.Show();
+    }
+
+    /// <summary>Text an der Cursorstelle des Prompts einfügen (ohne Cursor: am Ende), mit Kommas abgetrennt.</summary>
+    private void InsertIntoPrompt(string text)
+    {
+        int pos = _promptCaretKnown ? PromptBox.CaretIndex : PromptBox.Text.Length;   // noch nie in den Prompt geklickt: ans Ende
+        var (t, caret) = AnimaDexClient.InsertIntoPrompt(PromptBox.Text, pos, text);
+        PromptBox.Text = t;
+        PromptBox.CaretIndex = caret;
+        _promptCaretKnown = true;
+    }
+
+    private bool _promptCaretKnown;
+
     internal int ResultCount => _results.Count;
     internal (string Caption, long Seed, bool HasSent, string? Server, bool Starred) FirstResult => (_results[0].Caption, _results[0].Seed, _results[0].Sent != null, _results[0].ServerPath, _results[0].Starred);
 
@@ -133,6 +159,7 @@ public partial class SwarmWindow : Window
     {
         InitializeComponent();
         ApplyGroupStyle();
+        PromptBox.GotKeyboardFocus += (_, _) => _promptCaretKnown = true;
         Theme.Changed += ApplyGroupStyle;
         Closed += (_, _) => Theme.Changed -= ApplyGroupStyle;
         // nie größer als der Bildschirm (sonst liegt „Generieren“ außerhalb)

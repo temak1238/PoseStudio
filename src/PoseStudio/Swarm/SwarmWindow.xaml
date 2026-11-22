@@ -127,6 +127,10 @@
 
                     <GroupBox Header="Prompt">
                         <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <Button Content="Charakter …" Click="AnimaDexChars_Click" Margin="0,0,4,0" ToolTip="Charakter aus AnimaDex suchen und in den Prompt einfügen (an der Cursorstelle)" />
+                                <Button Content="Künstler / Stil …" Click="AnimaDexArtists_Click" ToolTip="Künstler-Tag („@name“) aus AnimaDex suchen und in den Prompt einfügen" />
+                            </StackPanel>
                             <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" Height="110" VerticalScrollBarVisibility="Auto" />
                             <TextBlock Text="Negativ-Prompt" Margin="0,4,0,1" />
                             <TextBox x:Name="NegativeBox" AcceptsReturn="True" TextWrapping="Wrap" Height="70" VerticalScrollBarVisibility="Auto" />

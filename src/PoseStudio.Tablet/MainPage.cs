@@ -199,7 +199,8 @@ public sealed class MainPage : ContentPage
                     Row("Profil", _profile), Cols(saveProfile, delProfile, Btn("Aus Historie …", PickHistoryAsync)), _baseText),
                 Section("Modell", modelTile, Btn("Modell wählen …", PickModelAsync)),
                 Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync), Row("Trigger-Wörter automatisch", _autoTrigger)),
-                Section("Prompt", _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
+                Section("Prompt", Cols(Btn("Charakter …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, false)), Btn("Künstler / Stil …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, true))),
+                    _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
                 Section("Generierung",
                     Row("Seitenlänge", _side, _sizeText), Row("Anzahl", countRow), Row("Seed (-1 = zufällig)", _seed, dice),
@@ -1213,6 +1214,17 @@ public sealed class MainPage : ContentPage
         });
         _backupBox.Children.Add(Cols(Btn("Einstellungen sichern", ExportSettingsAsync), Btn("Sicherung laden", ImportSettingsAsync)));
         return _backupBox;
+    }
+
+    /// <summary>AnimaDex-Eintrag an der Cursorstelle des Prompts einfügen (sonst am Ende), mit Kommas abgetrennt.</summary>
+    private void InsertIntoPrompt(string text)
+    {
+        string cur = _prompt.Text ?? "";
+        int pos = _prompt.CursorPosition > 0 && _prompt.CursorPosition <= cur.Length ? _prompt.CursorPosition : cur.Length;
+        var (t, caret) = AnimaDexClient.InsertIntoPrompt(cur, pos, text);
+        _prompt.Text = t;
+        _prompt.CursorPosition = caret;
+        S.Prompt = t;
     }
 
     // ------------------------------------------------------------------ Update

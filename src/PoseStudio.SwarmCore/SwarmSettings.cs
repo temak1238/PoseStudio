@@ -13,6 +13,10 @@ public sealed class SwarmLora
 public sealed class SwarmSettings
 {
     public string Url { get; set; } = "http://192.168.188.2:7801";
+    /// <summary>AnimaDex (Charakter- und Künstler-Katalog), z. B. http://192.168.x.x:5000; leer = nicht genutzt. Gehört nicht zum Profil.</summary>
+    public string AnimaDexUrl { get; set; } = "";
+    /// <summary>Beim Übernehmen eines Charakters auch seine Aussehen-Tags einfügen.</summary>
+    public bool AnimaDexWithTags { get; set; }
     /// <summary>Aus einem SwarmUI-Bild übernommene Parameter (alles, was das Fenster nicht selbst einstellt, z. B. Segment/FaceRefine).</summary>
     public JsonObject? Base { get; set; }
     public string Model { get; set; } = "";
@@ -124,10 +128,10 @@ public sealed class SwarmSettings
     /// <summary>Profil anwenden (Server-Adresse und Profilliste bleiben).</summary>
     public void ApplyProfile(SwarmSettings p)
     {
-        var url = Url; var profiles = Profiles; var place = WindowPlacement;
+        var url = Url; var profiles = Profiles; var place = WindowPlacement; var dex = AnimaDexUrl; var dexTags = AnimaDexWithTags;
         foreach (var prop in typeof(SwarmSettings).GetProperties().Where(x => x.CanWrite))
             prop.SetValue(this, prop.GetValue(p.CloneProfile()));
-        Url = url; Profiles = profiles; WindowPlacement = place;
+        Url = url; Profiles = profiles; WindowPlacement = place; AnimaDexUrl = dex; AnimaDexWithTags = dexTags;
     }
 
     // Werte, die beim Übernehmen nicht in die Grundlage gehören: Bildquellen, Größen, Seeds, Refiner (nur für „Nachbessern“)

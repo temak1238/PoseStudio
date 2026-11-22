@@ -264,6 +264,21 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--animadex-test")
+        {
+            // --animadex-test <adresse> <ausgabe.txt>: AnimaDex-Anbindung gegen eine laufende Instanz prüfen
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () =>
+            {
+                string r;
+                try { r = await Swarm.AnimaDexWindow.SelfTestAsync(e.Args[1]); }
+                catch (Exception ex) { r = "FEHLER: " + ex; }
+                File.WriteAllText(e.Args[2], r);
+                Shutdown();
+            });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--update-test")
         {
             // --update-test <testordner> <ausgabe.txt>: neuestes Release laden und in den Testordner einspielen (nicht in den Programmordner)

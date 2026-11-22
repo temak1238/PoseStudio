@@ -81,8 +81,10 @@ public static class ThumbCache
         catch { return null; }
     }
 
-    public static BitmapImage Decode(byte[] data, int decodeWidth)
+    public static BitmapSource Decode(byte[] data, int decodeWidth)
     {
+        // WebP (AnimaDex-Vorschaubilder): Windows Server hat dafür keinen WIC-Decoder → SkiaSharp
+        if (IsWebP(data)) return DecodeWebP(data, decodeWidth);
         var bi = new BitmapImage();
         bi.BeginInit();
         bi.CacheOption = BitmapCacheOption.OnLoad;
@@ -91,6 +93,29 @@ public static class ThumbCache
         bi.EndInit();
         bi.Freeze();
         return bi;
+    }
+
+    public static bool IsWebP(byte[] d) => d.Length > 12 && d[0] == 'R' && d[1] == 'I' && d[2] == 'F' && d[3] == 'F' && d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P';
+
+    private static BitmapSource DecodeWebP(byte[] data, int decodeWidth)
+    {
+        using var bmp = SkiaSharp.SKBitmap.Decode(data) ?? throw new InvalidDataException("WebP nicht lesbar.");
+        SkiaSharp.SKBitmap src = bmp;
+        SkiaSharp.SKBitmap? scaled = null;
+        if (decodeWidth > 0 && bmp.Width > decodeWidth)
+        {
+            int h = Math.Max(1, (int)Math.Round((double)bmp.Height * decodeWidth / bmp.Width));
+            scaled = bmp.Resize(new SkiaSharp.SKImageInfo(decodeWidth, h), new SkiaSharp.SKSamplingOptions(SkiaSharp.SKFilterMode.Linear, SkiaSharp.SKMipmapMode.Linear));
+            if (scaled != null) src = scaled;
+        }
+        try
+        {
+            using var conv = src.Copy(SkiaSharp.SKColorType.Bgra8888) ?? throw new InvalidDataException("WebP nicht umwandelbar.");
+            var wb = BitmapSource.Create(conv.Width, conv.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32, null, conv.GetPixels(), conv.ByteCount, conv.RowBytes);
+            wb.Freeze();
+            return wb;
+        }
+        finally { scaled?.Dispose(); }
     }
 }
 
