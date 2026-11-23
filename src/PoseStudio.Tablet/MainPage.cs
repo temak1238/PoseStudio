@@ -103,7 +103,7 @@ public sealed partial class MainPage : ContentPage
         RefreshProfiles();
         LoadResults();
         ShowResultFolder();
-        Loaded += async (_, _) => { ApkInstaller.Cleanup(); await ConnectAsync(); await RestoreQueueAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); await CheckUpdatesAsync(false); };
+        Loaded += async (_, _) => { await ShowLastCrashAsync(); ApkInstaller.Cleanup(); await ConnectAsync(); await RestoreQueueAsync(); await LoadTemplatesAsync(false); await SyncResultsAsync(merge: true, report: false); await CheckUpdatesAsync(false); };
     }
 
     // ------------------------------------------------------------------ Aufbau

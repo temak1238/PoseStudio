@@ -50,6 +50,15 @@ public sealed partial class MainPage
         ShowSegments();
     }
 
+    /// <summary>Beim Start: gab es seit dem letzten Mal einen Absturz, Protokoll anzeigen (zum Weitergeben kopierbar).</summary>
+    private async Task ShowLastCrashAsync()
+    {
+        if (CrashLog.Take() is not { } log) return;
+        string shortLog = log.Length > 1500 ? log[..1500] + " …" : log;
+        if (await DisplayAlertAsync("Pose Studio ist abgestürzt", "Beim letzten Mal ist die App abgestürzt. Protokoll:\n\n" + shortLog, "Kopieren", "Schließen"))
+            await Clipboard.Default.SetTextAsync(log);
+    }
+
     private CancellationTokenSource? _segSave;
 
     /// <summary>Refiner-Änderungen nach kurzer Pause speichern – geht sonst verloren, wenn Android die App beendet.</summary>
@@ -170,6 +179,16 @@ public sealed partial class MainPage
         var add = new Button { Text = "+ LoRA nur für diesen Bereich", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, HorizontalOptions = LayoutOptions.Start, Padding = new Thickness(10, 0) };
         add.Clicked += async (_, _) =>
         {
+            try { await PickSegmentLorasAsync(r); }
+            catch (Exception ex) { CrashLog.Write(ex, "Refiner-LoRA"); await DisplayAlertAsync("Fehler", ex.GetType().Name + ": " + ex.Message, "OK"); }
+        };
+        box.Add(add);
+        return box;
+    }
+
+    private async Task PickSegmentLorasAsync(SegmentRefiner r)
+    {
+        {
             if (_loras.Count == 0) { await DisplayAlertAsync("LoRA", "Noch keine Verbindung zu SwarmUI.", "OK"); return; }
             var tiles = _loras.Select(m => new Tile
             {
@@ -182,8 +201,6 @@ public sealed partial class MainPage
                 if (!r.Loras.Any(x => x.Name.Equals(m.Id, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = m.Id, Weight = 0.8 });
             }));
             ShowSegments();
-        };
-        box.Add(add);
-        return box;
+        }
     }
 }
