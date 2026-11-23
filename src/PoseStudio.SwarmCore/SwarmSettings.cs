@@ -112,6 +112,9 @@ public sealed class SwarmSettings
     public string RefinerMethod { get; set; } = "PostApply";
     public int RefinerSteps { get; set; }
     public double RefinerCfg { get; set; }
+    /// <summary>Nachbessern nur für die Figur: Bild nur hochskalieren (nicht neu malen), dann die Person per Bereichs-Refiner verbessern.
+    /// So bleibt ein unscharfer Hintergrund (Tiefenschärfe, Bokeh) unscharf.</summary>
+    public bool RefineKeepBackground { get; set; }
 
     public Dictionary<string, SwarmSettings> Profiles { get; set; } = new();
     public string? WindowPlacement { get; set; }
@@ -274,8 +277,32 @@ public sealed class SwarmSettings
         return p;
     }
 
+    /// <summary>YOLO-Modelle für die Figur (erstes vorhandenes gewinnt); ohne Modell: Textbeschreibung „person“.</summary>
+    public static readonly string[] PersonYoloHints = { "person_yolov8m-seg", "person_yolov8s-seg", "person_yolov8n-seg", "person" };
+
+    /// <summary>Hintergrund behalten: Refiner-Anteil 0 (nur hochskalieren), dafür die Person als erster Bereichs-Refiner mit dem Hauptprompt
+    /// und dem Refiner-Anteil als Kreativität. Weitere Refiner (Gesicht, Hände …) laufen danach wie gewohnt.</summary>
+    private void KeepBackground(JsonObject p, IEnumerable<string>? yoloModels)
+    {
+        var models = yoloModels?.ToList() ?? new();
+        string? yolo = PersonYoloHints.Select(h => models.FirstOrDefault(m => m.Contains(h, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(m => m != null);
+        string target = yolo != null ? "yolo-" + yolo : "person";
+        double thr = yolo != null ? SegmentRefiners.YoloThreshold : SegmentRefiners.ClipThreshold;
+        double creativity = Math.Clamp(RefinerControl, 0.05, 1);
+        p["refinercontrolpercentage"] = 0;
+        string prompt = p["prompt"]?.ToString() ?? "";
+        int seg = prompt.IndexOf("<segment:", StringComparison.OrdinalIgnoreCase);
+        string main = (seg >= 0 ? prompt[..seg] : prompt).TrimEnd();
+        string personText = System.Text.RegularExpressions.Regex.Replace(main, @"<lora:[^>]*>", "").Trim().TrimEnd(',').Trim();
+        string person = SegmentRefiners.Compose("", new[] { new SegmentRefiner { Target = target, Creativity = creativity, Threshold = thr, Prompt = personText } });
+        p["prompt"] = main + " " + person + (seg >= 0 ? " " + prompt[seg..] : "");
+        // Schritte/CFG der Bereiche wie beim Refiner (sonst SwarmUI-Standard 40 Schritte, CFG 7 – zu viel z. B. für Hyper-/Turbo-Modelle)
+        if (RefinerSteps > 0) p["segmentsteps"] = RefinerSteps; else if (p["steps"] is { } st) p["segmentsteps"] = st.DeepClone();
+        if (RefinerCfg > 0) p["segmentcfgscale"] = RefinerCfg; else if (p["cfgscale"] is { } cf) p["segmentcfgscale"] = cf.DeepClone();
+    }
+
     /// <summary>Nachbessern: dieselben Parameter (mit dem tatsächlichen Seed des Bildes) plus Refiner-Durchgang.</summary>
-    public JsonObject BuildRefine(JsonObject sent, long seed)
+    public JsonObject BuildRefine(JsonObject sent, long seed, IEnumerable<string>? yoloModels = null)
     {
         var p = (JsonObject)sent.DeepClone();
         p["images"] = 1;
@@ -286,6 +313,7 @@ public sealed class SwarmSettings
         if (!string.IsNullOrWhiteSpace(RefinerUpscaleMethod)) p["refinerupscalemethod"] = RefinerUpscaleMethod;
         if (RefinerSteps > 0) p["refinersteps"] = RefinerSteps;
         if (RefinerCfg > 0) p["refinercfgscale"] = RefinerCfg;
+        if (RefineKeepBackground) KeepBackground(p, yoloModels);
         return p;
     }
 }

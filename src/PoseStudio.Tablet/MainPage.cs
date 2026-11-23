@@ -61,6 +61,7 @@ public sealed partial class MainPage : ContentPage
     private readonly Entry _seed = Num(), _steps = Num(), _cfg = Num();
     private readonly Picker _sampler = new(), _scheduler = new(), _vae = new();
     private readonly Entry _refControl = Num(), _refUpscale = Num(), _refSteps = Num(), _refCfg = Num();
+    private readonly Switch _refKeepBg = new() { OnColor = Ui.Accent, HorizontalOptions = LayoutOptions.Start };
     private readonly Picker _refUpMethod = new(), _refMethod = new();
     private readonly Label _baseText = new() { TextColor = Ui.Muted, FontSize = 12 };
     private readonly Button _generate = new() { Text = "Generieren", FontSize = 18, FontAttributes = FontAttributes.Bold, BackgroundColor = Ui.Accent, TextColor = Colors.White, HeightRequest = 56 };
@@ -208,7 +209,8 @@ public sealed partial class MainPage : ContentPage
                     Row("Seitenlänge", _side, _sizeText), Row("Anzahl", countRow), Row("Seed (-1 = zufällig)", _seed, dice),
                     Row("Steps / CFG (0 = Standard)", Cols(_steps, _cfg)), Row("Sampler", _sampler), Row("Scheduler", _scheduler), Row("VAE", _vae)),
                 Section("Nachbessern (Refiner)",
-                    Row("Refiner-Anteil / Faktor", Cols(_refControl, _refUpscale)), Row("Hochskalieren mit", _refUpMethod), Row("Methode", _refMethod),
+                    Row("Refiner-Anteil / Faktor", Cols(_refControl, _refUpscale)), Row("Hintergrund unscharf lassen", _refKeepBg),
+                    new Label { Text = "An: Bild nur hochskalieren, dann nur die Figur neu malen (Refiner-Anteil = Kreativität) – Tiefenschärfe und Bokeh bleiben.", TextColor = Ui.Muted, FontSize = 12 }, Row("Hochskalieren mit", _refUpMethod), Row("Methode", _refMethod),
                     Row("Steps / CFG (0 = wie oben)", Cols(_refSteps, _refCfg))),
                 Section("Ablage und Sicherung", _resultFolderName, Btn("Ergebnis-Ordner …", PickResultFolderAsync), BuildBackupBox()),
                 Section("Update", new Label { Text = $"Installiert: Version {AppInfo.VersionString}. Die App gleicht beim Start mit dem neuesten Release auf GitHub ab.", TextColor = Ui.Muted, FontSize = 12 },
@@ -330,6 +332,7 @@ public sealed partial class MainPage : ContentPage
         SetItems(_scheduler, _scheduler.ItemsSource?.Cast<string>().Skip(1), S.Scheduler);
         SetItems(_vae, _vae.ItemsSource?.Cast<string>().Skip(1), S.Vae);
         _refControl.Text = Ui.F(S.RefinerControl); _refUpscale.Text = Ui.F(S.RefinerUpscale);
+        _refKeepBg.IsToggled = S.RefineKeepBackground;
         SetItems(_refUpMethod, _refUpMethod.ItemsSource?.Cast<string>().Skip(1), S.RefinerUpscaleMethod);
         SetItems(_refMethod, _refMethod.ItemsSource?.Cast<string>().Skip(1), S.RefinerMethod);
         _refSteps.Text = S.RefinerSteps.ToString(); _refCfg.Text = Ui.F(S.RefinerCfg);
@@ -361,6 +364,7 @@ public sealed partial class MainPage : ContentPage
         S.Steps = Math.Max(0, (int)Ui.PD(_steps.Text, 0)); S.Cfg = Math.Max(0, Ui.PD(_cfg.Text, 0));
         S.Sampler = GetItem(_sampler); S.Scheduler = GetItem(_scheduler); S.Vae = GetItem(_vae);
         S.RefinerControl = Ui.PD(_refControl.Text, 0.1); S.RefinerUpscale = Ui.PD(_refUpscale.Text, 2);
+        S.RefineKeepBackground = _refKeepBg.IsToggled;
         S.RefinerUpscaleMethod = GetItem(_refUpMethod); S.RefinerMethod = GetItem(_refMethod);
         S.RefinerSteps = Math.Max(0, (int)Ui.PD(_refSteps.Text, 0)); S.RefinerCfg = Math.Max(0, Ui.PD(_refCfg.Text, 0));
     }
@@ -822,7 +826,7 @@ public sealed partial class MainPage : ContentPage
         if (item.Sent == null) { _status.Text = "Für dieses Bild sind keine Einstellungen gespeichert."; return; }
         ReadUi();
         if (!await EnsureClientAsync()) return;
-        await RunAsync(S.BuildRefine(item.Sent, item.Seed), 1, $"Nachgebessert (Seed {item.Seed}, ×{Ui.F(S.RefinerUpscale)}, Refiner {Ui.F(S.RefinerControl * 100)} %)");
+        await RunAsync(S.BuildRefine(item.Sent, item.Seed, _yolos), 1, $"Nachgebessert (Seed {item.Seed}, ×{Ui.F(S.RefinerUpscale)}, {(S.RefineKeepBackground ? "nur Figur" : "Refiner")} {Ui.F(S.RefinerControl * 100)} %)");
     }
 
     // ------------------------------------------------------------------ Warteschlange

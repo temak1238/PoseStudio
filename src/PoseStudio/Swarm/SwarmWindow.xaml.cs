@@ -226,6 +226,7 @@ public partial class SwarmWindow : Window
         CnModelCombo.Text = _s.ControlModel;
         CnStrengthBox.Text = F(_s.ControlStrength); CnStartBox.Text = F(_s.ControlStart); CnEndBox.Text = F(_s.ControlEnd);
         RefControlBox.Text = F(_s.RefinerControl); RefUpscaleBox.Text = F(_s.RefinerUpscale);
+        RefKeepBgCheck.IsChecked = _s.RefineKeepBackground;
         RefUpscaleMethodCombo.Text = _s.RefinerUpscaleMethod; RefMethodCombo.Text = _s.RefinerMethod;
         RefStepsBox.Text = _s.RefinerSteps.ToString(CultureInfo.InvariantCulture); RefCfgBox.Text = F(_s.RefinerCfg);
         _selectedLoras.Clear();
@@ -263,6 +264,7 @@ public partial class SwarmWindow : Window
         _s.ControlModel = CnModelCombo.Text.Trim();
         _s.ControlStrength = PD(CnStrengthBox.Text, 1); _s.ControlStart = PD(CnStartBox.Text, 0); _s.ControlEnd = PD(CnEndBox.Text, 1);
         _s.RefinerControl = PD(RefControlBox.Text, 0.1); _s.RefinerUpscale = PD(RefUpscaleBox.Text, 2);
+        _s.RefineKeepBackground = RefKeepBgCheck.IsChecked == true;
         _s.RefinerUpscaleMethod = RefUpscaleMethodCombo.Text.Trim(); _s.RefinerMethod = RefMethodCombo.Text.Trim();
         _s.RefinerSteps = Math.Max(0, (int)PD(RefStepsBox.Text, 0)); _s.RefinerCfg = Math.Max(0, PD(RefCfgBox.Text, 0));
         _s.Loras = _selectedLoras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
@@ -728,7 +730,7 @@ public partial class SwarmWindow : Window
         ReadUi();
         if (_client == null) await ConnectAsync();
         if (_client == null) return;
-        Enqueue(_s.BuildRefine(sent, item.Seed), 1,$"Nachgebessert (Seed {item.Seed}, ×{F(_s.RefinerUpscale)}, Refiner {F(_s.RefinerControl * 100)} %)");
+        Enqueue(_s.BuildRefine(sent, item.Seed, _yolos), 1, $"Nachgebessert (Seed {item.Seed}, ×{F(_s.RefinerUpscale)}, {(_s.RefineKeepBackground ? "nur Figur" : "Refiner")} {F(_s.RefinerControl * 100)} %)");
     }
 
     private async Task RunAsync(JsonObject p, int count, string what)

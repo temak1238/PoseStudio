@@ -245,6 +245,8 @@
                                 <TextBlock Text="Refiner-Anteil" Style="{StaticResource Lbl}" />
                                 <TextBox x:Name="RefControlBox" Width="50" HorizontalAlignment="Left" ToolTip="0.1 = 10 %" />
                             </DockPanel>
+                            <CheckBox x:Name="RefKeepBgCheck" Content="Hintergrund unscharf lassen (nur die Figur nachbessern)" Margin="0,2,0,2"
+                                      ToolTip="Das Bild wird nur hochskaliert und nicht neu gemalt – Tiefenschärfe und Bokeh bleiben erhalten. Danach malt ein Bereichs-Refiner nur die Person neu (Refiner-Anteil = Kreativität). Scharfe Hintergründe bleiben scharf, bekommen aber keine zusätzlichen Details." />
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Hochskalieren ×" Style="{StaticResource Lbl}" />
                                 <TextBox x:Name="RefUpscaleBox" Width="50" HorizontalAlignment="Left" />

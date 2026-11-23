@@ -221,7 +221,14 @@ public partial class SwarmWindow
             bool impOk = imp.Loras.Count == 1 && imp.Loras[0].Name == "Background/Dojo" && imp.Segments.Count == 1 && imp.Segments[0].Loras[0].Name == "Effekts/Eye_wallpaper"
                          && imp.Base?.ContainsKey("lorasectionconfinement") != true && imp.Prompt == "1girl, smile";
             log.Add($"Übernahme: LoRAs {string.Join(",", imp.Loras.Select(x => x.Name))}, Refiner-LoRAs {string.Join(",", imp.Segments.SelectMany(x => x.Loras).Select(x => x.Name))}{(impOk ? "" : " FEHLER")}");
-            bool ok = impOk && loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
+            // Nachbessern „Hintergrund unscharf lassen“: Refiner-Anteil 0, Person als erster Bereich mit Hauptprompt (ohne LoRA-Tags)
+            var kb = new SwarmSettings { RefineKeepBackground = true, RefinerControl = 0.4 };
+            var sentKb = new System.Text.Json.Nodes.JsonObject { ["prompt"] = "1girl, bokeh, <lora:x:0.5> <segment:face,0.5,0.5> nice face", ["steps"] = 12, ["cfgscale"] = 3.5 };
+            var rk = kb.BuildRefine(sentKb, 42, new[] { "face_yolov8m.pt", "person_yolov8s-seg.pt" });
+            bool kbOk = rk["prompt"]?.ToString() == "1girl, bokeh, <lora:x:0.5> <segment:yolo-person_yolov8s-seg.pt,0.4,0.25> 1girl, bokeh <segment:face,0.5,0.5> nice face"
+                        && rk["refinercontrolpercentage"]?.ToString() == "0" && rk["segmentsteps"]?.GetValue<int>() == 12 && rk["segmentcfgscale"]?.ToString() == "3.5";
+            log.Add($"Hintergrund behalten: „{rk["prompt"]}“, Anteil {rk["refinercontrolpercentage"]}, Steps {rk["segmentsteps"]}, CFG {rk["segmentcfgscale"]}{(kbOk ? "" : " FEHLER")}");
+            bool ok = kbOk && impOk &&loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
             log.Add(ok ? "OK" : "FEHLER erwartet: " + expect);
         }
         catch (Exception ex) { log.Add("FEHLER " + ex); }
