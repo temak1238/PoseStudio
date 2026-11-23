@@ -180,7 +180,7 @@ public sealed partial class MainPage
         add.Clicked += async (_, _) =>
         {
             try { await PickSegmentLorasAsync(r); }
-            catch (Exception ex) { CrashLog.Write(ex, "Refiner-LoRA"); await DisplayAlertAsync("Fehler", ex.GetType().Name + ": " + ex.Message, "OK"); }
+            catch (Exception ex) { await DisplayAlertAsync("Fehler", ex.GetType().Name + ": " + ex.Message, "OK"); }   // abgefangen: kein Eintrag im Absturzprotokoll
         };
         box.Add(add);
         return box;
