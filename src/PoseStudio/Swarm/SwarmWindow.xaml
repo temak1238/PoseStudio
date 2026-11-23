@@ -137,6 +137,20 @@
                         </StackPanel>
                     </GroupBox>
 
+                    <GroupBox Header="Refiner (Gesicht, Hände …)">
+                        <StackPanel>
+                            <StackPanel x:Name="SegmentRows" />
+                            <DockPanel Margin="0,3,0,0">
+                                <Button x:Name="SegmentDeleteButton" DockPanel.Dock="Right" Content="Vorlage löschen" Margin="4,0,0,0" Click="SegmentDelete_Click" Visibility="Collapsed"
+                                        ToolTip="Ausgewählte eigene Vorlage aus der Liste entfernen" />
+                                <Button DockPanel.Dock="Right" Content="+ Hinzufügen" Margin="4,0,0,0" Click="SegmentAdd_Click" />
+                                <ComboBox x:Name="SegmentAddCombo" SelectionChanged="SegmentAddCombo_Changed" />
+                            </DockPanel>
+                            <TextBlock x:Name="SegmentHint" TextWrapping="Wrap" FontSize="11" Margin="0,3,0,0" Foreground="{DynamicResource MutedText}"
+                                       Text="Jeder Refiner sucht seinen Bereich im fertigen Bild (YOLO-Modell oder Textbeschreibung) und malt ihn mit eigenem Prompt neu. Wird beim Senden als &lt;segment:…&gt; ans Ende des Prompts gehängt." />
+                        </StackPanel>
+                    </GroupBox>
+
                     <GroupBox Header="Init Image (aktuelle Szene)">
                         <StackPanel>
                             <CheckBox x:Name="InitCheck" Content="Szene als Init Image mitschicken" Margin="0,0,0,3" ToolTip="Aus: nur Prompt (und ControlNet, falls aktiv) – die Pose kommt dann allein über ControlNet, Stil und Kleidung sind frei." />

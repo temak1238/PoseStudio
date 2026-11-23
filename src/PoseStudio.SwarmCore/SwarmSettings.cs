@@ -26,6 +26,10 @@ public sealed class SwarmSettings
     public bool HistoryPromptsOnly { get; set; }
     public string Prompt { get; set; } = "";
     public string Negative { get; set; } = "";
+    /// <summary>Bereichs-Refiner (Gesicht, Hände …); werden beim Senden als „<segment:…>“ ans Ende des Prompts gehängt.</summary>
+    public List<SegmentRefiner> Segments { get; set; } = new();
+    /// <summary>Selbst definierte Refiner-Vorlagen (gehören nicht zum Profil).</summary>
+    public List<SegmentRefiner> CustomSegments { get; set; } = new();
     /// <summary>Darstellung des Init Image: -1 = wie im Hauptfenster, 0 = Normal, 1 = Cel, 2 = 2D flach, 3 = Strichzeichnung.</summary>
     public int Look { get; set; } = -1;
     /// <summary>Szene als Init Image mitschicken (aus = nur Prompt, Pose ggf. über ControlNet).</summary>
@@ -118,6 +122,8 @@ public sealed class SwarmSettings
         var c = (SwarmSettings)MemberwiseClone();
         c.Base = Base?.DeepClone() as JsonObject;
         c.Loras = Loras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
+        c.Segments = Segments.Select(r => r.Clone()).ToList();
+        c.CustomSegments = CustomSegments.Select(r => r.Clone()).ToList();
         c.Profiles = new();
         c.VaeByFamily = new(VaeByFamily);
         c.ControlModelByFamily = new(ControlModelByFamily);
@@ -128,10 +134,11 @@ public sealed class SwarmSettings
     /// <summary>Profil anwenden (Server-Adresse und Profilliste bleiben).</summary>
     public void ApplyProfile(SwarmSettings p)
     {
-        var url = Url; var profiles = Profiles; var place = WindowPlacement; var dex = AnimaDexUrl; var dexTags = AnimaDexWithTags;
+        var url = Url; var profiles = Profiles; var place = WindowPlacement; var dex = AnimaDexUrl; var dexTags = AnimaDexWithTags; var custom = CustomSegments;
         foreach (var prop in typeof(SwarmSettings).GetProperties().Where(x => x.CanWrite))
             prop.SetValue(this, prop.GetValue(p.CloneProfile()));
-        Url = url; Profiles = profiles; WindowPlacement = place; AnimaDexUrl = dex; AnimaDexWithTags = dexTags;
+        Url = url; Profiles = profiles; WindowPlacement = place; AnimaDexUrl = dex; AnimaDexWithTags = dexTags; CustomSegments = custom;
+        TakeSegmentsFromPrompt();
     }
 
     // Werte, die beim Übernehmen nicht in die Grundlage gehören: Bildquellen, Größen, Seeds, Refiner (nur für „Nachbessern“)
@@ -151,6 +158,7 @@ public sealed class SwarmSettings
     {
         Prompt = originalPrompt ?? p["prompt"]?.ToString() ?? Prompt;
         Negative = p["negativeprompt"]?.ToString() ?? "";
+        TakeSegmentsFromPrompt();
     }
 
     public void ImportFrom(JsonObject p, string? originalPrompt)
@@ -159,6 +167,7 @@ public sealed class SwarmSettings
         double? D(string k) => double.TryParse(S(k), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
         Prompt = originalPrompt ?? S("prompt") ?? Prompt;
         Negative = S("negativeprompt") ?? "";
+        TakeSegmentsFromPrompt();
         Model = S("model") ?? Model;
         Steps = (int)(D("steps") ?? 0);
         Cfg = D("cfgscale") ?? 0;
@@ -192,6 +201,20 @@ public sealed class SwarmSettings
         Base = b;
     }
 
+    /// <summary>Enthält der Prompt „<segment:…>“-Teile (alte Profile, Historie, SwarmUI-Bilder), werden sie zu Refinern und ersetzen die bisherigen.</summary>
+    public bool TakeSegmentsFromPrompt(bool append = false)
+    {
+        var (main, found) = SegmentRefiners.Split(Prompt, AllSegmentPresets());
+        if (found.Count == 0) return false;
+        Prompt = main;
+        if (append) Segments.AddRange(found); else Segments = found;
+        return true;
+    }
+
+    /// <summary>Vorgaben plus eigene Refiner-Vorlagen (für Auswahl und Namenserkennung).</summary>
+    public List<SegmentPreset> AllSegmentPresets() =>
+        SegmentRefiners.Presets.Concat(CustomSegments.Select(c => new SegmentPreset(c.Name, c.IsYolo ? "" : c.Target, c.IsYolo ? new[] { c.Target[5..] } : Array.Empty<string>(), c.Prompt, c.Creativity))).ToList();
+
     /// <summary>Breite/Höhe für ein Seitenverhältnis bei gleicher Pixelzahl wie SideLength², auf 16 gerundet.</summary>
     public (int W, int H) SizeFor(double aspect)
     {
@@ -209,7 +232,7 @@ public sealed class SwarmSettings
             foreach (var l in Loras)
                 if (triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
                     prompt = prompt.TrimEnd().TrimEnd(',') + ", " + t;
-        p["prompt"] = prompt;
+        p["prompt"] = SegmentRefiners.Compose(prompt, Segments);
         p["negativeprompt"] = Negative;
         if (!string.IsNullOrWhiteSpace(Model)) p["model"] = Model;
         p["images"] = Math.Clamp(Count, 1, 16);

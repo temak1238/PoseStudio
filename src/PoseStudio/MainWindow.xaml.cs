@@ -172,6 +172,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sw.Show(); sw.Left = -20000; sw.Top = 0;
         await Task.Delay(2500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm.png"));
+        sw.ShowSegmentsForShot();   // Refiner-Bereich mit Beispielzeilen sichtbar machen (nur im Speicher, wird nicht gespeichert)
+        await Task.Delay(1500);
+        SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-refiner.png"));
     }
 
     internal static void SaveWindowShot(Window w, string path)
@@ -1540,6 +1543,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             sb.AppendLine("ControlNet aus Bild: " + w2.TestControlImage(cnImg));
             sb.AppendLine("Bildfenster: " + w2.TestViewer(img, cnImg));
             sb.AppendLine("Warteschlange: " + w2.TestQueue());
+            sb.AppendLine("Refiner: " + w2.TestSegments());
             {
                 var fs = new PoseStudio.Swarm.SwarmSettings { Vae = "qwen_image_vae", ControlModel = "anima_3dpose_6200" };
                 fs.SwitchFamily("anima", "stable-diffusion-xl-v1");

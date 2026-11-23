@@ -7,7 +7,7 @@ using PoseStudio.Swarm;
 namespace PoseStudio.Tablet;
 
 /// <summary>Hauptseite: links (quer) bzw. unten (hoch) die Einstellungen, daneben Generieren und die Ergebnisse.</summary>
-public sealed class MainPage : ContentPage
+public sealed partial class MainPage : ContentPage
 {
     private readonly TabletSettings _t;
     private SwarmSettings S => _t.Swarm;
@@ -89,6 +89,7 @@ public sealed class MainPage : ContentPage
     public MainPage()
     {
         _t = TabletSettings.Load();
+        S.TakeSegmentsFromPrompt();   // alte Prompts mit <segment:…> in Refiner-Zeilen umwandeln
         BackgroundColor = Ui.Page;
         NavigationPage.SetHasNavigationBar(this, false);
         // Ganz oben nach unten ziehen: SwarmUI liest die Modell-Ordner neu ein, danach Modelle, LoRAs usw. neu laden.
@@ -201,6 +202,7 @@ public sealed class MainPage : ContentPage
                 Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync), Row("Trigger-Wörter automatisch", _autoTrigger)),
                 Section("Prompt", Cols(Btn("Charakter …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, false)), Btn("Künstler / Stil …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, true))),
                     _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
+                BuildSegmentSection(),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
                 Section("Generierung",
                     Row("Seitenlänge", _side, _sizeText), Row("Anzahl", countRow), Row("Seed (-1 = zufällig)", _seed, dice),
@@ -307,6 +309,7 @@ public sealed class MainPage : ContentPage
         _url.Text = S.Url;
         _prompt.Text = S.Prompt;
         _negative.Text = S.Negative;
+        ShowSegments();
         _autoTrigger.IsToggled = S.AutoTrigger;
         _source.SelectedIndex = Math.Clamp(_t.Source, 0, 2);
         _look.SelectedIndex = Math.Clamp(S.Look < 0 ? 1 : S.Look, 0, TabletTemplate.LookNames.Length - 1);
@@ -341,6 +344,7 @@ public sealed class MainPage : ContentPage
     {
         S.Url = _url.Text?.Trim() ?? S.Url;
         S.Prompt = _prompt.Text ?? "";
+        if (S.TakeSegmentsFromPrompt(true)) { _prompt.Text = S.Prompt; ShowSegments(); }   // eingefügte <segment:…> werden zu Refinern
         S.Negative = _negative.Text ?? "";
         S.AutoTrigger = _autoTrigger.IsToggled;
         _t.Source = Math.Max(0, _source.SelectedIndex);
@@ -520,7 +524,9 @@ public sealed class MainPage : ContentPage
             _loras = await _client.ListModelsAsync("LoRA");
             var vaes = await _client.ListModelsAsync("VAE");
             var cns = await _client.ListModelsAsync("ControlNet");
-            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae" });
+            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae", "yolomodelinternal" });
+            _yolos = values.GetValueOrDefault("yolomodelinternal") ?? new();
+            ShowSegments();
             _server.Text = $"Verbunden mit SwarmUI {ver}: {_models.Count} Modelle, {_loras.Count} LoRAs.";
             ReadUi();
             SetItems(_sampler, values.GetValueOrDefault("sampler"), S.Sampler);

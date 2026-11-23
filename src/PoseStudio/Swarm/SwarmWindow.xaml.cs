@@ -175,6 +175,7 @@ public partial class SwarmWindow : Window
         LoraSelected.ItemsSource = _selectedLoras;
         ResultList.ItemsSource = _results;
         LoadResults();
+        _s.TakeSegmentsFromPrompt();   // alte Prompts mit <segment:…> in Refiner-Zeilen umwandeln
         ShowSettings();
         RefreshProfiles();
         Loaded += async (_, _) => await ConnectAsync();
@@ -204,6 +205,7 @@ public partial class SwarmWindow : Window
         _suppress = true;
         UrlBox.Text = _s.Url;
         PromptBox.Text = _s.Prompt;
+        BuildSegmentRows();
         NegativeBox.Text = _s.Negative;
         AutoTriggerCheck.IsChecked = _s.AutoTrigger;
         PromptsOnlyCheck.IsChecked = _s.HistoryPromptsOnly;
@@ -240,6 +242,7 @@ public partial class SwarmWindow : Window
     {
         _s.Url = UrlBox.Text.Trim();
         _s.Prompt = PromptBox.Text;
+        if (_s.TakeSegmentsFromPrompt(true)) { PromptBox.Text = _s.Prompt; BuildSegmentRows(); }   // eingefügte <segment:…> werden zu Refinern
         _s.Negative = NegativeBox.Text;
         _s.AutoTrigger = AutoTriggerCheck.IsChecked == true;
         _s.HistoryPromptsOnly = PromptsOnlyCheck.IsChecked == true;
@@ -329,7 +332,9 @@ public partial class SwarmWindow : Window
             var vaes = await _client.ListModelsAsync("VAE");
             var cns = await _client.ListModelsAsync("ControlNet");
             _cns = cns;
-            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae" });
+            var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae", "yolomodelinternal" });
+            _yolos = values.GetValueOrDefault("yolomodelinternal") ?? new();
+            BuildSegmentRows();
             ServerText.Text = $"Verbunden mit SwarmUI {ver}: {_models.Count} Modelle, {_loras.Count} LoRAs.";
             KeepText(SamplerCombo, values.GetValueOrDefault("sampler"));
             KeepText(SchedulerCombo, values.GetValueOrDefault("scheduler"));
