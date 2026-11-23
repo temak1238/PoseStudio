@@ -136,9 +136,19 @@ public partial class SwarmWindow : Window
     private void OpenAnimaDex(bool artists)
     {
         if (_dex is { IsLoaded: true }) { _dex.Activate(); return; }
-        _dex = new AnimaDexWindow(_s, InsertIntoPrompt, artists) { Owner = this };
+        _dex = new AnimaDexWindow(_s, ApplyAnimaDex, artists) { Owner = this };
         _dex.Show();
     }
+
+    /// <summary>AnimaDex-Auswahl übernehmen: Charakter bzw. Stil wird ersetzt (nicht in den Prompt eingefügt).</summary>
+    private void ApplyAnimaDex(AnimaDexEntry entry, string text)
+    {
+        if (entry.IsArtist) { StyleBox.Text = text; _s.Style = text; }
+        else { CharacterBox.Text = text; _s.Character = text; _s.CharacterTrigger = entry.PromptText(false); }
+    }
+
+    private void CharacterClear_Click(object sender, RoutedEventArgs e) { CharacterBox.Text = ""; _s.Character = ""; _s.CharacterTrigger = ""; }
+    private void StyleClear_Click(object sender, RoutedEventArgs e) { StyleBox.Text = ""; _s.Style = ""; }
 
     /// <summary>Text an der Cursorstelle des Prompts einfügen (ohne Cursor bzw. Cursor am Ende/im Refine-Teil: am Anfang), mit Kommas abgetrennt.</summary>
     private void InsertIntoPrompt(string text)
@@ -205,6 +215,8 @@ public partial class SwarmWindow : Window
         _suppress = true;
         UrlBox.Text = _s.Url;
         PromptBox.Text = _s.Prompt;
+        CharacterBox.Text = _s.Character;
+        StyleBox.Text = _s.Style;
         BuildSegmentRows();
         NegativeBox.Text = _s.Negative;
         AutoTriggerCheck.IsChecked = _s.AutoTrigger;
@@ -243,6 +255,9 @@ public partial class SwarmWindow : Window
     {
         _s.Url = UrlBox.Text.Trim();
         _s.Prompt = PromptBox.Text;
+        _s.Character = CharacterBox.Text;
+        _s.Style = StyleBox.Text;
+        if (_s.CharacterTrigger != "" && !_s.Character.Contains(_s.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) _s.CharacterTrigger = "";   // von Hand ein anderer Charakter
         if (_s.TakeSegmentsFromPrompt(true)) { PromptBox.Text = _s.Prompt; BuildSegmentRows(); }   // eingefügte <segment:…> werden zu Refinern
         _s.Negative = NegativeBox.Text;
         _s.AutoTrigger = AutoTriggerCheck.IsChecked == true;

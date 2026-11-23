@@ -3,7 +3,7 @@ using PoseStudio.Swarm;
 
 namespace PoseStudio.Tablet;
 
-/// <summary>Charakter- und Künstler-Finder über AnimaDex. Antippen fügt den Eintrag in den Prompt ein; die Seite bleibt offen,
+/// <summary>Charakter- und Künstler-Finder über AnimaDex. Antippen setzt Charakter bzw. Stil (ersetzt den bisherigen); die Seite bleibt offen,
 /// damit man mehrere Einträge (z. B. Charakter + Künstler) nacheinander übernehmen kann.</summary>
 public sealed class AnimaDexPage : ContentPage
 {
@@ -19,7 +19,7 @@ public sealed class AnimaDexPage : ContentPage
     private sealed record FacetItem(string Value, string Label) { public override string ToString() => Label; }
 
     private readonly SwarmSettings _s;
-    private readonly Action<string> _insert;
+    private readonly Action<AnimaDexEntry, string> _insert;
     private AnimaDexClient? _client;
     private bool _artists, _loading;
     private int _page, _pages, _total, _seed = Random.Shared.Next(1, int.MaxValue);
@@ -37,7 +37,7 @@ public sealed class AnimaDexPage : ContentPage
     private readonly CollectionView _list = new() { SelectionMode = SelectionMode.Single, RemainingItemsThreshold = 12 };
     private CancellationTokenSource? _debounce;
 
-    public AnimaDexPage(SwarmSettings settings, Action<string> insert, bool artists)
+    public AnimaDexPage(SwarmSettings settings, Action<AnimaDexEntry, string> insert, bool artists)
     {
         _s = settings; _insert = insert; _artists = artists;
         Title = "AnimaDex"; BackgroundColor = Ui.Page;
@@ -83,8 +83,8 @@ public sealed class AnimaDexPage : ContentPage
             if (e.CurrentSelection.FirstOrDefault() is not Item it) return;
             _list.SelectedItem = null;
             string text = it.Entry.PromptText(!it.Entry.IsArtist && _withTags.IsToggled);
-            _insert(text);
-            _status.Text = "Eingefügt: " + text;
+            _insert(it.Entry, text);
+            _status.Text = (it.Entry.IsArtist ? "Stil gesetzt: " : "Charakter gesetzt: ") + text;
         };
         _list.RemainingItemsThresholdReached += async (_, _) => { if (!_loading && _page < _pages) await LoadPageAsync(_page + 1, true); };
         SizeChanged += (_, _) =>
@@ -167,13 +167,13 @@ public sealed class AnimaDexPage : ContentPage
             if (!append) _items.Clear();
             foreach (var e in res.Results) _items.Add(new Item { Entry = e, Image = Ui.Web(e.ThumbUrl) });
             _page = res.Page; _pages = res.Pages; _total = res.Total;
-            _status.Text = $"{_items.Count:N0} von {_total:N0} {(_artists ? "Künstlern" : "Charakteren")} – antippen fügt in den Prompt ein.";
+            _status.Text = $"{_items.Count:N0} von {_total:N0} {(_artists ? "Künstlern" : "Charakteren")} – antippen setzt ihn im Charakter- bzw. Stilfeld.";
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!cts.IsCancellationRequested) _status.Text = "Suche fehlgeschlagen: " + ex.Message; }
         finally { if (_cts == cts) { _cts = null; _loading = false; } }
     }
 
-    public static Task ShowAsync(INavigation nav, SwarmSettings s, Action<string> insert, bool artists) =>
+    public static Task ShowAsync(INavigation nav, SwarmSettings s, Action<AnimaDexEntry, string> insert, bool artists) =>
         nav.PushModalAsync(new AnimaDexPage(s, insert, artists));
 }

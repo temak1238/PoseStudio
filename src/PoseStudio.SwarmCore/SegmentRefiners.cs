@@ -20,6 +20,8 @@ public sealed class SegmentRefiner
     public double Threshold { get; set; } = 0.25;
     /// <summary>LoRAs nur für diesen Bereich (SwarmUI wendet ein &lt;lora:…&gt; hinter &lt;segment:…&gt; nur beim Neumalen des Bereichs an).</summary>
     public List<SwarmLora> Loras { get; set; } = new();
+    /// <summary>Charakter (Name, Serie, Kopf-Tags) vor den Refiner-Prompt setzen – sonst weiß z. B. der Gesichts-Refiner nicht, wer gemalt wird.</summary>
+    public bool WithCharacter { get; set; }
 
     public SegmentRefiner Clone()
     {
@@ -31,7 +33,7 @@ public sealed class SegmentRefiner
 }
 
 /// <summary>Vorgabe für einen Refiner: Text-Ziel (CLIPSeg) und Namensteile passender YOLO-Modelle (erstes vorhandenes gewinnt).</summary>
-public sealed record SegmentPreset(string Name, string ClipTarget, string[] YoloHints, string Prompt, double Creativity);
+public sealed record SegmentPreset(string Name, string ClipTarget, string[] YoloHints, string Prompt, double Creativity, bool WithCharacter = false);
 
 public static class SegmentRefiners
 {
@@ -39,11 +41,11 @@ public static class SegmentRefiners
 
     public static readonly SegmentPreset[] Presets =
     {
-        new("Gesicht", "face", new[] { "anzhc-face", "anzhc face", "face_yolov8m-seg", "face_yolov8", "face" }, "detailed face, beautiful detailed eyes", 0.45),
+        new("Gesicht", "face", new[] { "anzhc-face", "anzhc face", "face_yolov8m-seg", "face_yolov8", "face" }, "detailed face, beautiful detailed eyes", 0.45, true),
         new("Hände", "hands", new[] { "hand_yolov8s", "hand_yolov9", "hand_yolov8", "hand" }, "detailed hands, perfect hands, five fingers", 0.45),
-        new("Augen", "eyes", new[] { "anzhc-eyes", "anzhc eyes", "eyes", "eye" }, "detailed eyes, beautiful eyes, detailed pupils", 0.4),
+        new("Augen", "eyes", new[] { "anzhc-eyes", "anzhc eyes", "eyes", "eye" }, "detailed eyes, beautiful eyes, detailed pupils", 0.4, true),
         new("Brust", "breasts", new[] { "anzhc-breasts", "anzhc breasts", "breast" }, "detailed breasts", 0.4),
-        new("Haare", "hair", new[] { "anzhc-headhair", "headhair", "hair" }, "detailed hair, shiny hair", 0.4),
+        new("Haare", "hair", new[] { "anzhc-headhair", "headhair", "hair" }, "detailed hair, shiny hair", 0.4, true),
         new("Füße", "feet", new[] { "feet", "foot" }, "detailed feet, five toes", 0.45),
     };
 
@@ -56,7 +58,7 @@ public static class SegmentRefiners
         if (yolo == null && p.ClipTarget == "" && p.YoloHints.Length > 0) yolo = p.YoloHints[0];   // eigene Vorlage mit YOLO-Modell, das (noch) fehlt
         return new SegmentRefiner
         {
-            Name = p.Name, Prompt = p.Prompt, Creativity = p.Creativity,
+            Name = p.Name, Prompt = p.Prompt, Creativity = p.Creativity, WithCharacter = p.WithCharacter,
             Target = yolo != null ? "yolo-" + yolo : p.ClipTarget,
             Threshold = yolo != null ? YoloThreshold : ClipThreshold,
         };
@@ -89,7 +91,7 @@ public static class SegmentRefiners
     private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>Prompt mit angehängten Refinern: „Haupt &lt;segment:ziel,kreativität,schwelle&gt; refiner-prompt …“.</summary>
-    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null)
+    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null, string? character = null)
     {
         var sb = new StringBuilder(prompt.TrimEnd());
         foreach (var r in refiners ?? Enumerable.Empty<SegmentRefiner>())
@@ -99,6 +101,7 @@ public static class SegmentRefiners
             sb.Append("<segment:").Append(r.Target.Trim()).Append(',').Append(Num(Math.Clamp(r.Creativity, 0, 1)))
               .Append(',').Append(Num(Math.Clamp(r.Threshold, 0, 1))).Append('>');
             string rp = r.Prompt.Trim();
+            if (r.WithCharacter && !string.IsNullOrWhiteSpace(character)) rp = character.Trim() + (rp == "" ? "" : ", " + rp);
             foreach (var l in r.Loras)
             {
                 if (string.IsNullOrWhiteSpace(l.Name)) continue;

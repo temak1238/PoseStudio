@@ -111,6 +111,10 @@ public sealed partial class MainPage
         var head = new Grid { ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
         head.Add(on, 0); head.Add(name, 1); head.Add(target, 2); head.Add(save, 3); head.Add(del, 4);
 
+        var withChar = new Switch { IsToggled = r.WithCharacter, OnColor = Ui.Accent, VerticalOptions = LayoutOptions.Center };
+        withChar.Toggled += (_, e) => r.WithCharacter = e.Value;
+        var charRow = new HorizontalStackLayout { Spacing = 4, Children = { withChar, new Label { Text = "Charakter mitgeben (Name, Serie, Haare/Augen)", TextColor = Ui.Muted, FontSize = 12, VerticalOptions = LayoutOptions.Center } } };
+
         var prompt = new Entry { Text = r.Prompt, TextColor = Colors.White, Placeholder = "Prompt für diesen Bereich, z. B. detailed face, blush" };
         prompt.TextChanged += (_, _) => r.Prompt = prompt.Text ?? "";
 
@@ -129,7 +133,7 @@ public sealed partial class MainPage
 
         return new Border
         {
-            Content = new VerticalStackLayout { Spacing = 4, Children = { head, prompt, SegmentLoras(r), Cols(cre, th) } },
+            Content = new VerticalStackLayout { Spacing = 4, Children = { head, charRow, prompt, SegmentLoras(r), Cols(cre, th) } },
             BackgroundColor = Ui.PanelLight.WithAlpha(0.35f), StrokeThickness = 0, Padding = 8,
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
         };

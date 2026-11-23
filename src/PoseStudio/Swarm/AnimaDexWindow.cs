@@ -7,12 +7,12 @@ using System.Windows.Threading;
 
 namespace PoseStudio.Swarm;
 
-/// <summary>Charakter- und Künstler-Finder über AnimaDex: suchen, filtern, Kachel anklicken → Text wird in den Prompt eingefügt.
+/// <summary>Charakter- und Künstler-Finder über AnimaDex: suchen, filtern, Kachel anklicken → setzt Charakter bzw. Stil im SwarmUI-Fenster.
 /// Das Fenster bleibt offen, damit man mehrere Einträge (z. B. Charakter + Künstler) nacheinander übernehmen kann.</summary>
 public sealed class AnimaDexWindow : Window
 {
     private readonly SwarmSettings _s;
-    private readonly Action<string> _insert;
+    private readonly Action<AnimaDexEntry, string> _insert;
     private AnimaDexClient? _client;
     private bool _artists;
     private int _page, _pages, _seed = Random.Shared.Next(1, int.MaxValue);
@@ -24,7 +24,7 @@ public sealed class AnimaDexWindow : Window
     private readonly RadioButton _modeArtists = new() { Content = "Künstler / Stil", Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly ComboBox _sort = new() { Width = 110, Margin = new Thickness(6, 0, 0, 0) };
     private readonly CheckBox _withTags = new() { Content = "Aussehen-Tags mitnehmen", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
-        ToolTip = "Zusätzlich die typischen Tags des Charakters (Haare, Augen, Kleidung) einfügen – hilft, wenn das Modell den Charakter nur schwach kennt." };
+        ToolTip = "Zusätzlich die typischen Tags des Charakters (Haare, Augen, Kleidung) ins Charakterfeld übernehmen – hilft, wenn das Modell den Charakter nur schwach kennt. Refiner bekommen davon nur die Kopf-Tags." };
     private readonly Dictionary<string, ComboBox> _facets = new();
     private readonly StackPanel _facetRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
     private readonly WrapPanel _tiles = new();
@@ -33,7 +33,7 @@ public sealed class AnimaDexWindow : Window
     private readonly Button _more = new() { Content = "Weitere laden", Padding = new Thickness(12, 3, 12, 3), Visibility = Visibility.Collapsed };
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(350) };
 
-    public AnimaDexWindow(SwarmSettings settings, Action<string> insert, bool artists)
+    public AnimaDexWindow(SwarmSettings settings, Action<AnimaDexEntry, string> insert, bool artists)
     {
         _s = settings; _insert = insert; _artists = artists;
         Title = "AnimaDex – Charakter- und Künstler-Finder";
@@ -80,7 +80,7 @@ public sealed class AnimaDexWindow : Window
         }
         _facetRow.Children.Add(_withTags);
 
-        var hint = new TextBlock { Text = "Klick auf eine Kachel fügt sie an der Cursorstelle in den Prompt ein (Charakter: „name, serie“, Künstler: „@name“). Rechtsklick: Danbooru-Seite öffnen.",
+        var hint = new TextBlock { Text = "Klick auf eine Kachel ersetzt den Charakter bzw. den Stil (Charakter: „name, serie“, Künstler: „@name“). Rechtsklick: Danbooru-Seite öffnen.",
                                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4), FontSize = 11 };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
 
@@ -201,8 +201,8 @@ public sealed class AnimaDexWindow : Window
         tile.MouseLeftButtonUp += (_, _) =>
         {
             string text = e.PromptText(!e.IsArtist && _withTags.IsChecked == true);
-            _insert(text);
-            _status.Text = "Eingefügt: " + text;
+            _insert(e, text);
+            _status.Text = (e.IsArtist ? "Stil gesetzt: " : "Charakter gesetzt: ") + text;
         };
         tile.MouseRightButtonUp += (_, _) =>
         {

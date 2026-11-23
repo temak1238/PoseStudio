@@ -134,7 +134,11 @@ public partial class SwarmWindow
         var head = new DockPanel();
         DockPanel.SetDock(on, Dock.Left); DockPanel.SetDock(name, Dock.Left);
         DockPanel.SetDock(remove, Dock.Right); DockPanel.SetDock(save, Dock.Right);
-        head.Children.Add(on); head.Children.Add(name); head.Children.Add(remove); head.Children.Add(save); head.Children.Add(target);
+        var withChar = new CheckBox { Content = "Charakter", IsChecked = r.WithCharacter, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+            ToolTip = "Charakter (Name, Serie, Haare/Augen-Tags) vor den Refiner-Prompt setzen – sinnvoll für Gesicht, Augen, Haare." };
+        withChar.Click += (_, _) => r.WithCharacter = withChar.IsChecked == true;
+        DockPanel.SetDock(withChar, Dock.Right);
+        head.Children.Add(on); head.Children.Add(name); head.Children.Add(remove); head.Children.Add(save); head.Children.Add(withChar); head.Children.Add(target);
 
         var prompt = new TextBox { Text = r.Prompt, TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Margin = new Thickness(0, 3, 0, 0), MinHeight = 24,
             ToolTip = "Prompt nur für diesen Bereich, z. B. „detailed face, blush“" };
@@ -228,7 +232,24 @@ public partial class SwarmWindow
             bool kbOk = rk["prompt"]?.ToString() == "1girl, bokeh, <lora:x:0.5> <segment:yolo-person_yolov8s-seg.pt,0.4,0.25> 1girl, bokeh <segment:face,0.5,0.5> nice face"
                         && rk["refinercontrolpercentage"]?.ToString() == "0" && rk["segmentsteps"]?.GetValue<int>() == 12 && rk["segmentcfgscale"]?.ToString() == "3.5";
             log.Add($"Hintergrund behalten: „{rk["prompt"]}“, Anteil {rk["refinercontrolpercentage"]}, Steps {rk["segmentsteps"]}, CFG {rk["segmentcfgscale"]}{(kbOk ? "" : " FEHLER")}");
-            bool ok = kbOk && impOk &&loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
+            // Charakter + Stil vor dem Prompt; Gesichts-Refiner bekommt Name, Serie und nur die Kopf-Tags; Übernahme trennt alles wieder
+            var cs = new SwarmSettings { Character = "frieren, sousou no frieren, white hair, twintails, green eyes, white capelet, earrings", CharacterTrigger = "frieren, sousou no frieren",
+                                         Style = "@abe tsukasa", Prompt = "sitting, forest" };
+            cs.Segments.Add(SegmentRefiners.FromPreset(SegmentRefiners.Presets[0], new[] { "face_yolov8m.pt" }));
+            cs.Segments.Add(SegmentRefiners.FromPreset(SegmentRefiners.Presets[1], new[] { "face_yolov8m.pt" }));
+            string cp = cs.BuildParams("data:x", 512, 512, null, new Dictionary<string, string?>())["prompt"]!.ToString();
+            string cpExpect = "frieren, sousou no frieren, white hair, twintails, green eyes, white capelet, earrings, @abe tsukasa, sitting, forest "
+                            + "<segment:yolo-face_yolov8m.pt,0.45,0.25> frieren, sousou no frieren, white hair, twintails, green eyes, earrings, detailed face, beautiful detailed eyes "
+                            + "<segment:hands,0.45,0.5> detailed hands, perfect hands, five fingers";
+            var ci = new SwarmSettings { Character = cs.Character, CharacterTrigger = cs.CharacterTrigger, Style = cs.Style };
+            ci.ImportPromptsFrom(new System.Text.Json.Nodes.JsonObject { ["prompt"] = cp }, null);
+            var cf = new SwarmSettings { Character = cs.Character, Style = cs.Style };
+            cf.ImportPromptsFrom(new System.Text.Json.Nodes.JsonObject { ["prompt"] = "1girl, beach" }, null);
+            bool chOk = cp == cpExpect && ci.Prompt == "sitting, forest" && ci.Character == cs.Character && ci.Style == cs.Style && ci.Segments.Count == 2
+                        && ci.Segments[0].WithCharacter && ci.Segments[0].Prompt == "detailed face, beautiful detailed eyes" && !ci.Segments[1].WithCharacter
+                        && cf.Character == "" && cf.Style == "" && cf.Prompt == "1girl, beach";
+            log.Add($"Charakter: „{cp}“ | zurück: Prompt „{ci.Prompt}“, Charakter {(ci.Character == cs.Character ? "gleich" : "„" + ci.Character + "“")}, Stil „{ci.Style}“, Gesicht mit Charakter {ci.Segments[0].WithCharacter} „{ci.Segments[0].Prompt}“ | fremdes Bild: Charakter „{cf.Character}“{(chOk ? "" : " FEHLER erwartet " + cpExpect)}");
+            bool ok = chOk && kbOk &&impOk &&loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
             log.Add(ok ? "OK" : "FEHLER erwartet: " + expect);
         }
         catch (Exception ex) { log.Add("FEHLER " + ex); }

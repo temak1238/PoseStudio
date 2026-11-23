@@ -26,6 +26,56 @@ public sealed class SwarmSettings
     public bool HistoryPromptsOnly { get; set; }
     public string Prompt { get; set; } = "";
     public string Negative { get; set; } = "";
+    /// <summary>Charakter (z. B. aus AnimaDex „frieren, sousou no frieren, white hair …“); steht beim Senden vor dem Prompt.</summary>
+    public string Character { get; set; } = "";
+    /// <summary>Name + Serie des Charakters (AnimaDex-Trigger) – geht immer an Refiner mit „Charakter“, auch ohne Aussehen-Tags.</summary>
+    public string CharacterTrigger { get; set; } = "";
+    /// <summary>Künstler/Stil (z. B. „@künstler“); steht beim Senden nach dem Charakter, vor dem Prompt.</summary>
+    public string Style { get; set; } = "";
+
+    private static string CleanPart(string s) => (s ?? "").Trim().Trim(',').Trim();
+
+    /// <summary>Charakter, Stil und Hauptprompt, mit Kommas verbunden.</summary>
+    public string HeadAndPrompt(string main) =>
+        string.Join(", ", new[] { CleanPart(Character), CleanPart(Style), (main ?? "").Trim() }.Where(x => x != ""));
+
+    private static readonly string[] HeadTagHints =
+    {
+        "hair", "bang", "ahoge", "twintail", "ponytail", "braid", "bun", "eye", "pupil", "sclera", "ear", "elf", "horn",
+        "freckle", "mole", "skin", "makeup", "lip", "fang", "halo", "scar", "glasses", "tattoo", "face", "blush",
+    };
+
+    /// <summary>Charaktertext für Refiner: Name + Serie, dazu nur Tags, die den Kopf betreffen (Haare, Augen, Ohren, Gesicht) – keine Kleidung.</summary>
+    public string RefinerCharacter()
+    {
+        var parts = Character.Split(',').Select(x => x.Trim()).Where(x => x != "").ToList();
+        if (parts.Count == 0) return "";
+        var trig = new HashSet<string>(CharacterTrigger.Split(',').Select(x => x.Trim()).Where(x => x != ""), StringComparer.OrdinalIgnoreCase);
+        var keep = parts.Where((x, i) => trig.Contains(x) || (trig.Count == 0 && i == 0) || HeadTagHints.Any(h => x.Contains(h, StringComparison.OrdinalIgnoreCase)));
+        return string.Join(", ", keep);
+    }
+
+    /// <summary>Prompt beginnt mit part (gefolgt von Ende, Komma oder Leerraum)? Dann Rest zurückgeben.</summary>
+    private static bool StripHead(string prompt, string part, out string rest)
+    {
+        rest = prompt;
+        if (part == "" || !prompt.TrimStart().StartsWith(part, StringComparison.OrdinalIgnoreCase)) return false;
+        string after = prompt.TrimStart()[part.Length..];
+        if (after.Length > 0 && after[0] != ',' && !char.IsWhiteSpace(after[0])) return false;
+        rest = after.TrimStart().TrimStart(',').TrimStart();
+        return true;
+    }
+
+    /// <summary>Nach der Übernahme eines Prompts (Historie/SwarmUI-Bild): Charakter und Stil vorne abtrennen, wenn sie passen, sonst leeren
+    /// (sie stecken dann im Prompt). In Refiner-Prompts den mitgeschickten Charakter wieder als Haken „Charakter“ erkennen.</summary>
+    public void TakeHeadFromPrompt()
+    {
+        if (StripHead(Prompt, CleanPart(Character), out var r1)) Prompt = r1; else { Character = ""; CharacterTrigger = ""; }
+        if (StripHead(Prompt, CleanPart(Style), out var r2)) Prompt = r2; else Style = "";
+        string rc = RefinerCharacter();
+        foreach (var seg in Segments)
+            if (StripHead(seg.Prompt, rc, out var r3)) { seg.Prompt = r3; seg.WithCharacter = true; }
+    }
     /// <summary>Bereichs-Refiner (Gesicht, Hände …); werden beim Senden als „<segment:…>“ ans Ende des Prompts gehängt.</summary>
     public List<SegmentRefiner> Segments { get; set; } = new();
     /// <summary>Selbst definierte Refiner-Vorlagen (gehören nicht zum Profil).</summary>
@@ -162,6 +212,7 @@ public sealed class SwarmSettings
         Prompt = originalPrompt ?? p["prompt"]?.ToString() ?? Prompt;
         Negative = p["negativeprompt"]?.ToString() ?? "";
         TakeSegmentsFromPrompt();
+        TakeHeadFromPrompt();
     }
 
     public void ImportFrom(JsonObject p, string? originalPrompt)
@@ -171,6 +222,7 @@ public sealed class SwarmSettings
         Prompt = originalPrompt ?? S("prompt") ?? Prompt;
         Negative = S("negativeprompt") ?? "";
         TakeSegmentsFromPrompt();
+        TakeHeadFromPrompt();
         Model = S("model") ?? Model;
         Steps = (int)(D("steps") ?? 0);
         Cfg = D("cfgscale") ?? 0;
@@ -221,7 +273,7 @@ public sealed class SwarmSettings
 
     /// <summary>Vorgaben plus eigene Refiner-Vorlagen (für Auswahl und Namenserkennung).</summary>
     public List<SegmentPreset> AllSegmentPresets() =>
-        SegmentRefiners.Presets.Concat(CustomSegments.Select(c => new SegmentPreset(c.Name, c.IsYolo ? "" : c.Target, c.IsYolo ? new[] { c.Target[5..] } : Array.Empty<string>(), c.Prompt, c.Creativity))).ToList();
+        SegmentRefiners.Presets.Concat(CustomSegments.Select(c => new SegmentPreset(c.Name, c.IsYolo ? "" : c.Target, c.IsYolo ? new[] { c.Target[5..] } : Array.Empty<string>(), c.Prompt, c.Creativity, c.WithCharacter))).ToList();
 
     /// <summary>Breite/Höhe für ein Seitenverhältnis bei gleicher Pixelzahl wie SideLength², auf 16 gerundet.</summary>
     public (int W, int H) SizeFor(double aspect)
@@ -240,7 +292,7 @@ public sealed class SwarmSettings
             foreach (var l in Loras)
                 if (triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
                     prompt = prompt.TrimEnd().TrimEnd(',') + ", " + t;
-        p["prompt"] = SegmentRefiners.Compose(prompt, Segments, AutoTrigger ? triggers : null);
+        p["prompt"] = SegmentRefiners.Compose(HeadAndPrompt(prompt), Segments, AutoTrigger ? triggers : null, RefinerCharacter());
         p["negativeprompt"] = Negative;
         if (!string.IsNullOrWhiteSpace(Model)) p["model"] = Model;
         p["images"] = Math.Clamp(Count, 1, 16);

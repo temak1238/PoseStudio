@@ -278,7 +278,7 @@ public partial class App : Application
                     {
                         // optional: Fenster außerhalb des Bildschirms anzeigen und als PNG speichern (4. Argument), Design im 5.
                         if (e.Args.Length >= 5) Theme.Apply(e.Args[4]);
-                        var dex = new Swarm.AnimaDexWindow(new Swarm.SwarmSettings { AnimaDexUrl = e.Args[1] }, _ => { }, false)
+                        var dex = new Swarm.AnimaDexWindow(new Swarm.SwarmSettings { AnimaDexUrl = e.Args[1] }, (_, _) => { }, false)
                         { ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0 };
                         dex.Show(); dex.Left = -20000;
                         await System.Threading.Tasks.Task.Delay(6000);

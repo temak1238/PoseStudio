@@ -26,7 +26,8 @@ public sealed partial class MainPage : ContentPage
     private readonly Label _modelName = new() { TextColor = Colors.White, VerticalOptions = LayoutOptions.Center, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
     private readonly VerticalStackLayout _loraRows = new() { Spacing = 4 };
     private readonly Switch _autoTrigger = new();
-    private readonly Editor _prompt = new() { HeightRequest = 180, Placeholder = "Prompt" };
+    private readonly Entry _character = new() { Placeholder = "Charakter (z. B. aus AnimaDex)" }, _style = new() { Placeholder = "Stil / Künstler (@name)" };
+    private readonly Editor _prompt = new() { HeightRequest = 180, Placeholder = "Prompt (Szene, Pose, Kleidung …)" };
     private readonly Editor _negative = new() { HeightRequest = 90, Placeholder = "Negativ-Prompt" };
     private readonly Picker _source = new() { ItemsSource = new[] { "Nur Prompt", "Posen-Vorlage aus Pose Studio", "Eigenes Bild" } };
     private readonly VerticalStackLayout _templateBox = new() { Spacing = 8 }, _imageBox = new() { Spacing = 8 }, _initBox = new() { Spacing = 8 }, _cnBox = new() { Spacing = 8 }, _aspectBox = new() { Spacing = 8 };
@@ -201,7 +202,9 @@ public sealed partial class MainPage : ContentPage
                     Row("Profil", _profile), Cols(saveProfile, delProfile, Btn("Aus Historie …", PickHistoryAsync)), _baseText),
                 Section("Modell", modelTile, Btn("Modell wählen …", PickModelAsync)),
                 Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync), Row("Trigger-Wörter automatisch", _autoTrigger)),
-                Section("Prompt", Cols(Btn("Charakter …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, false)), Btn("Künstler / Stil …", () => AnimaDexPage.ShowAsync(Navigation, S, InsertIntoPrompt, true))),
+                Section("Prompt",
+                    Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { _character.Text = ""; S.CharacterTrigger = ""; return Task.CompletedTask; }))),
+                    Row("Stil / Künstler", _style, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, true)), Btn("✕", () => { _style.Text = ""; return Task.CompletedTask; }))),
                     _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
                 BuildSegmentSection(),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
@@ -310,6 +313,8 @@ public sealed partial class MainPage : ContentPage
         _suppress = true;
         _url.Text = S.Url;
         _prompt.Text = S.Prompt;
+        _character.Text = S.Character;
+        _style.Text = S.Style;
         _negative.Text = S.Negative;
         ShowSegments();
         _autoTrigger.IsToggled = S.AutoTrigger;
@@ -347,6 +352,9 @@ public sealed partial class MainPage : ContentPage
     {
         S.Url = _url.Text?.Trim() ?? S.Url;
         S.Prompt = _prompt.Text ?? "";
+        S.Character = _character.Text ?? "";
+        S.Style = _style.Text ?? "";
+        if (S.CharacterTrigger != "" && !S.Character.Contains(S.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) S.CharacterTrigger = "";   // von Hand ein anderer Charakter
         if (S.TakeSegmentsFromPrompt(true)) { _prompt.Text = S.Prompt; ShowSegments(); }   // eingefügte <segment:…> werden zu Refinern
         S.Negative = _negative.Text ?? "";
         S.AutoTrigger = _autoTrigger.IsToggled;
@@ -1224,6 +1232,14 @@ public sealed partial class MainPage : ContentPage
         });
         _backupBox.Children.Add(Cols(Btn("Einstellungen sichern", ExportSettingsAsync), Btn("Sicherung laden", ImportSettingsAsync)));
         return _backupBox;
+    }
+
+    /// <summary>AnimaDex-Auswahl übernehmen: Charakter bzw. Stil wird ersetzt.</summary>
+    private void ApplyAnimaDex(AnimaDexEntry entry, string text)
+    {
+        if (entry.IsArtist) { _style.Text = text; S.Style = text; }
+        else { _character.Text = text; S.Character = text; S.CharacterTrigger = entry.PromptText(false); }
+        _t.Save();
     }
 
     /// <summary>AnimaDex-Eintrag an der Cursorstelle des Prompts einfügen (Cursor am Ende/im Refine-Teil: am Anfang), mit Kommas abgetrennt.</summary>
