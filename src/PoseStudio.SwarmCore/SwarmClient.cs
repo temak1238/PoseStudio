@@ -119,6 +119,7 @@ public sealed class SwarmClient : IDisposable
             string name = o["name"]?.GetValue<string>() ?? "";
             string? prev = o["preview_image"]?.GetValue<string>();
             if (prev != null && prev.StartsWith("/")) prev = BaseUrl + prev;
+            else if (prev != null && !prev.StartsWith("data:") && !Uri.IsWellFormedUriString(prev, UriKind.Absolute)) prev = BaseUrl + "/" + prev;   // z. B. imgs/model_placeholder.jpg
             list.Add(new SwarmModel(name, o["title"]?.GetValue<string>() ?? "", prev, o["trigger_phrase"]?.GetValue<string>(), o["architecture"]?.GetValue<string>(), o["compat_class"]?.GetValue<string>()));
         }
         return list.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();

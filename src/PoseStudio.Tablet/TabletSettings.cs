@@ -113,7 +113,7 @@ public static class Ui
 
     public static ImageSource? Web(string? url) => url == null ? null
         : url.StartsWith("data:") ? ImageSource.FromStream(() => new MemoryStream(Convert.FromBase64String(url[(url.IndexOf(',') + 1)..])))
-        : new UriImageSource { Uri = new Uri(url), CachingEnabled = true, CacheValidity = TimeSpan.FromDays(60) };
+        : Uri.TryCreate(url, UriKind.Absolute, out var uri) ? new UriImageSource { Uri = uri, CachingEnabled = true, CacheValidity = TimeSpan.FromDays(60) } : null;   // kaputte Adresse: kein Bild statt Absturz
 
     public static ImageSource Bytes(byte[] data) => ImageSource.FromStream(() => new MemoryStream(data));
 
