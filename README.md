@@ -116,3 +116,7 @@ Generiert über SwarmUI vom Tablet aus (`publish\PoseStudioSwarm-<Version>.apk`,
 
 ## Lizenz
 MIT, siehe `LICENSE`. Modelle und Bibliotheken von Dritten stehen unter ihren eigenen Lizenzen (dort aufgeführt).
+
+## Portabel (Einstellungen im Programmordner)
+
+Normalerweise liegen Einstellungen (`settings.json`) und eigene Vorlagen unter `%APPDATA%\PoseStudio`. Der Haken **„Portabel“** unten in der Statusleiste verlegt sie in den Unterordner `Daten` im Programmordner – dann genügt es, den Programmordner auf andere PCs zu kopieren oder zu synchronisieren (z. B. Syncthing). Ausschalten kopiert die Vorlagen zurück, sichert die alte `settings.json` in `%APPDATA%` als `.bak` und benennt `Daten` um (es wird nichts gelöscht). Der Modus richtet sich allein danach, ob `Daten` existiert; Updates lassen den Ordner unangetastet. Zwischenspeicher bleiben lokal; beim Synchronisieren sollten `SwarmCache`, `*.old` und `*.tmp` ausgenommen werden, und das Programm sollte nicht auf zwei PCs gleichzeitig laufen.

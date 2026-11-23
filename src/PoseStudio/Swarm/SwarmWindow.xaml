@@ -147,7 +147,7 @@
                         </StackPanel>
                     </GroupBox>
 
-                    <GroupBox Header="Refiner (Gesicht, Hände …)">
+                    <GroupBox x:Name="SegmentGroup" Header="Refiner (Gesicht, Hände …)">
                         <StackPanel>
                             <StackPanel x:Name="SegmentRows" />
                             <DockPanel Margin="0,3,0,0">

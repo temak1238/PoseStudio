@@ -25,6 +25,8 @@ public interface ISwarmScene
     string? ReferenceImagePath { get; }
     /// <summary>Export-Ordner des Hauptfensters (SwarmUI-Ergebnisse landen im Unterordner „SwarmUI“).</summary>
     string ExportFolder { get; }
+    /// <summary>Einstellungen jetzt speichern (z. B. nach Änderungen an den Refinern), damit bei Absturz nichts verloren geht.</summary>
+    void SaveSettingsNow() { }
 }
 
 /// <summary>Ein Ergebnis (oder Platzhalter während der Generierung).</summary>
@@ -188,6 +190,7 @@ public partial class SwarmWindow : Window
         _s.TakeSegmentsFromPrompt();   // alte Prompts mit <segment:…> in Refiner-Zeilen umwandeln
         ShowSettings();
         RefreshProfiles();
+        HookSegmentAutosave();
         Loaded += async (_, _) => await ConnectAsync();
         // erst nach ShowSettings anhängen (sonst feuert der Handler beim Füllen)
         CnKindCombo.SelectionChanged += CnKind_Changed;

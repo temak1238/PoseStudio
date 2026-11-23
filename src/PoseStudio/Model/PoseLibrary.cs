@@ -36,9 +36,8 @@ public static class PoseLibrary
     public const string UserCategory = "Eigene";
     public const int ThumbW = 150, ThumbH = 190;
 
-    private static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio");
-    public static string UserFolder => Path.Combine(Root, "Vorlagen");
-    private static string CacheFolder => Path.Combine(Root, "Cache");
+    public static string UserFolder => AppPaths.TemplatesDir;
+    private static string CacheFolder => AppPaths.CacheDir;
 
     public static PoseData Clone(PoseData p) =>
         JsonSerializer.Deserialize<PoseData>(JsonSerializer.Serialize(p))!;

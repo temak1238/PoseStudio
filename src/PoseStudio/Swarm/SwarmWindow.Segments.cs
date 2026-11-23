@@ -9,6 +9,28 @@ namespace PoseStudio.Swarm;
 public partial class SwarmWindow
 {
     private const string CustomEntry = "Eigener …";
+    private System.Windows.Threading.DispatcherTimer? _saveTimer;
+
+    /// <summary>Jede Änderung an den Refinern (Text, Haken, Regler, Auswahl, Hinzufügen/Entfernen, LoRAs) speichert nach kurzer Pause die Einstellungen.</summary>
+    private void HookSegmentAutosave()
+    {
+        void Any(object s, RoutedEventArgs e) => SaveSoon();
+        SegmentGroup.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, new TextChangedEventHandler(Any));
+        SegmentGroup.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler(Any));
+        SegmentGroup.AddHandler(System.Windows.Controls.Primitives.RangeBase.ValueChangedEvent, new RoutedPropertyChangedEventHandler<double>((s, e) => SaveSoon()));
+        Closing += (_, _) => { if (_saveTimer?.IsEnabled == true) { _saveTimer.Stop(); _scene.SaveSettingsNow(); } };
+    }
+
+    private void SaveSoon()
+    {
+        if (_suppress) return;
+        if (_saveTimer == null)
+        {
+            _saveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); _scene.SaveSettingsNow(); };
+        }
+        _saveTimer.Stop(); _saveTimer.Start();
+    }
     /// <summary>YOLO-Modelle auf dem Server (SwarmUI-Parameter yolomodelinternal).</summary>
     private List<string> _yolos = new();
 
@@ -249,7 +271,14 @@ public partial class SwarmWindow
                         && ci.Segments[0].WithCharacter && ci.Segments[0].Prompt == "detailed face, beautiful detailed eyes" && !ci.Segments[1].WithCharacter
                         && cf.Character == "" && cf.Style == "" && cf.Prompt == "1girl, beach";
             log.Add($"Charakter: „{cp}“ | zurück: Prompt „{ci.Prompt}“, Charakter {(ci.Character == cs.Character ? "gleich" : "„" + ci.Character + "“")}, Stil „{ci.Style}“, Gesicht mit Charakter {ci.Segments[0].WithCharacter} „{ci.Segments[0].Prompt}“ | fremdes Bild: Charakter „{cf.Character}“{(chOk ? "" : " FEHLER erwartet " + cpExpect)}");
-            bool ok = chOk && kbOk &&impOk &&loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
+            // Speichern/Laden: Refiner-LoRAs müssen einen Neustart überstehen (wie AppSettings.Save/Load)
+            var st = new AppSettings(); st.Swarm.Segments.Add(SegmentRefiners.FromPreset(SegmentRefiners.Presets[2], Array.Empty<string>()));
+            st.Swarm.Segments[0].Loras.Add(new SwarmLora { Name = "Detail/eyes-illustrious-perfect-anime-eyes", Weight = 0.7 });
+            st.Swarm.CustomSegments.Add(st.Swarm.Segments[0].Clone());
+            string json = System.Text.Json.JsonSerializer.Serialize(st, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var back = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!;
+            log.Add($"Speichern/Laden: Refiner {back.Swarm.Segments.Count}, LoRAs {back.Swarm.Segments.FirstOrDefault()?.Loras.Count}, Vorlage-LoRAs {back.Swarm.CustomSegments.FirstOrDefault()?.Loras.Count}, Charakter-Haken {back.Swarm.Segments.FirstOrDefault()?.WithCharacter}");
+            bool ok = chOk &&kbOk &&impOk &&loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
             log.Add(ok ? "OK" : "FEHLER erwartet: " + expect);
         }
         catch (Exception ex) { log.Add("FEHLER " + ex); }
@@ -259,5 +288,51 @@ public partial class SwarmWindow
             BuildSegmentRows();
         }
         return string.Join(" | ", log);
+    }
+}
+
+public partial class SwarmWindow
+{
+    /// <summary>Testmodus: Refiner mit LoRA über die Oberfläche anlegen, Fenster schließen, Einstellungen wie beim Beenden serialisieren,
+    /// neu laden und in einem neuen Fenster prüfen. Schreibt nichts nach %APPDATA%.</summary>
+    internal static async Task<string> TestSegmentPersistenceAsync(ISwarmScene scene, string url)
+    {
+        var log = new List<string>();
+        var app = new AppSettings();
+        app.Swarm.Url = url;
+        var w = new SwarmWindow(app.Swarm, scene) { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = 0 };
+        w.Show(); w.Left = -20000;
+        await Task.Delay(6000);   // Verbinden (LoRA-Liste)
+        w.SegmentAddCombo.SelectedItem = "Augen"; w.SegmentAdd_Click(w, new RoutedEventArgs());
+        var row = (Border)w.SegmentRows.Children[0];
+        var combos = FindAll<ComboBox>(row).Where(c => c.IsEditable).ToList();
+        var pick = combos.Last();
+        var addBtn = FindAll<Button>(row).First(b => (b.Content as string) == "+ LoRA");
+        pick.Text = "Detail/eyes-illustrious-perfect-anime-eyes";
+        addBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        log.Add($"Nach Hinzufügen: Refiner {app.Swarm.Segments.Count}, LoRAs {app.Swarm.Segments[0].Loras.Count}, LoRA-Liste {w._loras.Count}");
+        w.Close();
+        log.Add($"Nach Schließen: LoRAs {app.Swarm.Segments.FirstOrDefault()?.Loras.Count}");
+        string json = System.Text.Json.JsonSerializer.Serialize(app, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var back = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json)!;
+        log.Add($"Nach Laden: Refiner {back.Swarm.Segments.Count}, LoRAs {back.Swarm.Segments.FirstOrDefault()?.Loras.Count}");
+        var w2 = new SwarmWindow(back.Swarm, scene) { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = 0 };
+        w2.Show(); w2.Left = -20000;
+        await Task.Delay(6000);
+        var row2 = w2.SegmentRows.Children.Count > 0 ? (Border)w2.SegmentRows.Children[0] : null;
+        int chips = row2 == null ? -1 : FindAll<TextBlock>(row2).Count(t => (t.ToolTip as string) == "Detail/eyes-illustrious-perfect-anime-eyes");
+        log.Add($"Neues Fenster: LoRAs {back.Swarm.Segments.FirstOrDefault()?.Loras.Count}, angezeigt {chips}");
+        w2.Close();
+        return string.Join("\n", log);
+    }
+
+    private static IEnumerable<T> FindAll<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is T t) yield return t;
+            foreach (var x in FindAll<T>(c)) yield return x;
+        }
     }
 }

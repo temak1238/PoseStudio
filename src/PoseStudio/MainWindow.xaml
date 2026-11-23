@@ -38,6 +38,10 @@
                 <Button Content="Update" Padding="10,1" Click="CheckUpdates_Click" ToolTip="Mit dem neuesten Release auf GitHub abgleichen und auf Wunsch aktualisieren (Pose Studio prüft das auch beim Start)" />
             </StatusBarItem>
             <StatusBarItem DockPanel.Dock="Right">
+                <CheckBox x:Name="PortableCheck" Content="Portabel" VerticalAlignment="Center" Click="Portable_Click"
+                          ToolTip="Einstellungen und eigene Vorlagen im Programmordner (Unterordner „Daten“) statt im Benutzerprofil speichern – dann lässt sich der ganze Programmordner auf andere PCs kopieren oder synchronisieren (z. B. Syncthing). Ausschalten kopiert alles zurück." />
+            </StatusBarItem>
+            <StatusBarItem DockPanel.Dock="Right">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Design" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <ComboBox x:Name="ThemeCombo" Width="80" SelectionChanged="Theme_Changed" ToolTip="Hell, Dunkel oder wie in Windows eingestellt (Personalisierung → Farben → App-Modus)" />

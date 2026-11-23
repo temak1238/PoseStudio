@@ -80,6 +80,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         InitializeComponent();
         ThemeCombo.ItemsSource = Theme.Modes;
         ThemeCombo.SelectedItem = Theme.Mode;
+        PortableCheck.IsChecked = AppPaths.IsPortable;
         Title = $"Pose Studio {GetVersion()}";
 
         _scene.Children.Add(_lights);
@@ -155,6 +156,22 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     private void Theme_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (ThemeCombo.SelectedItem is string m && m != Theme.Mode) Theme.Apply(m);
+    }
+
+    private void Portable_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = PortableCheck.IsChecked == true;
+        string where = on ? AppPaths.PortableDir : AppPaths.RoamingDir;
+        var answer = MessageBox.Show(this, on
+                ? $"Einstellungen und eigene Vorlagen ab jetzt im Programmordner speichern?\n\n{AppPaths.PortableDir}\n\nDie bisherigen Daten in %APPDATA% bleiben als Sicherung liegen."
+                : $"Einstellungen und eigene Vorlagen wieder im Benutzerprofil speichern?\n\n{AppPaths.RoamingDir}\n\nDie dortige alte settings.json wird als .bak gesichert, der Ordner „Daten“ im Programmordner umbenannt (nicht gelöscht).",
+            "Portabel", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) { PortableCheck.IsChecked = AppPaths.IsPortable; return; }
+        string? err = on ? AppPaths.EnablePortable() : AppPaths.DisablePortable();
+        if (err != null) { MessageBox.Show(this, err, "Portabel", MessageBoxButton.OK, MessageBoxImage.Warning); PortableCheck.IsChecked = AppPaths.IsPortable; return; }
+        SaveSettings();
+        StatusText.Text = "Einstellungen liegen jetzt in " + where;
+        RefreshPresetCombo();
     }
 
     /// <summary>Testmodus --theme-shot: Haupt- und SwarmUI-Fenster außerhalb des Bildschirms anzeigen und als PNG speichern (schreibt keine Einstellungen).</summary>
@@ -919,6 +936,12 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     }
 
     string PoseStudio.Swarm.ISwarmScene.ExportFolder => FolderBox.Text;
+
+    void PoseStudio.Swarm.ISwarmScene.SaveSettingsNow()
+    {
+        if (!App.NormalStart || _noSaveOnClose) return;   // Testmodi schreiben nie Einstellungen
+        try { SaveSettings(); } catch { }
+    }
 
     double PoseStudio.Swarm.ISwarmScene.PreviewAspect => CurrentPreviewAspect();
 

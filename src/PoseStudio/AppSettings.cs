@@ -50,15 +50,16 @@ public sealed class AppSettings
     /// <summary>SwarmUI-Fenster: Server, Einstellungen, Profile.</summary>
     public PoseStudio.Swarm.SwarmSettings Swarm { get; set; } = new();
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PoseStudio", "settings.json");
+    private static string FilePath => AppPaths.SettingsFile;
 
     public static AppSettings Load()
     {
         try
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+            // portabel, aber noch keine Datei im Programmordner: bisherige Einstellungen aus %APPDATA% als Ausgangspunkt
+            string path = File.Exists(FilePath) || !AppPaths.IsPortable ? FilePath : Path.Combine(AppPaths.RoamingDir, "settings.json");
+            if (File.Exists(path))
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
         }
         catch { /* defekte Einstellungen ignorieren */ }
         return new AppSettings();
@@ -69,7 +70,10 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            // erst in eine Hilfsdatei, dann ersetzen: kein halbes settings.json bei Absturz oder während eine Synchronisierung liest
+            string tmp = FilePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(tmp, FilePath, true);
         }
         catch { /* nicht kritisch */ }
     }

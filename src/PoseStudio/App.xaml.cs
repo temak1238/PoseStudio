@@ -264,6 +264,29 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--paths-test")
+        {
+            // --paths-test <ausgabe.txt>: Ablageort der Daten (normal / portabel) und was davon geladen wird
+            var st = AppSettings.Load();
+            File.WriteAllText(e.Args[1], $"Portabel {AppPaths.IsPortable}\nEinstellungen {AppPaths.SettingsFile}\nVorlagen {AppPaths.TemplatesDir}\nCache {AppPaths.CacheDir}\nGeladen: Ausgabeordner {st.OutputFolder}, Prefix {st.FilePrefix}");
+            Environment.Exit(0);
+        }
+
+        if (e.Args.Length >= 3 && e.Args[0] == "--segment-persist-test")
+        {
+            // --segment-persist-test <swarm-url> <ausgabe.txt>: Refiner-LoRAs über Schließen/Speichern/Laden prüfen (ohne %APPDATA% zu schreiben)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () =>
+            {
+                string r;
+                try { var mw = new MainWindow(); r = await Swarm.SwarmWindow.TestSegmentPersistenceAsync(mw, e.Args[1]); }
+                catch (Exception ex) { r = "FEHLER: " + ex; }
+                File.WriteAllText(e.Args[2], r);
+                Environment.Exit(0);
+            });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--animadex-test")
         {
             // --animadex-test <adresse> <ausgabe.txt>: AnimaDex-Anbindung gegen eine laufende Instanz prüfen

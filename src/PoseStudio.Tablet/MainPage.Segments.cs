@@ -50,8 +50,19 @@ public sealed partial class MainPage
         ShowSegments();
     }
 
+    private CancellationTokenSource? _segSave;
+
+    /// <summary>Refiner-Änderungen nach kurzer Pause speichern – geht sonst verloren, wenn Android die App beendet.</summary>
+    private async void SaveSoon()
+    {
+        _segSave?.Cancel();
+        var c = _segSave = new CancellationTokenSource();
+        try { await Task.Delay(1500, c.Token); _t.Save(); } catch (OperationCanceledException) { }
+    }
+
     private void ShowSegments()
     {
+        SaveSoon();
         _segRows.Children.Clear();
         foreach (var r in S.Segments.ToList()) _segRows.Children.Add(SegmentRow(r));
         FillSegmentAdd();
@@ -60,9 +71,9 @@ public sealed partial class MainPage
     private View SegmentRow(SegmentRefiner r)
     {
         var on = new Switch { IsToggled = r.Enabled, OnColor = Ui.Accent, VerticalOptions = LayoutOptions.Center };
-        on.Toggled += (_, e) => r.Enabled = e.Value;
+        on.Toggled += (_, e) => { r.Enabled = e.Value; SaveSoon(); };
         var name = new Entry { Text = r.Name, WidthRequest = 120, TextColor = Colors.White, Placeholder = "Name" };
-        name.TextChanged += (_, _) => r.Name = name.Text ?? "";
+        name.TextChanged += (_, _) => { r.Name = name.Text ?? ""; SaveSoon(); };
 
         var target = new Picker { TextColor = Colors.White, Title = "Ziel" };
         Slider thr = null!;
@@ -90,7 +101,7 @@ public sealed partial class MainPage
             else t = choices[i].Target;
             if (t.Equals(r.Target, StringComparison.OrdinalIgnoreCase)) return;
             bool wasYolo = r.IsYolo;
-            r.Target = t;
+            r.Target = t; SaveSoon();
             if (wasYolo != r.IsYolo && thr != null) thr.Value = r.IsYolo ? SegmentRefiners.YoloThreshold : SegmentRefiners.ClipThreshold;
             if (i >= choices.Count) FillTargets();
         };
@@ -112,17 +123,17 @@ public sealed partial class MainPage
         head.Add(on, 0); head.Add(name, 1); head.Add(target, 2); head.Add(save, 3); head.Add(del, 4);
 
         var withChar = new Switch { IsToggled = r.WithCharacter, OnColor = Ui.Accent, VerticalOptions = LayoutOptions.Center };
-        withChar.Toggled += (_, e) => r.WithCharacter = e.Value;
+        withChar.Toggled += (_, e) => { r.WithCharacter = e.Value; SaveSoon(); };
         var charRow = new HorizontalStackLayout { Spacing = 4, Children = { withChar, new Label { Text = "Charakter mitgeben (Name, Serie, Haare/Augen)", TextColor = Ui.Muted, FontSize = 12, VerticalOptions = LayoutOptions.Center } } };
 
         var prompt = new Entry { Text = r.Prompt, TextColor = Colors.White, Placeholder = "Prompt für diesen Bereich, z. B. detailed face, blush" };
-        prompt.TextChanged += (_, _) => r.Prompt = prompt.Text ?? "";
+        prompt.TextChanged += (_, _) => { r.Prompt = prompt.Text ?? ""; SaveSoon(); };
 
         View SliderCell(string label, double value, Action<double> set, out Slider sl)
         {
             var val = new Label { Text = Ui.F(value), TextColor = Colors.White, WidthRequest = 40, VerticalOptions = LayoutOptions.Center };
             var s = new Slider { Minimum = 0, Maximum = 1, Value = value, VerticalOptions = LayoutOptions.Center };
-            s.ValueChanged += (_, e) => { double v = Math.Round(e.NewValue * 20) / 20; set(v); val.Text = Ui.F(v); };
+            s.ValueChanged += (_, e) => { double v = Math.Round(e.NewValue * 20) / 20; set(v); val.Text = Ui.F(v); SaveSoon(); };
             var g = new Grid { ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto) }, ColumnSpacing = 4 };
             g.Add(new Label { Text = label, TextColor = Ui.Muted, VerticalOptions = LayoutOptions.Center }, 0); g.Add(s, 1); g.Add(val, 2);
             sl = s;
@@ -149,7 +160,7 @@ public sealed partial class MainPage
             var name = new Label { Text = "LoRA: " + (info?.Short ?? l.Name), TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, VerticalOptions = LayoutOptions.Center };
             var val = new Label { Text = Ui.F(l.Weight), TextColor = Colors.White, WidthRequest = 40, VerticalOptions = LayoutOptions.Center };
             var slider = new Slider { Minimum = -1, Maximum = 2, Value = l.Weight, WidthRequest = 150, VerticalOptions = LayoutOptions.Center };
-            slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); };
+            slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); SaveSoon(); };
             var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
             del.Clicked += (_, _) => { r.Loras.Remove(l); ShowSegments(); };
             var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
