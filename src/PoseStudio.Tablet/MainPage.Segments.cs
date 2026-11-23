@@ -98,12 +98,12 @@ public sealed partial class MainPage
         var save = new Button { Text = "Merken", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, Padding = new Thickness(8, 0) };
         save.Clicked += async (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(r.Name) || string.IsNullOrWhiteSpace(r.Target)) { await DisplayAlert("Refiner", "Zum Merken braucht der Refiner einen Namen und ein Ziel.", "OK"); return; }
+            if (string.IsNullOrWhiteSpace(r.Name) || string.IsNullOrWhiteSpace(r.Target)) { await DisplayAlertAsync("Refiner", "Zum Merken braucht der Refiner einen Namen und ein Ziel.", "OK"); return; }
             S.CustomSegments.RemoveAll(c => c.Name.Equals(r.Name, StringComparison.OrdinalIgnoreCase));
             S.CustomSegments.Add(r.Clone());
             FillSegmentAdd();
             _t.Save();
-            await DisplayAlert("Refiner", $"Vorlage „{r.Name}“ gemerkt – sie steht jetzt in der Auswahl.", "OK");
+            await DisplayAlertAsync("Refiner", $"Vorlage „{r.Name}“ gemerkt – sie steht jetzt in der Auswahl.", "OK");
         };
         var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
         del.Clicked += (_, _) => { S.Segments.Remove(r); ShowSegments(); };
@@ -129,9 +129,46 @@ public sealed partial class MainPage
 
         return new Border
         {
-            Content = new VerticalStackLayout { Spacing = 4, Children = { head, prompt, Cols(cre, th) } },
+            Content = new VerticalStackLayout { Spacing = 4, Children = { head, prompt, SegmentLoras(r), Cols(cre, th) } },
             BackgroundColor = Ui.PanelLight.WithAlpha(0.35f), StrokeThickness = 0, Padding = 8,
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
         };
+    }
+
+    /// <summary>LoRAs nur für diesen Refiner: Zeilen mit Gewicht-Regler und ✕, „+ LoRA“ öffnet die Kachelauswahl.</summary>
+    private View SegmentLoras(SegmentRefiner r)
+    {
+        var box = new VerticalStackLayout { Spacing = 4 };
+        foreach (var l in r.Loras.ToList())
+        {
+            var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
+            var name = new Label { Text = "LoRA: " + (info?.Short ?? l.Name), TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, VerticalOptions = LayoutOptions.Center };
+            var val = new Label { Text = Ui.F(l.Weight), TextColor = Colors.White, WidthRequest = 40, VerticalOptions = LayoutOptions.Center };
+            var slider = new Slider { Minimum = -1, Maximum = 2, Value = l.Weight, WidthRequest = 150, VerticalOptions = LayoutOptions.Center };
+            slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); };
+            var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
+            del.Clicked += (_, _) => { r.Loras.Remove(l); ShowSegments(); };
+            var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
+            g.Add(name, 0); g.Add(slider, 1); g.Add(val, 2); g.Add(del, 3);
+            box.Add(g);
+        }
+        var add = new Button { Text = "+ LoRA nur für diesen Bereich", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, HorizontalOptions = LayoutOptions.Start, Padding = new Thickness(10, 0) };
+        add.Clicked += async (_, _) =>
+        {
+            if (_loras.Count == 0) { await DisplayAlertAsync("LoRA", "Noch keine Verbindung zu SwarmUI.", "OK"); return; }
+            var tiles = _loras.Select(m => new Tile
+            {
+                Label = m.Short, Sub = string.IsNullOrWhiteSpace(m.Trigger) ? m.Folder : "Trigger: " + m.Trigger, Image = Ui.Web(m.PreviewUrl), Tag = m,
+                Marked = r.Loras.Any(x => x.Name.Equals(m.Id, StringComparison.OrdinalIgnoreCase)),
+            }).ToList();
+            await TilePickerPage.ShowAsync(Navigation, new TilePickerPage("LoRAs für " + r.Name, tiles, t => ((SwarmModel)t.Tag).Folder, multi: true, onPick: t =>
+            {
+                var m = (SwarmModel)t.Tag;
+                if (!r.Loras.Any(x => x.Name.Equals(m.Id, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = m.Id, Weight = 0.8 });
+            }));
+            ShowSegments();
+        };
+        box.Add(add);
+        return box;
     }
 }

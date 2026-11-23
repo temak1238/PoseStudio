@@ -56,6 +56,44 @@ public partial class SwarmWindow
 
     private static string N2(double v) => v.ToString("0.00", CultureInfo.CurrentCulture);
 
+    /// <summary>LoRAs nur für diesen Refiner: Chips mit Gewicht und ✕, dazu eine durchsuchbare Auswahl der LoRAs vom Server.</summary>
+    private FrameworkElement SegmentLoraPanel(SegmentRefiner r)
+    {
+        var wrap = new WrapPanel { Margin = new Thickness(0, 3, 0, 0) };
+        void Fill()
+        {
+            wrap.Children.Clear();
+            wrap.Children.Add(new TextBlock { Text = "LoRA nur hier:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 3) });
+            foreach (var l in r.Loras.ToList())
+            {
+                var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
+                var name = new TextBlock { Text = info?.Short ?? l.Name, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 170, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = l.Name };
+                var w = new TextBox { Text = l.Weight.ToString("0.##", CultureInfo.InvariantCulture), Width = 38, Margin = new Thickness(4, 0, 0, 0), ToolTip = "Gewicht" };
+                w.TextChanged += (_, _) => l.Weight = PD(w.Text, l.Weight);
+                var x = new Button { Content = "✕", Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(3, 0, 0, 0) };
+                x.Click += (_, _) => { r.Loras.Remove(l); Fill(); };
+                var chip = new Border { Padding = new Thickness(5, 2, 3, 2), Margin = new Thickness(0, 0, 4, 3), CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1),
+                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, w, x } } };
+                chip.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
+                wrap.Children.Add(chip);
+            }
+            var pick = new ComboBox { IsEditable = true, IsTextSearchEnabled = true, Width = 190, Margin = new Thickness(0, 0, 4, 3),
+                ToolTip = "LoRA nur für diesen Bereich (z. B. ein Detail- oder Augen-LoRA). Namen tippen zum Suchen." };
+            pick.ItemsSource = _loras.Select(m => m.Id).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            var add = new Button { Content = "+ LoRA", Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 0, 3) };
+            add.Click += (_, _) =>
+            {
+                string n = (pick.SelectedItem as string ?? pick.Text).Trim();
+                if (n == "") { SegmentHint.Text = _loras.Count == 0 ? "Noch keine Verbindung zu SwarmUI – LoRA-Namen eintippen oder erst verbinden." : "Erst eine LoRA auswählen."; return; }
+                if (!r.Loras.Any(x => x.Name.Equals(n, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = n, Weight = 0.8 });
+                Fill();
+            };
+            wrap.Children.Add(pick); wrap.Children.Add(add);
+        }
+        Fill();
+        return wrap;
+    }
+
     private FrameworkElement SegmentRow(SegmentRefiner r)
     {
         var on = new CheckBox { IsChecked = r.Enabled, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0), ToolTip = "Refiner beim Senden verwenden" };
@@ -121,7 +159,7 @@ public partial class SwarmWindow
         Grid.SetColumn(th, 1);
         sliders.Children.Add(cre); sliders.Children.Add(th);
 
-        var box = new StackPanel { Children = { head, prompt, sliders } };
+        var box = new StackPanel { Children = { head, prompt, SegmentLoraPanel(r), sliders } };
         var b = new Border
         {
             Child = box, Padding = new Thickness(5), Margin = new Thickness(0, 0, 0, 4), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3),
@@ -167,8 +205,23 @@ public partial class SwarmWindow
             log.Add($"Eigene Vorlage in Auswahl: {((IEnumerable<string>)SegmentAddCombo.ItemsSource).Contains("Mein Fuß")} | Zeilen {SegmentRows.Children.Count}");
             var (main, list) = SegmentRefiners.Split("a, b <segment:yolo-multi.pt:0,apple:,0.8,0.25> x <segment:face|hair> y");
             log.Add($"Klassenfilter: Haupt „{main}“, {list[0].Target} {list[0].Creativity}/{list[0].Threshold}, {list[1].Target} {list[1].Creativity}/{list[1].Threshold}");
-            string expect = "1girl, smile, <segment:yolo-face_yolov8m.pt,0.5,0.3> detailed face, blush <segment:yolo-anzhc-eyes-seg-hd.pt,0.4,0.25> detailed eyes, beautiful eyes, detailed pupils <segment:feet,0.45,0.5> detailed feet, five toes";
-            bool ok = p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
+            string expect = "1girl, smile <segment:yolo-face_yolov8m.pt,0.5,0.3> detailed face, blush <segment:yolo-anzhc-eyes-seg-hd.pt,0.4,0.25> detailed eyes, beautiful eyes, detailed pupils <segment:feet,0.45,0.5> detailed feet, five toes";
+            // LoRA nur für den Gesichts-Refiner, mit Trigger-Wort; danach wieder zerlegen
+            _s.Segments[0].Loras.Add(new SwarmLora { Name = "Detail/eyes_v2", Weight = 0.7 });
+            string withLora = SegmentRefiners.Compose("1girl", _s.Segments.Take(1), new Dictionary<string, string?> { ["Detail/eyes_v2"] = "sparkling eyes" });
+            var (m2, l2) = SegmentRefiners.Split(withLora);
+            log.Add($"Refiner-LoRA: „{withLora}“ → zurück {l2[0].Loras.Count} LoRA {l2[0].Loras[0].Name}@{l2[0].Loras[0].Weight}, Prompt „{l2[0].Prompt}“");
+            bool loraOk = withLora == "1girl <segment:yolo-face_yolov8m.pt,0.5,0.3> <lora:Detail/eyes_v2:0.7> detailed face, blush, sparkling eyes"
+                          && l2[0].Loras[0].Name == "Detail/eyes_v2" && l2[0].Loras[0].Weight == 0.7 && l2[0].Prompt == "detailed face, blush, sparkling eyes" && m2 == "1girl";
+            // Übernahme aus einem SwarmUI-Bild: LoRA mit Bereich (lorasectionconfinement ≠ -1) gehört zum Refiner, nicht zu den normalen LoRAs
+            var imp = new SwarmSettings();
+            imp.ImportFrom((System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
+                """{"prompt":"x","loras":["Background/Dojo","Effekts/Eye_wallpaper"],"loraweights":["0.5","0.8"],"lorasectionconfinement":["-1","11"]}""")!,
+                "1girl, smile <segment:face,0.4,0.5> <lora:Effekts/Eye_wallpaper:0.8> detailed eyes");
+            bool impOk = imp.Loras.Count == 1 && imp.Loras[0].Name == "Background/Dojo" && imp.Segments.Count == 1 && imp.Segments[0].Loras[0].Name == "Effekts/Eye_wallpaper"
+                         && imp.Base?.ContainsKey("lorasectionconfinement") != true && imp.Prompt == "1girl, smile";
+            log.Add($"Übernahme: LoRAs {string.Join(",", imp.Loras.Select(x => x.Name))}, Refiner-LoRAs {string.Join(",", imp.Segments.SelectMany(x => x.Loras).Select(x => x.Name))}{(impOk ? "" : " FEHLER")}");
+            bool ok = impOk && loraOk &&p["prompt"]?.ToString() == expect && main == "a, b" && list[0].Target == "yolo-multi.pt:0,apple:" && list[1].Creativity == 0.6;
             log.Add(ok ? "OK" : "FEHLER erwartet: " + expect);
         }
         catch (Exception ex) { log.Add("FEHLER " + ex); }

@@ -18,8 +18,15 @@ public sealed class SegmentRefiner
     public double Creativity { get; set; } = 0.5;
     /// <summary>Erkennungsschwelle: YOLO-Konfidenz (Standard 0,25) bzw. CLIPSeg-Mindestwert (Standard 0,5).</summary>
     public double Threshold { get; set; } = 0.25;
+    /// <summary>LoRAs nur für diesen Bereich (SwarmUI wendet ein &lt;lora:…&gt; hinter &lt;segment:…&gt; nur beim Neumalen des Bereichs an).</summary>
+    public List<SwarmLora> Loras { get; set; } = new();
 
-    public SegmentRefiner Clone() => (SegmentRefiner)MemberwiseClone();
+    public SegmentRefiner Clone()
+    {
+        var c = (SegmentRefiner)MemberwiseClone();
+        c.Loras = Loras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
+        return c;
+    }
     public bool IsYolo => SegmentRefiners.IsYolo(Target);
 }
 
@@ -82,7 +89,7 @@ public static class SegmentRefiners
     private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>Prompt mit angehängten Refinern: „Haupt &lt;segment:ziel,kreativität,schwelle&gt; refiner-prompt …“.</summary>
-    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners)
+    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null)
     {
         var sb = new StringBuilder(prompt.TrimEnd());
         foreach (var r in refiners ?? Enumerable.Empty<SegmentRefiner>())
@@ -91,12 +98,21 @@ public static class SegmentRefiners
             if (sb.Length > 0) sb.Append(' ');
             sb.Append("<segment:").Append(r.Target.Trim()).Append(',').Append(Num(Math.Clamp(r.Creativity, 0, 1)))
               .Append(',').Append(Num(Math.Clamp(r.Threshold, 0, 1))).Append('>');
-            if (!string.IsNullOrWhiteSpace(r.Prompt)) sb.Append(' ').Append(r.Prompt.Trim());
+            string rp = r.Prompt.Trim();
+            foreach (var l in r.Loras)
+            {
+                if (string.IsNullOrWhiteSpace(l.Name)) continue;
+                sb.Append(" <lora:").Append(l.Name.Trim()).Append(':').Append(l.Weight.ToString("0.###", CultureInfo.InvariantCulture)).Append('>');
+                if (triggers != null && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !rp.Contains(t!, StringComparison.OrdinalIgnoreCase))
+                    rp = rp.TrimEnd().TrimEnd(',') + (rp == "" ? "" : ", ") + t;
+            }
+            if (rp != "") sb.Append(' ').Append(rp);
         }
         return sb.ToString();
     }
 
     private static readonly Regex SegmentTag = new(@"<segment:([^>]*)>", RegexOptions.IgnoreCase);
+    private static readonly Regex LoraTag = new(@"<lora:([^>]+?)(?::(-?[0-9.]+))?>", RegexOptions.IgnoreCase);
 
     /// <summary>„&lt;segment:…&gt;“-Teile aus einem Prompt lösen: Hauptprompt (davor) und je Teil ein Refiner (Text bis zum nächsten Teil).</summary>
     public static (string Main, List<SegmentRefiner> Refiners) Split(string prompt, IEnumerable<SegmentPreset>? presets = null)
@@ -118,7 +134,12 @@ public static class SegmentRefiners
             var r = new SegmentRefiner
             {
                 Target = target,
-                Prompt = prompt[(m.Index + m.Length)..end].Trim(),
+                Prompt = LoraTag.Replace(prompt[(m.Index + m.Length)..end], "").Trim(),
+                Loras = LoraTag.Matches(prompt[(m.Index + m.Length)..end]).Select(l => new SwarmLora
+                {
+                    Name = l.Groups[1].Value.Trim(),
+                    Weight = double.TryParse(l.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w : 1,
+                }).ToList(),
                 Creativity = nums.Count > 0 ? nums[0] : 0.6,
                 Threshold = nums.Count > 1 ? nums[1] : IsYolo(target) ? YoloThreshold : ClipThreshold,
             };

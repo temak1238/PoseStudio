@@ -148,7 +148,7 @@ public sealed class SwarmSettings
         "controlnetimageinput", "controlnetimageinput_filename", "controlnetimageinput_resolution", "controlnetmodel", "controlnetstrength",
         "controlnetstart", "controlnetend", "controlnetpreprocessor", "seed", "wildcardseed", "images", "width", "height", "aspectratio", "sidelength", "swarm_version",
         "prompt", "negativeprompt", "model", "loras", "loraweights", "steps", "cfgscale", "sampler", "scheduler", "vae", "variationseed",
-        "variationseedstrength", "date", "generation_time", "prep_time", "original_prompt", "used_wildcards", "unused_parameters",
+        "variationseedstrength", "lorasectionconfinement", "date", "generation_time", "prep_time", "original_prompt", "used_wildcards", "unused_parameters",
     };
 
     /// <summary>Einstellungen eines SwarmUI-Bildes übernehmen: sichtbare Felder setzen, den Rest als Grundlage merken.
@@ -179,12 +179,17 @@ public sealed class SwarmSettings
         if (p["loras"] is JsonArray la)
         {
             var wa = p["loraweights"] as JsonArray;
+            var conf = p["lorasectionconfinement"] as JsonArray;   // LoRAs mit Bereich (z. B. nur im Refiner) stehen schon im Prompt hinter <segment:…>
             for (int i = 0; i < la.Count; i++)
+            {
+                string c = conf != null && i < conf.Count ? conf[i]?.ToString() ?? "" : "";
+                if (c != "" && c != "0" && c != "-1") continue;
                 Loras.Add(new SwarmLora
                 {
                     Name = la[i]?.ToString() ?? "",
                     Weight = wa != null && i < wa.Count && double.TryParse(wa[i]?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w : 1
                 });
+            }
         }
         if (p.ContainsKey("refinerupscale") || p.ContainsKey("refinercontrolpercentage"))
         {
@@ -232,7 +237,7 @@ public sealed class SwarmSettings
             foreach (var l in Loras)
                 if (triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
                     prompt = prompt.TrimEnd().TrimEnd(',') + ", " + t;
-        p["prompt"] = SegmentRefiners.Compose(prompt, Segments);
+        p["prompt"] = SegmentRefiners.Compose(prompt, Segments, AutoTrigger ? triggers : null);
         p["negativeprompt"] = Negative;
         if (!string.IsNullOrWhiteSpace(Model)) p["model"] = Model;
         p["images"] = Math.Clamp(Count, 1, 16);
