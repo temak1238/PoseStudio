@@ -180,14 +180,16 @@ public sealed partial class MainPage : ContentPage
         _imageBox.Children.Add(_ownImg); _imageBox.Children.Add(Btn("Bild wählen …", PickImageAsync, true));
         _initBox.Children.Add(Row("Als Init Image", _useInit));
         var crea = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) } }; crea.Add(_creativity, 0); crea.Add(_creativityText, 1);
-        _initBox.Children.Add(Row("Creativity", crea));
+        // Einstellungen erst zeigen, wenn Init Image bzw. ControlNet eingeschaltet ist
+        var initDetails = new VerticalStackLayout { Spacing = 8, Children = { Row("Creativity", crea) } };
+        _initBox.Children.Add(initDetails);
         _cnBox.Children.Add(Row("ControlNet", _useCn));
-        _cnBox.Children.Add(_cnHint);
-        _cnBox.Children.Add(Row("Art", _cnKind));
-        _cnBox.Children.Add(Row("Modell", _cnModel));
         _cnLookRow = Row("Steuerbild aus", _cnLook);
-        _cnBox.Children.Add(_cnLookRow);
-        _cnBox.Children.Add(Row("Stärke / Start / Ende", Cols(_cnStrength, _cnStart, _cnEnd)));
+        var cnDetails = new VerticalStackLayout { Spacing = 8, Children = { _cnHint, Row("Art", _cnKind), Row("Modell", _cnModel), _cnLookRow, Row("Stärke / Start / Ende", Cols(_cnStrength, _cnStart, _cnEnd)) } };
+        _cnBox.Children.Add(cnDetails);
+        initDetails.IsVisible = _useInit.IsToggled; cnDetails.IsVisible = _useCn.IsToggled;
+        _useInit.Toggled += (_, e) => initDetails.IsVisible = e.Value;
+        _useCn.Toggled += (_, e) => cnDetails.IsVisible = e.Value;
         _aspectBox.Children.Add(Row("Format", _format));
         _aspectBox.Children.Add(Row("Ausrichtung", _orient));
 
