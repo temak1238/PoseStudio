@@ -231,10 +231,12 @@ public sealed class AnimaDexWindow : Window
             var src = await ThumbCache.LoadAsync(first.ThumbUrl, 280) as System.Windows.Media.Imaging.BitmapSource;
             thumb = src == null ? "FEHLER Vorschaubild nicht lesbar" : $"Vorschaubild {src.PixelWidth}×{src.PixelHeight}";
         }
-        var ins = AnimaDexClient.InsertIntoPrompt("1girl, standing", 5, "frieren, sousou no frieren");
+        const string refine = "1girl, standing, <segment:face> detailed face";
+        var ins = AnimaDexClient.InsertIntoPrompt(refine, AnimaDexClient.SmartInsertPos(refine, refine.Length), "frieren, sousou no frieren");
+        var mid = AnimaDexClient.InsertIntoPrompt(refine, AnimaDexClient.SmartInsertPos(refine, 5), "@artist");
         return $"{AnimaDexClient.Normalize(url)}: {chars:N0} Charaktere, {arts:N0} Künstler | Haarfarben: {string.Join(", ", hair.Take(4).Select(h => $"{h.Label} {h.Count}"))}\n"
              + $"Suche „frieren“: {page.Total} Treffer, erster: {first?.Name} → „{first?.PromptText(true)}“ | {thumb}\n"
              + $"Blond + weiblich: {blonde.Total:N0} | Künstler Top: {artists.Results.FirstOrDefault()?.PromptText(false)} | LoRAs beim ersten: {first?.Loras.Count}\n"
-             + $"Einfügen: „{ins.Text}“ (Cursor {ins.Caret})";
+             + $"Einfügen: „{ins.Text}“ (Cursor {ins.Caret}) | Mitte: „{mid.Text}“";
     }
 }

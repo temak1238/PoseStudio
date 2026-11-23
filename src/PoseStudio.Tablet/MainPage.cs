@@ -1216,11 +1216,11 @@ public sealed class MainPage : ContentPage
         return _backupBox;
     }
 
-    /// <summary>AnimaDex-Eintrag an der Cursorstelle des Prompts einfügen (sonst am Ende), mit Kommas abgetrennt.</summary>
+    /// <summary>AnimaDex-Eintrag an der Cursorstelle des Prompts einfügen (Cursor am Ende/im Refine-Teil: am Anfang), mit Kommas abgetrennt.</summary>
     private void InsertIntoPrompt(string text)
     {
         string cur = _prompt.Text ?? "";
-        int pos = _prompt.CursorPosition > 0 && _prompt.CursorPosition <= cur.Length ? _prompt.CursorPosition : cur.Length;
+        int pos = AnimaDexClient.SmartInsertPos(cur, _prompt.CursorPosition);
         var (t, caret) = AnimaDexClient.InsertIntoPrompt(cur, pos, text);
         _prompt.Text = t;
         _prompt.CursorPosition = caret;

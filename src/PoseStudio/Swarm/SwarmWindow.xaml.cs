@@ -140,10 +140,10 @@ public partial class SwarmWindow : Window
         _dex.Show();
     }
 
-    /// <summary>Text an der Cursorstelle des Prompts einfügen (ohne Cursor: am Ende), mit Kommas abgetrennt.</summary>
+    /// <summary>Text an der Cursorstelle des Prompts einfügen (ohne Cursor bzw. Cursor am Ende/im Refine-Teil: am Anfang), mit Kommas abgetrennt.</summary>
     private void InsertIntoPrompt(string text)
     {
-        int pos = _promptCaretKnown ? PromptBox.CaretIndex : PromptBox.Text.Length;   // noch nie in den Prompt geklickt: ans Ende
+        int pos = AnimaDexClient.SmartInsertPos(PromptBox.Text, _promptCaretKnown ? PromptBox.CaretIndex : 0);
         var (t, caret) = AnimaDexClient.InsertIntoPrompt(PromptBox.Text, pos, text);
         PromptBox.Text = t;
         PromptBox.CaretIndex = caret;

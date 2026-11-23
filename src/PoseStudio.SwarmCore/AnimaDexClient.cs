@@ -103,6 +103,17 @@ public sealed class AnimaDexClient : IDisposable
         return new AnimaDexPage(o["total"]?.GetValue<int>() ?? 0, o["page"]?.GetValue<int>() ?? page, o["pages"]?.GetValue<int>() ?? 1, list);
     }
 
+    /// <summary>Wo ein AnimaDex-Eintrag hin soll: an die Cursorstelle, wenn die mitten im Haupttext steht; sonst an den Anfang.
+    /// Cursor am Ende oder hinter dem ersten „&lt;…&gt;“-Block (&lt;segment:…&gt; für Face-Refine, &lt;lora:…&gt;) zählt nicht –
+    /// dort würde der Charakter nur im Refine-Teil landen.</summary>
+    public static int SmartInsertPos(string prompt, int caret)
+    {
+        prompt ??= "";
+        int tag = prompt.IndexOf('<');
+        int mainEnd = (tag >= 0 ? prompt[..tag] : prompt).TrimEnd().TrimEnd(',').TrimEnd().Length;
+        return caret > 0 && caret < mainEnd ? caret : 0;
+    }
+
     /// <summary>Text an der Stelle pos in einen Prompt einfügen, mit Kommas sauber abgetrennt. Gibt neuen Text und Cursorposition zurück.</summary>
     public static (string Text, int Caret) InsertIntoPrompt(string prompt, int pos, string insert)
     {
