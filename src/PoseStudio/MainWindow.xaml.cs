@@ -964,7 +964,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         {
             Directory.CreateDirectory(dir);
             for (int look = 0; look < PoseStudio.Swarm.TabletTemplate.InitFiles.Length; look++)
-                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
+                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look, _swarmSettings.InitNoise), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
             SceneFactory.SavePng(scene.RenderControl(w, h, false), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.PoseFile));
             SceneFactory.SavePng(scene.RenderControl(w, h, true), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.RegionsFile));
             return dir;
@@ -978,7 +978,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     }
 
     /// <summary>Szene wie beim Export rendern (ohne Transparenz), wahlweise in einer anderen Darstellung.</summary>
-    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look)
+    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look, double noise)
     {
         var light = _light.Clone();
         if (look >= 0) { light.Toon = look > 0; light.ToonStyle = Math.Max(0, look - 1); }
@@ -987,7 +987,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             Background = _background, FloorBase = _background,
             Floor = FloorExportCheck.IsChecked == true, Shadow = ShadowExportCheck.IsChecked == true,
             BackgroundImage = _bgImage, BackgroundStretch = CurrentStretch,
-            Light = light, Set = _set, ShadowResolution = 2048
+            Light = light, Set = _set, ShadowResolution = 2048, BackgroundNoise = noise
         };
         try { return SceneFactory.Render(_figures, _cam, opts, w, h); }
         finally { RebuildFloor(); } // Vorschau wieder in der eigenen Darstellung
@@ -1579,6 +1579,25 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             sb.AppendLine($"Ergebnisordner: {PoseStudio.Swarm.SwarmWindow.FolderFor(@"D:\Bilder\Pose")} | leer → {PoseStudio.Swarm.SwarmWindow.FolderFor("")} | aktuell → {PoseStudio.Swarm.SwarmWindow.FolderFor(FolderBox.Text)} | Vorschau-Cache: {PoseStudio.Swarm.ThumbCache.Folder}");
             string? tab = ExportTabletTemplate(tdir, "20260101_120000");
             sb.AppendLine($"Tablet-Vorlage: {(tab == null ? "FEHLER" : Path.GetFileName(tab) + " → " + string.Join(", ", Directory.GetFiles(tab).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length / 1024} KB")))}");
+            {
+                // Hintergrundrauschen: Ecke (Hintergrund) streut nur mit Rauschen, Bild zum Ansehen in %TEMP%\PoseStudioNoise
+                var sc = (PoseStudio.Swarm.ISwarmScene)this;
+                double Spread(BitmapSource b)
+                {
+                    var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
+                    var px = new byte[40 * 40 * 4]; c.CopyPixels(new Int32Rect(0, 0, 40, 40), px, 160, 0);
+                    double m = 0, v = 0; int n = px.Length / 4;
+                    for (int i = 0; i < px.Length; i += 4) m += px[i + 1];
+                    m /= n;
+                    for (int i = 0; i < px.Length; i += 4) v += (px[i + 1] - m) * (px[i + 1] - m);
+                    return Math.Sqrt(v / n);
+                }
+                var plain = sc.RenderInit(640, 360, -1, 0); var noisy = sc.RenderInit(640, 360, -1, 0.5);
+                string nd = Path.Combine(Path.GetTempPath(), "PoseStudioNoise"); Directory.CreateDirectory(nd);
+                SceneFactory.SaveJpeg(noisy, Path.Combine(nd, "init-rauschen-50.jpg"), 92);
+                double s0 = Spread(plain), s1 = Spread(noisy);
+                sb.AppendLine($"Hintergrundrauschen: Streuung ohne {s0:0.0}, mit 0.5 {s1:0.0}{(s0 < 2 && s1 > 20 ? "" : " FEHLER")}");
+            }
             PoseStudio.Swarm.SwarmWindow.OutputOverride = null; Directory.Delete(tdir, true);
         }
         foreach (var useInit in new[] { true, false })

@@ -18,7 +18,7 @@ public interface ISwarmScene
     /// <summary>Seitenverhältnis der Vorschau (Breite/Höhe).</summary>
     double PreviewAspect { get; }
     /// <summary>Szene rendern; look = -1 wie im Hauptfenster, 0 Normal, 1 Cel, 2 2D flach, 3 Strichzeichnung.</summary>
-    BitmapSource RenderInit(int w, int h, int look);
+    BitmapSource RenderInit(int w, int h, int look, double noise = 0);
     BitmapSource RenderControl(int w, int h, bool regions);
     void UseAsReference(string path);
     /// <summary>Referenzfoto der aktiven Figur (Pfad) oder null.</summary>
@@ -236,6 +236,7 @@ public partial class SwarmWindow : Window
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);
         InitCheck.IsChecked = _s.UseInitImage;
         CreativitySlider.Value = _s.Creativity;
+        NoiseSlider.Value = _s.InitNoise;
         SideCombo.Text = _s.SideLength.ToString(CultureInfo.InvariantCulture);
         CountBox.Text = _s.Count.ToString(CultureInfo.InvariantCulture);
         SeedBox.Text = _s.Seed.ToString(CultureInfo.InvariantCulture);
@@ -277,6 +278,7 @@ public partial class SwarmWindow : Window
         _s.Look = LookCombo.SelectedIndex - 1;
         _s.UseInitImage = InitCheck.IsChecked == true;
         _s.Creativity = CreativitySlider.Value;
+        _s.InitNoise = NoiseSlider.Value;
         _s.SideLength = Math.Clamp((int)PD(SideCombo.Text, _s.SideLength), 256, 4096);
         _s.Count = Math.Clamp((int)PD(CountBox.Text, _s.Count), 1, 16);
         _s.Seed = long.TryParse(SeedBox.Text.Trim(), out var seed) ? seed : -1;
@@ -660,7 +662,7 @@ public partial class SwarmWindow : Window
             if (fr.PixelWidth > 0 && fr.PixelHeight > 0) aspect = (double)fr.PixelWidth / fr.PixelHeight;
         }
         var (w, h) = _s.SizeFor(aspect);
-        string init = _s.UseInitImage ? ToDataUrl(_scene.RenderInit(w, h, _s.Look)) : "";
+        string init = _s.UseInitImage ? ToDataUrl(_scene.RenderInit(w, h, _s.Look, _s.InitNoise)) : "";
         string? cn = null;
         var kind = SwarmSettings.ImageControlKinds[Math.Clamp(_s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)];
         if (_s.UseControlNet)
@@ -670,7 +672,7 @@ public partial class SwarmWindow : Window
         {
             var p = _s.BuildParams(init, w, h, cn, LoraTriggers());
             string cnText = !_s.UseControlNet ? "" : cnBytes != null || cnScene ? $", {kind.Name.Split(' ')[0]} aus {(cnScene ? "Szene" : Path.GetFileName(cnPath))} {F(_s.ControlStrength)}" : $", ControlNet {F(_s.ControlStrength)}";
-            return (p, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" : "ohne Init Image") + cnText);
+            return (p, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" + (_s.InitNoise > 0 ? $", Rauschen {F(_s.InitNoise)}" : "") : "ohne Init Image") + cnText);
         }
         finally { _s.ControlPreprocessor = null; }
     }

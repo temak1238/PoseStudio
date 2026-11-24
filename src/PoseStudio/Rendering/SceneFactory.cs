@@ -24,6 +24,8 @@ public sealed class SceneOptions
     public bool Transparent { get; set; }
     public ImageSource? BackgroundImage { get; set; }
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
+    /// <summary>Deckkraft (0…1) eines zufälligen Farbrauschens über Hintergrundfarbe/-bild, unter Figuren und 3D-Boden.</summary>
+    public double BackgroundNoise { get; set; }
 }
 
 public static class SceneFactory
@@ -126,7 +128,7 @@ public static class SceneFactory
 
         Brush back = new SolidColorBrush(o.Background);
         if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;
-        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height);
+        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height, o.Transparent ? 0 : o.BackgroundNoise);
     }
 
     // ================================================================= ControlNet
@@ -161,7 +163,7 @@ public static class SceneFactory
         return RenderScene(scene, cam, Brushes.Black, null, Stretch.None, width, height);
     }
 
-    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height)
+    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height, double noise = 0)
     {
         int ss = Math.Max(width, height) <= 4000 ? 2 : 1;
         int rw = width * ss, rh = height * ss;
@@ -170,6 +172,12 @@ public static class SceneFactory
         var root = new Grid { Width = rw, Height = rh, Background = back };
         if (image != null)
             root.Children.Add(new Image { Source = image, Stretch = stretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        if (noise > 0)
+        {
+            var img = new Image { Source = NoiseBitmap(width, height), Stretch = Stretch.Fill, Opacity = Math.Clamp(noise, 0, 1) };
+            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);   // Körnung = 1 Pixel im fertigen Bild
+            root.Children.Add(img);
+        }
         root.Children.Add(vp);
         root.Measure(new Size(rw, rh));
         root.Arrange(new Rect(0, 0, rw, rh));
@@ -188,6 +196,18 @@ public static class SceneFactory
         small.Freeze();
         return small;
     }
+    /// <summary>Buntes Rauschen, jeder Kanal gleichverteilt zufällig.</summary>
+    public static BitmapSource NoiseBitmap(int width, int height, int? seed = null)
+    {
+        var rnd = seed is int s ? new Random(s) : Random.Shared;
+        var px = new byte[width * height * 4];
+        rnd.NextBytes(px);
+        for (int i = 3; i < px.Length; i += 4) px[i] = 255;
+        var bmp = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, px, width * 4);
+        bmp.Freeze();
+        return bmp;
+    }
+
     public static void SavePng(BitmapSource bmp, string path)
     {
         // In nicht vormultipliziertes BGRA wandeln; fast deckende Pixel (Rundung beim Verkleinern) voll deckend machen

@@ -85,6 +85,8 @@ public sealed class SwarmSettings
     /// <summary>Szene als Init Image mitschicken (aus = nur Prompt, Pose ggf. über ControlNet).</summary>
     public bool UseInitImage { get; set; } = true;
     public double Creativity { get; set; } = 0.6;
+    /// <summary>Zufälliges Farbrauschen über dem Hintergrund des Init Image (Deckkraft 0…1): gibt SwarmUI dort mehr Spielraum.</summary>
+    public double InitNoise { get; set; }
     public int SideLength { get; set; } = 1280;
     public int Count { get; set; } = 2;
     public long Seed { get; set; } = -1;
