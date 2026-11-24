@@ -1655,6 +1655,23 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             var tp = ts.BuildParams("data:init", 1024, 576, "data:cn", new Dictionary<string, string?>());
             sb.AppendLine($"Init Image {(useInit ? "an" : "aus")}: initimage {tp.ContainsKey("initimage")}, creativity {tp.ContainsKey("initimagecreativity")}, ControlNet {tp.ContainsKey("controlnetimageinput")}, Preprocessor {tp["controlnetpreprocessor"]}");
         }
+        {
+            // Kopf mit der Maus: Blickpunkt folgt der Maus, waagerecht = drehen, senkrecht = nicken, kein Neigen
+            var head = _figure["head"];
+            double b0 = head.BendValue, s0 = head.SideValue, t0 = head.TwistValue;
+            var probe = ProbePoint(head);
+            var a = ToScreen(head.World.Transform(probe));
+            for (int i = 0; i < 10; i++) { FollowMouse(head, new Vector(4, 0)); _figure.Update(); }
+            var b = ToScreen(head.World.Transform(probe));
+            double turned = head.TwistValue - t0, nodH = head.BendValue - b0;
+            for (int i = 0; i < 10; i++) { FollowMouse(head, new Vector(0, 4)); _figure.Update(); }
+            var c = ToScreen(head.World.Transform(probe));
+            double nod = head.BendValue - b0 - nodH;
+            bool ok = Math.Abs(turned) > 3 && b.X - a.X > 20 && Math.Abs(b.Y - a.Y) < 10 && Math.Abs(nod) > 3 && c.Y - b.Y > 20
+                && head.SideValue == s0;
+            sb.AppendLine($"Kopf folgt Maus (Ansicht {View.ActualWidth:0}x{View.ActualHeight:0}): rechts {b.X - a.X:0}px/{b.Y - a.Y:0}px (Drehen {turned:0.0}°), runter {c.Y - b.Y:0}px (Nicken {nod:0.0}°){(ok ? "" : " FEHLER")}");
+            head.BendValue = b0; head.SideValue = s0; head.TwistValue = t0; _figure.Update();
+        }
         HairCheck.IsChecked = false;
         sb.AppendLine($"Haare aus: Bedienfeld aktiv {HairExpander.IsEnabled}, Teile {_figure.WorldMeshes().Count()}");
         return sb.ToString();
@@ -2461,7 +2478,8 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         }
         else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
         {
-            if (j.Twist != null) j.TwistValue = Math.Clamp(Math.Round(j.TwistValue + d.X * 0.5, 1), j.Twist.Min, j.Twist.Max);
+            if (j.Id == "head" && j.Side != null) j.SideValue = Math.Clamp(Math.Round(j.SideValue + d.X * 0.3, 1), j.Side.Min, j.Side.Max);
+            else if (j.Twist != null) j.TwistValue = Math.Clamp(Math.Round(j.TwistValue + d.X * 0.5, 1), j.Twist.Min, j.Twist.Max);
         }
         else
         {
@@ -2476,7 +2494,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     {
         var axes = new List<(Func<double> get, Action<double> set, AxisDef def)>();
         if (j.Bend != null) axes.Add((() => j.BendValue, v => j.BendValue = v, j.Bend));
-        if (j.Side != null) axes.Add((() => j.SideValue, v => j.SideValue = v, j.Side));
+        // Kopf: Blick folgt der Maus – waagerecht drehen, senkrecht nicken (seitlich neigen per Umschalt)
+        if (j.Id == "head" && j.Twist != null) axes.Add((() => j.TwistValue, v => j.TwistValue = v, j.Twist));
+        else if (j.Side != null) axes.Add((() => j.SideValue, v => j.SideValue = v, j.Side));
         if (axes.Count == 0) return;
 
         var probe = ProbePoint(j);
@@ -2517,6 +2537,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     private Point3D ProbePoint(Joint j)
     {
         if (j.Parent == null) return new Point3D(0, 0.5, 0);
+        if (j.Id == "head") return new Point3D(0, 0.09, 0.35);   // Punkt vor dem Gesicht: der Blick folgt der Maus
         var child = _figure.Joints.FirstOrDefault(c => ReferenceEquals(c.Parent, j));
         if (child != null) return (Point3D)child.Offset;
         if (j.IsFinger) return new Point3D(0, -0.02, 0);
@@ -2527,9 +2548,11 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     {
         var v = p - _cam.Position;
         double z = Math.Max(0.01, Vector3D.DotProduct(v, _cam.LookDirection));
-        double f = (View.ActualHeight / 2) / Math.Tan(_cam.VerticalFov * Math.PI / 360);
-        return new Point(View.ActualWidth / 2 + Vector3D.DotProduct(v, _cam.Right) * f / z,
-                         View.ActualHeight / 2 - Vector3D.DotProduct(v, _cam.Up) * f / z);
+        // Ansicht noch nicht angeordnet (Testmodus ohne Anzeige): feste Größe annehmen
+        double W = View.ActualHeight >= 1 ? View.ActualWidth : 1280, H = View.ActualHeight >= 1 ? View.ActualHeight : 720;
+        double f = (H / 2) / Math.Tan(_cam.VerticalFov * Math.PI / 360);
+        return new Point(W / 2 + Vector3D.DotProduct(v, _cam.Right) * f / z,
+                         H / 2 - Vector3D.DotProduct(v, _cam.Up) * f / z);
     }
 
     private void Frame_MouseWheel(object sender, MouseWheelEventArgs e)

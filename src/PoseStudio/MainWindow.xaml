@@ -315,6 +315,7 @@
                         Umschalt + ziehen: Gelenk drehen<LineBreak />
                         Strg + ziehen am Becken: Figur auf dem Boden verschieben<LineBreak />
                         Umschalt + ziehen am Becken: Figur drehen<LineBreak />
+                        Strg + ziehen am Kopf: Blick folgt der Maus · Umschalt: Kopf neigen<LineBreak />
                         Alt + ziehen: Licht bewegen
                     </TextBlock>
                 </StackPanel>
