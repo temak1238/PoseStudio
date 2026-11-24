@@ -17,7 +17,25 @@ public sealed class AppSettings
     public int CustomWidth { get; set; } = 1200;
     public int CustomHeight { get; set; } = 1600;
     public int JpegQuality { get; set; } = 95;
-    public string OutputFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "PoseStudio");
+    public string OutputFolder { get; set; } = DefaultOutputFolder;
+    /// <summary>Zielordner je Computer (Schlüssel = Rechnername): bei synchronisiertem Programmordner (Portabel) hat jeder PC seinen eigenen.</summary>
+    public Dictionary<string, string> OutputFolders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public static string DefaultOutputFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "PoseStudio");
+
+    /// <summary>Zielordner dieses PCs: eigener Eintrag, sonst der zuletzt gespeicherte, falls es ihn hier gibt, sonst Bilder\PoseStudio.</summary>
+    public string OutputFolderHere()
+    {
+        if (OutputFolders.TryGetValue(Environment.MachineName, out var f) && !string.IsNullOrWhiteSpace(f)) return f;
+        if (!string.IsNullOrWhiteSpace(OutputFolder) && Directory.Exists(OutputFolder)) return OutputFolder;
+        return DefaultOutputFolder;
+    }
+
+    public void SetOutputFolderHere(string folder)
+    {
+        OutputFolders[Environment.MachineName] = folder;
+        OutputFolder = folder;
+    }
     public string FilePrefix { get; set; } = "pose";
     public string HairColor { get; set; } = "#3A2A20";
     public bool Guides { get; set; } = true;
@@ -50,16 +68,21 @@ public sealed class AppSettings
     /// <summary>SwarmUI-Fenster: Server, Einstellungen, Profile.</summary>
     public PoseStudio.Swarm.SwarmSettings Swarm { get; set; } = new();
 
-    private static string FilePath => AppPaths.SettingsFile;
+    internal static string? FileOverride;   // nur Tests
+    private static string FilePath => FileOverride ?? AppPaths.SettingsFile;
 
     public static AppSettings Load()
     {
         try
         {
             // portabel, aber noch keine Datei im Programmordner: bisherige Einstellungen aus %APPDATA% als Ausgangspunkt
-            string path = File.Exists(FilePath) || !AppPaths.IsPortable ? FilePath : Path.Combine(AppPaths.RoamingDir, "settings.json");
+            string path = File.Exists(FilePath) || !AppPaths.IsPortable || FileOverride != null ? FilePath : Path.Combine(AppPaths.RoamingDir, "settings.json");
             if (File.Exists(path))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
+            {
+                var st = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
+                st.OutputFolders = new Dictionary<string, string>(st.OutputFolders ?? new(), StringComparer.OrdinalIgnoreCase);
+                return st;
+            }
         }
         catch { /* defekte Einstellungen ignorieren */ }
         return new AppSettings();
@@ -70,11 +93,28 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            MergeOtherPcs();
             // erst in eine Hilfsdatei, dann ersetzen: kein halbes settings.json bei Absturz oder während eine Synchronisierung liest
             string tmp = FilePath + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
             File.Move(tmp, FilePath, true);
         }
         catch { /* nicht kritisch */ }
+    }
+
+    /// <summary>Zielordner anderer PCs aus der Datei übernehmen, die inzwischen (z. B. per Syncthing) dazugekommen sind –
+    /// sonst würde dieser PC sie beim Speichern überschreiben.</summary>
+    private void MergeOtherPcs()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return;
+            using var doc = JsonDocument.Parse(File.ReadAllText(FilePath));
+            if (!doc.RootElement.TryGetProperty(nameof(OutputFolders), out var of) || of.ValueKind != JsonValueKind.Object) return;
+            foreach (var p in of.EnumerateObject())
+                if (!p.Name.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.String)
+                    OutputFolders[p.Name] = p.Value.GetString()!;
+        }
+        catch { /* Datei defekt oder gesperrt: eigene Werte reichen */ }
     }
 }

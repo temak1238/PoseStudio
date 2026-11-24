@@ -1115,7 +1115,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         CustomWBox.Text = s.CustomWidth.ToString(CultureInfo.InvariantCulture);
         CustomHBox.Text = s.CustomHeight.ToString(CultureInfo.InvariantCulture);
         QualitySlider.Value = Math.Clamp(s.JpegQuality, 50, 100);
-        FolderBox.Text = s.OutputFolder;
+        FolderBox.Text = s.OutputFolderHere();
         PrefixBox.Text = s.FilePrefix;
         SetHairColor(ParseColor(s.HairColor, Color.FromRgb(0x3A, 0x2A, 0x20)));
         DynamicsCombo.SelectedIndex = Math.Clamp(s.DynamicsMode, 0, 2);
@@ -1179,7 +1179,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         s.CustomWidth = ParseInt(CustomWBox.Text, 1200);
         s.CustomHeight = ParseInt(CustomHBox.Text, 1600);
         s.JpegQuality = (int)QualitySlider.Value;
-        s.OutputFolder = FolderBox.Text;
+        s.SetOutputFolderHere(FolderBox.Text);
         s.FilePrefix = PrefixBox.Text;
         s.HairColor = ToHex(_figure.HairColor);
         s.DynamicsMode = Math.Max(0, DynamicsCombo.SelectedIndex);

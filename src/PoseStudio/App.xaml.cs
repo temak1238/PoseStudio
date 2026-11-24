@@ -264,6 +264,37 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 2 && e.Args[0] == "--folder-test")
+        {
+            // --folder-test <ausgabe.txt>: Zielordner je PC, Übernahme der Einträge anderer PCs beim Speichern (nur Temp-Datei)
+            string tmpDir = Path.Combine(Path.GetTempPath(), "PoseStudioFolderTest");
+            Directory.CreateDirectory(tmpDir);
+            AppSettings.FileOverride = Path.Combine(tmpDir, "settings.json");
+            File.Delete(AppSettings.FileOverride);
+            var log = new System.Text.StringBuilder();
+            string me = Environment.MachineName;
+            // alte Datei ohne Einträge, Ordner gibt es hier nicht → Standard
+            File.WriteAllText(AppSettings.FileOverride, System.Text.Json.JsonSerializer.Serialize(new { OutputFolder = @"Q:\gibtsnicht", FilePrefix = "alt" }));
+            var a = AppSettings.Load();
+            log.AppendLine($"fremder Ordner → {a.OutputFolderHere()} ok={a.OutputFolderHere() == AppSettings.DefaultOutputFolder && a.FilePrefix == "alt"}");
+            // alte Datei, Ordner existiert → übernehmen
+            File.WriteAllText(AppSettings.FileOverride, System.Text.Json.JsonSerializer.Serialize(new { OutputFolder = tmpDir }));
+            a = AppSettings.Load();
+            log.AppendLine($"vorhandener Ordner ok={a.OutputFolderHere() == tmpDir}");
+            // dieser PC speichert, ein anderer PC hat inzwischen seinen Eintrag in die Datei geschrieben
+            a.SetOutputFolderHere(@"C:\Hier");
+            var b = AppSettings.Load(); b.OutputFolders["ANDERER-PC"] = @"E:\Dort"; b.Save();
+            a.Save();
+            var c = AppSettings.Load();
+            log.AppendLine($"nach Speichern: hier={c.OutputFolderHere()} anderer={c.OutputFolders.GetValueOrDefault("anderer-pc")} ok={c.OutputFolderHere() == @"C:\Hier" && c.OutputFolders.GetValueOrDefault("ANDERER-PC") == @"E:\Dort"}");
+            // Eintrag eines anderen PCs bestimmt hier nichts
+            c.OutputFolders.Remove(me); c.OutputFolder = @"E:\Dort";
+            log.AppendLine($"nur anderer PC eingetragen ok={c.OutputFolderHere() == AppSettings.DefaultOutputFolder || Directory.Exists(@"E:\Dort")}");
+            Directory.Delete(tmpDir, true);
+            File.WriteAllText(e.Args[1], log.ToString());
+            Environment.Exit(0);
+        }
+
         if (e.Args.Length >= 2 && e.Args[0] == "--paths-test")
         {
             // --paths-test <ausgabe.txt>: Ablageort der Daten (normal / portabel) und was davon geladen wird
