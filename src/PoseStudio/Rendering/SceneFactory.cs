@@ -208,6 +208,30 @@ public static class SceneFactory
         return bmp;
     }
 
+    /// <summary>Rauschen überall außer auf den Figuren: <paramref name="figureMask"/> ist die Szene mit transparentem Hintergrund,
+    /// ihr Alpha schützt Figuren, Haare und Objekte (auch die weichen Kanten).</summary>
+    public static BitmapSource ApplyNoise(BitmapSource image, BitmapSource figureMask, double opacity)
+    {
+        int w = image.PixelWidth, h = image.PixelHeight, stride = w * 4;
+        var px = new byte[stride * h];
+        new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0).CopyPixels(px, stride, 0);
+        var mask = new byte[stride * h];
+        new FormatConvertedBitmap(figureMask, PixelFormats.Pbgra32, null, 0).CopyPixels(mask, stride, 0);
+        var noise = new byte[stride * h];
+        Random.Shared.NextBytes(noise);
+        double op = Math.Clamp(opacity, 0, 1);
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            double k = op * (1 - mask[i + 3] / 255.0);
+            if (k <= 0) continue;
+            for (int c = 0; c < 3; c++) px[i + c] = (byte)Math.Round(px[i + c] + (noise[i + c] - px[i + c]) * k);
+            px[i + 3] = 255;
+        }
+        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
+        bmp.Freeze();
+        return bmp;
+    }
+
     public static void SavePng(BitmapSource bmp, string path)
     {
         // In nicht vormultipliziertes BGRA wandeln; fast deckende Pixel (Rundung beim Verkleinern) voll deckend machen

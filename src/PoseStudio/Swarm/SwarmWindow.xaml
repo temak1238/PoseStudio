@@ -179,6 +179,8 @@
                                 <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=NoiseSlider, StringFormat=0.00}" TextAlignment="Right" />
                                 <Slider x:Name="NoiseSlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True" />
                             </DockPanel>
+                            <CheckBox x:Name="NoiseAllCheck" Content="Rauschen auch über Boden und Kulisse" Margin="0,1,0,2"
+                                      ToolTip="Dann bleiben nur die Figuren mit Haaren und Objekten frei – Boden, Schatten, Wände und Gelände bekommen ebenfalls Rauschen." />
                             </StackPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Seitenlänge" Style="{StaticResource Lbl}" />

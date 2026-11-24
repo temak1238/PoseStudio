@@ -87,6 +87,8 @@ public sealed class SwarmSettings
     public double Creativity { get; set; } = 0.6;
     /// <summary>Zufälliges Farbrauschen über dem Hintergrund des Init Image (Deckkraft 0…1): gibt SwarmUI dort mehr Spielraum.</summary>
     public double InitNoise { get; set; }
+    /// <summary>Rauschen auch über 3D-Boden und Kulisse – nur die Figuren (mit Haaren und Objekten) bleiben frei.</summary>
+    public bool InitNoiseAll { get; set; }
     public int SideLength { get; set; } = 1280;
     public int Count { get; set; } = 2;
     public long Seed { get; set; } = -1;
