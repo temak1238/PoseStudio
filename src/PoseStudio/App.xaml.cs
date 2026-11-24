@@ -106,6 +106,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--noise-swarm")
+        {
+            // --noise-swarm <ordner> <url> [creativity]: gleiche Szene/Seed mit verschiedenen Rauscharten durch SwarmUI
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () => { await NoiseSwarmTest(e.Args[1], e.Args[2], e.Args.Length > 3 ? double.Parse(e.Args[3], System.Globalization.CultureInfo.InvariantCulture) : 0.7, e.Args.Length > 4 ? e.Args[4] : null); Shutdown(); });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--swarm-test")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -1279,6 +1287,73 @@ public partial class App : Application
             }
         }
         catch (Exception ex) { L("FEHLER: " + ex.Message); }
+    }
+
+    private static async Task NoiseSwarmTest(string folder, string url, double creativity, string? spec)
+    {
+        Directory.CreateDirectory(folder);
+        var log = new System.Text.StringBuilder();
+        void L(string s) { log.AppendLine(s); File.WriteAllText(Path.Combine(folder, "noise.txt"), log.ToString()); }
+        using var c = new PoseStudio.Swarm.SwarmClient(url);
+        try
+        {
+            await c.ConnectAsync();
+            var m = new Mannequin(); m.SetFigure(FigureStyle.AnimeFemale, true, new Proportions { HeightCm = 160 });
+            m.SetPose(Presets.All.First(p => p.Name == "Neutral stehen (A-Pose)").ToPose()); m.GroundToFloor();
+            const int w = 832, h = 1216;
+            var pel = m.PelvisWorld;
+            var cam = new OrbitCamera { Yaw = 15, Pitch = 8, Distance = 4.2, Target = new P3(pel.X, (m.ComputeMinY() + m.ComputeMaxY()) / 2, pel.Z) };
+            var bg = System.Windows.Media.Color.FromRgb(0xB8, 0xC4, 0xD0);
+            var baseImg = SceneFactory.Render(m, cam, new SceneOptions { Background = bg, FloorBase = bg, Floor = true, Shadow = true, ShadowResolution = 2048 }, w, h);
+            var mask = SceneFactory.Render(m, cam, new SceneOptions { Background = System.Windows.Media.Colors.Transparent, Transparent = true, Floor = false, Shadow = false, ShadowResolution = 512 }, w, h);
+            var maskBytes = SceneFactory.AlphaMask(mask); double hz = SceneFactory.HorizonRow(cam, h);
+            System.Windows.Media.Imaging.BitmapSource N(double op, bool mono, int g, double? floorOp = null, int? floorG = null) =>
+                SceneFactory.ApplyNoise(baseImg, maskBytes, hz, new PoseStudio.Swarm.NoiseSettings(op, g, floorOp ?? op, floorG ?? g, mono), 5);
+            var variants = new (string Name, System.Windows.Media.Imaging.BitmapSource Img, double SwarmNoise)[]
+            {
+                ("1 ohne Rauschen", baseImg, 0),
+                ("2 fein bunt 0.5", N(0.5, false, 1), 0),
+                ("3 fein sw 0.5", N(0.5, true, 1), 0),
+                ("4 grob 8px bunt 0.6", N(0.6, false, 8), 0),
+                ("5 grob 32px bunt 0.6", N(0.6, false, 32), 0),
+                ("6 SwarmUI Init Image Noise 1", baseImg, 1.0),
+            };
+            if (spec != null)
+            {
+                // z. B. "f0.2,m0.2,g16:0.3" – f = fein bunt, m = fein s/w, gN:x = Körnung N px bunt, Deckkraft x
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                variants = spec.Split(',').Select((t, i) =>
+                {
+                    if (t[0] == 's')   // sG:x:G:x = Hintergrund Körnung/Deckkraft, Boden Körnung/Deckkraft
+                    {
+                        var q = t[1..].Split(':');
+                        return ($"r{i + 1} {t.Replace(':', '_')}", N(double.Parse(q[1], inv), false, int.Parse(q[0], inv), double.Parse(q[3], inv), int.Parse(q[2], inv)), 0.0);
+                    }
+                    int grain = 1; bool mono = t[0] == 'm'; double op;
+                    if (t[0] == 'g') { var parts = t[1..].Split(':'); grain = int.Parse(parts[0], inv); op = double.Parse(parts[1], inv); }
+                    else op = double.Parse(t[1..], inv);
+                    return ($"r{i + 1} {t.Replace(':', '_')}", N(op, mono, grain), 0.0);
+                }).ToArray();
+            }
+            foreach (var v in variants)
+            {
+                SceneFactory.SaveJpeg(v.Img, Path.Combine(folder, $"init {v.Name}.jpg"), 92);
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(new System.Windows.Media.Imaging.FormatConvertedBitmap(v.Img, System.Windows.Media.PixelFormats.Bgr24, null, 0)));
+                using var ms = new MemoryStream(); enc.Save(ms);
+                var p = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["prompt"] = "1girl, solo, standing, full body, detailed background, anime", ["negativeprompt"] = "worst quality, bad quality, lowres, simple background",
+                    ["model"] = "ghostbubblemango", ["images"] = 1, ["seed"] = 777, ["steps"] = 24, ["cfgscale"] = 4.5, ["width"] = w, ["height"] = h, ["aspectratio"] = "Custom",
+                    ["initimage"] = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray()), ["initimagecreativity"] = creativity,
+                };
+                if (v.SwarmNoise > 0) p["initimagenoise"] = v.SwarmNoise;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var res = await c.GenerateAsync(p, null, CancellationToken.None);
+                File.WriteAllBytes(Path.Combine(folder, $"ergebnis {v.Name}.png"), await c.DownloadAsync(res[0].Path));
+                L($"{v.Name}: {sw.Elapsed.TotalSeconds:F0} s, {res[0].Path}");
+            }
+        }
+        catch (Exception ex) { L("FEHLER: " + ex); }
     }
 
     private static void PelvisTest(string folder)

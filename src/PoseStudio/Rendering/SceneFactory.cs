@@ -24,10 +24,6 @@ public sealed class SceneOptions
     public bool Transparent { get; set; }
     public ImageSource? BackgroundImage { get; set; }
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
-    /// <summary>Deckkraft (0…1) eines zufälligen Farbrauschens über Hintergrundfarbe/-bild, unter Figuren und 3D-Boden.</summary>
-    public double BackgroundNoise { get; set; }
-    /// <summary>Schwarz-Weiß- statt Farbrauschen.</summary>
-    public bool BackgroundNoiseMono { get; set; }
 }
 
 public static class SceneFactory
@@ -130,7 +126,7 @@ public static class SceneFactory
 
         Brush back = new SolidColorBrush(o.Background);
         if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;
-        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height, o.Transparent ? 0 : o.BackgroundNoise, o.BackgroundNoiseMono);
+        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height);
     }
 
     // ================================================================= ControlNet
@@ -165,7 +161,7 @@ public static class SceneFactory
         return RenderScene(scene, cam, Brushes.Black, null, Stretch.None, width, height);
     }
 
-    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height, double noise = 0, bool noiseMono = false)
+    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height)
     {
         int ss = Math.Max(width, height) <= 4000 ? 2 : 1;
         int rw = width * ss, rh = height * ss;
@@ -174,12 +170,6 @@ public static class SceneFactory
         var root = new Grid { Width = rw, Height = rh, Background = back };
         if (image != null)
             root.Children.Add(new Image { Source = image, Stretch = stretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
-        if (noise > 0)
-        {
-            var img = new Image { Source = NoiseBitmap(width, height, noiseMono), Stretch = Stretch.Fill, Opacity = Math.Clamp(noise, 0, 1) };
-            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);   // Körnung = 1 Pixel im fertigen Bild
-            root.Children.Add(img);
-        }
         root.Children.Add(vp);
         root.Measure(new Size(rw, rh));
         root.Arrange(new Rect(0, 0, rw, rh));
@@ -198,49 +188,33 @@ public static class SceneFactory
         small.Freeze();
         return small;
     }
-    /// <summary>Rauschen, gleichverteilt zufällig: bunt (jeder Kanal einzeln) oder Schwarz-Weiß (ein Wert für alle Kanäle).</summary>
-    public static BitmapSource NoiseBitmap(int width, int height, bool mono = false, int? seed = null)
-    {
-        var px = NoiseBytes(width * height * 4, mono, seed is int s ? new Random(s) : Random.Shared);
-        var bmp = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, px, width * 4);
-        bmp.Freeze();
-        return bmp;
-    }
-
-    /// <summary>Rauschen überall außer auf den Figuren: <paramref name="figureMask"/> ist die Szene mit transparentem Hintergrund,
-    /// ihr Alpha schützt Figuren, Haare und Objekte (auch die weichen Kanten).</summary>
-    private static byte[] NoiseBytes(int length, bool mono, Random rnd)
-    {
-        var px = new byte[length];
-        rnd.NextBytes(px);
-        for (int i = 0; i < px.Length; i += 4)
-        {
-            if (mono) px[i + 1] = px[i + 2] = px[i];
-            px[i + 3] = 255;
-        }
-        return px;
-    }
-
-    public static BitmapSource ApplyNoise(BitmapSource image, BitmapSource figureMask, double opacity, bool mono = false)
+    /// <summary>Init-Image-Rauschen (Hintergrund/Boden getrennt) über ein gerendertes Bild legen; figure = Alpha-Maske der Figuren.</summary>
+    public static BitmapSource ApplyNoise(BitmapSource image, byte[]? figure, double horizon, PoseStudio.Swarm.NoiseSettings s, int? seed = null)
     {
         int w = image.PixelWidth, h = image.PixelHeight, stride = w * 4;
         var px = new byte[stride * h];
         new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0).CopyPixels(px, stride, 0);
-        var mask = new byte[stride * h];
-        new FormatConvertedBitmap(figureMask, PixelFormats.Pbgra32, null, 0).CopyPixels(mask, stride, 0);
-        var noise = NoiseBytes(stride * h, mono, Random.Shared);
-        double op = Math.Clamp(opacity, 0, 1);
-        for (int i = 0; i < px.Length; i += 4)
-        {
-            double k = op * (1 - mask[i + 3] / 255.0);
-            if (k <= 0) continue;
-            for (int c = 0; c < 3; c++) px[i + c] = (byte)Math.Round(px[i + c] + (noise[i + c] - px[i + c]) * k);
-            px[i + 3] = 255;
-        }
+        PoseStudio.Swarm.NoiseMixer.Apply(px, w, h, figure, horizon, s, seed);
         var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, stride);
         bmp.Freeze();
         return bmp;
     }
+
+    /// <summary>Alpha-Kanal eines Bildes mit transparentem Hintergrund als Maske (1 Byte je Pixel).</summary>
+    public static byte[] AlphaMask(BitmapSource transparent)
+    {
+        int w = transparent.PixelWidth, h = transparent.PixelHeight;
+        var px = new byte[w * h * 4];
+        new FormatConvertedBitmap(transparent, PixelFormats.Pbgra32, null, 0).CopyPixels(px, w * 4, 0);
+        var a = new byte[w * h];
+        for (int i = 0; i < a.Length; i++) a[i] = px[i * 4 + 3];
+        return a;
+    }
+
+    /// <summary>Zeile des Horizonts im Bild (Kamera ohne Rollen).</summary>
+    public static double HorizonRow(OrbitCamera cam, int height) =>
+        PoseStudio.Swarm.NoiseMixer.HorizonRow(height, Math.Asin(Math.Clamp(cam.LookDirection.Y, -1, 1)) * 180 / Math.PI, cam.VerticalFov);
+
 
     public static void SavePng(BitmapSource bmp, string path)
     {

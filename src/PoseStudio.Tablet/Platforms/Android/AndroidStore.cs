@@ -87,6 +87,38 @@ public static class AndroidStore
 
     public static Stream Open(string uri) => CR.OpenInputStream(AUri.Parse(uri)!) ?? throw new IOException("Datei nicht lesbar: " + uri);
 
+    /// <summary>Init-Image-Rauschen (wie am PC) über ein Vorlagenbild legen; Figurmaske (Graustufen-PNG) und Horizont kommen aus der Vorlage.</summary>
+    public static byte[] AddNoise(byte[] image, byte[]? maskPng, double horizonFraction, NoiseSettings s)
+    {
+        using var bmp = BitmapFactory.DecodeByteArray(image, 0, image.Length) ?? throw new IOException("Init Image nicht lesbar.");
+        int w = bmp.Width, h = bmp.Height;
+        var argb = new int[w * h];
+        bmp.GetPixels(argb, 0, w, 0, 0, w, h);
+        var px = new byte[w * h * 4];
+        for (int i = 0; i < argb.Length; i++)
+        {
+            int v = argb[i];
+            px[i * 4] = (byte)v; px[i * 4 + 1] = (byte)(v >> 8); px[i * 4 + 2] = (byte)(v >> 16); px[i * 4 + 3] = (byte)(v >> 24);
+        }
+        byte[]? fig = null;
+        if (maskPng != null && BitmapFactory.DecodeByteArray(maskPng, 0, maskPng.Length) is { } m0)
+        {
+            using var m = m0.Width == w && m0.Height == h ? m0 : Bitmap.CreateScaledBitmap(m0, w, h, true)!;
+            var mp = new int[w * h];
+            m.GetPixels(mp, 0, w, 0, 0, w, h);
+            fig = new byte[w * h];
+            for (int i = 0; i < mp.Length; i++) fig[i] = (byte)(mp[i] >> 16);
+            if (!ReferenceEquals(m, m0)) m0.Dispose();
+        }
+        NoiseMixer.Apply(px, w, h, fig, horizonFraction * h, s);
+        for (int i = 0; i < argb.Length; i++)
+            argb[i] = unchecked((int)0xFF000000) | (px[i * 4 + 2] << 16) | (px[i * 4 + 1] << 8) | px[i * 4];
+        using var outBmp = Bitmap.CreateBitmap(argb, w, h, Bitmap.Config.Argb8888!)!;
+        using var ms = new MemoryStream();
+        outBmp.Compress(Bitmap.CompressFormat.Jpeg!, 92, ms);
+        return ms.ToArray();
+    }
+
     public static (int W, int H) ImageSize(byte[] data)
     {
         var o = new BitmapFactory.Options { InJustDecodeBounds = true };

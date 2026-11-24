@@ -174,14 +174,27 @@
                                 <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=CreativitySlider, StringFormat=0.00}" TextAlignment="Right" />
                                 <Slider x:Name="CreativitySlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True" />
                             </DockPanel>
-                            <DockPanel Margin="0,1" ToolTip="Legt buntes Zufallsrauschen über Hintergrundfarbe bzw. -bild (nicht über Figuren und 3D-Boden). SwarmUI erfindet dort dann mehr eigenen Hintergrund statt der glatten Fläche. 0 = aus.">
-                                <TextBlock Text="Rauschen (Hgr.)" Style="{StaticResource Lbl}" />
+                            <DockPanel Margin="0,1" ToolTip="Hintergrund = alles über dem Horizont (Himmel, Wand, Hintergrundfarbe). Deckkraft des Rauschens. SwarmUI erfindet dort dann mehr eigenen Inhalt statt der glatten Fläche. Figuren mit Haaren und Objekten bleiben frei. 0 = aus, gut sind etwa 0.3.">
+                                <TextBlock Text="Rauschen Hgr." Style="{StaticResource Lbl}" />
                                 <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=NoiseSlider, StringFormat=0.00}" TextAlignment="Right" />
-                                <Slider x:Name="NoiseSlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True" />
+                                <Slider x:Name="NoiseSlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.05" TickFrequency="0.05" IsSnapToTickEnabled="True" />
                             </DockPanel>
-                            <CheckBox x:Name="NoiseAllCheck" Content="Rauschen auch über Boden und Kulisse" Margin="0,1,0,2"
-                                      ToolTip="Dann bleiben nur die Figuren mit Haaren und Objekten frei – Boden, Schatten, Wände und Gelände bekommen ebenfalls Rauschen." />
-                            <CheckBox x:Name="NoiseMonoCheck" Content="Schwarz-Weiß-Rauschen" Margin="0,0,0,2"
+                            <DockPanel Margin="0,1" ToolTip="Größe der Rauschflecken. Feines Pixelrauschen (1–4 px) liest das Modell gern als Muster/Ornament; grobe Flecken (16–32 px) werden zu Dingen im Bild. Zu grob und kräftig ergibt Kugeln/Ballons.">
+                                <TextBlock Text="Körnung Hgr." Style="{StaticResource Lbl}" />
+                                <TextBlock DockPanel.Dock="Right" Width="44" Text="{Binding Value, ElementName=NoiseGrainSlider, StringFormat=0 px}" TextAlignment="Right" />
+                                <Slider x:Name="NoiseGrainSlider" Minimum="1" Maximum="64" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1" ToolTip="Boden = alles unter dem Horizont (3D-Boden, Gelände, Schatten). Deckkraft des Rauschens. SwarmUI erfindet dort dann mehr eigenen Inhalt statt der glatten Fläche. Figuren mit Haaren und Objekten bleiben frei. 0 = aus, gut sind etwa 0.3.">
+                                <TextBlock Text="Rauschen Boden" Style="{StaticResource Lbl}" />
+                                <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=NoiseFloorSlider, StringFormat=0.00}" TextAlignment="Right" />
+                                <Slider x:Name="NoiseFloorSlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.05" TickFrequency="0.05" IsSnapToTickEnabled="True" />
+                            </DockPanel>
+                            <DockPanel Margin="0,1" ToolTip="Größe der Rauschflecken. Feines Pixelrauschen (1–4 px) liest das Modell gern als Muster/Ornament; grobe Flecken (16–32 px) werden zu Dingen im Bild. Zu grob und kräftig ergibt Kugeln/Ballons.">
+                                <TextBlock Text="Körnung Boden" Style="{StaticResource Lbl}" />
+                                <TextBlock DockPanel.Dock="Right" Width="44" Text="{Binding Value, ElementName=NoiseFloorGrainSlider, StringFormat=0 px}" TextAlignment="Right" />
+                                <Slider x:Name="NoiseFloorGrainSlider" Minimum="1" Maximum="64" SmallChange="1" LargeChange="1" TickFrequency="1" IsSnapToTickEnabled="True" />
+                            </DockPanel>
+                            <CheckBox x:Name="NoiseMonoCheck" Content="Schwarz-Weiß-Rauschen" Margin="0,1,0,2"
                                       ToolTip="Aus: buntes Rauschen (mehr Farbvielfalt). An: nur Helligkeit, der Farbton von Hintergrund und Boden bleibt klarer erhalten." />
                             </StackPanel>
                             <DockPanel Margin="0,1">

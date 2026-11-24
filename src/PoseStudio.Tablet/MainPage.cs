@@ -42,6 +42,11 @@ public sealed partial class MainPage : ContentPage
     private readonly Switch _useInit = new();
     private readonly Slider _creativity = new() { Minimum = 0, Maximum = 1 };
     private readonly Label _creativityText = new() { TextColor = Colors.White, WidthRequest = 44 };
+    // Rauschen im Init Image (nur Posen-Vorlagen: braucht maske.png und vorlage.json aus Pose Studio ab 0.22.36)
+    private readonly Slider _noiseBg = new() { Minimum = 0, Maximum = 1 }, _noiseBgGrain = new() { Minimum = 1, Maximum = 64 },
+        _noiseFloor = new() { Minimum = 0, Maximum = 1 }, _noiseFloorGrain = new() { Minimum = 1, Maximum = 64 };
+    private readonly Switch _noiseMono = new() { HorizontalOptions = LayoutOptions.Start };
+    private readonly Label _noiseHint = new() { TextColor = Ui.Muted, FontSize = 12 };
     private readonly Switch _useCn = new();
     private readonly Picker _cnKind = new() { ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" } };
     private readonly Picker _cnModel = new() { Title = "ControlNet-Modell" };
@@ -181,7 +186,22 @@ public sealed partial class MainPage : ContentPage
         _initBox.Children.Add(Row("Als Init Image", _useInit));
         var crea = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) } }; crea.Add(_creativity, 0); crea.Add(_creativityText, 1);
         // Einstellungen erst zeigen, wenn Init Image bzw. ControlNet eingeschaltet ist
-        var initDetails = new VerticalStackLayout { Spacing = 8, Children = { Row("Creativity", crea) } };
+        View Valued(Slider sl, Func<double, string> fmt)
+        {
+            var lbl = new Label { TextColor = Colors.White, WidthRequest = 54, VerticalOptions = LayoutOptions.Center };
+            sl.ValueChanged += (_, e) => { lbl.Text = fmt(e.NewValue); if (!_suppress) { StoreNoise(); SaveSoon(); } };
+            lbl.Text = fmt(sl.Value);
+            var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto) } }; g.Add(sl, 0); g.Add(lbl, 1);
+            return g;
+        }
+        string Op(double v) => Ui.F(Math.Round(v * 20) / 20);
+        string Px(double v) => $"{Math.Round(v)} px";
+        _noiseMono.Toggled += (_, _) => { if (!_suppress) { StoreNoise(); SaveSoon(); } };
+        var initDetails = new VerticalStackLayout { Spacing = 8, Children = {
+            Row("Creativity", crea),
+            Row("Rauschen Hintergrund", Valued(_noiseBg, Op)), Row("Körnung Hintergrund", Valued(_noiseBgGrain, Px)),
+            Row("Rauschen Boden", Valued(_noiseFloor, Op)), Row("Körnung Boden", Valued(_noiseFloorGrain, Px)),
+            Row("Schwarz-Weiß", _noiseMono), _noiseHint } };
         _initBox.Children.Add(initDetails);
         _cnBox.Children.Add(Row("ControlNet", _useCn));
         _cnLookRow = Row("Steuerbild aus", _cnLook);
@@ -324,6 +344,9 @@ public sealed partial class MainPage : ContentPage
         _look.SelectedIndex = Math.Clamp(S.Look < 0 ? 1 : S.Look, 0, TabletTemplate.LookNames.Length - 1);
         _useInit.IsToggled = S.UseInitImage;
         _creativity.Value = S.Creativity; _creativityText.Text = Ui.F(Math.Round(S.Creativity, 2));
+        _noiseBg.Value = S.InitNoise; _noiseBgGrain.Value = Math.Clamp(S.InitNoiseGrain, 1, 64);
+        _noiseFloor.Value = S.FloorNoise; _noiseFloorGrain.Value = Math.Clamp(S.InitNoiseFloorGrain, 1, 64);
+        _noiseMono.IsToggled = S.InitNoiseMono;
         _cnShownFor = -1;   // ControlNet-Felder füllt UpdateSourceUi je nach Quelle
         _cnStrength.Text = Ui.F(S.ControlStrength); _cnStart.Text = Ui.F(S.ControlStart); _cnEnd.Text = Ui.F(S.ControlEnd);
         _format.SelectedIndex = Math.Clamp(_t.Format, 0, TabletSettings.Formats.Length - 1);
@@ -364,6 +387,7 @@ public sealed partial class MainPage : ContentPage
         S.Look = Math.Max(0, _look.SelectedIndex);
         S.UseInitImage = _useInit.IsToggled;
         S.Creativity = Math.Round(_creativity.Value, 2);
+        StoreNoise();
         StoreCn();
         S.ControlStrength = Ui.PD(_cnStrength.Text, 1); S.ControlStart = Ui.PD(_cnStart.Text, 0); S.ControlEnd = Ui.PD(_cnEnd.Text, 1);
         _t.Format = Math.Max(0, _format.SelectedIndex);
@@ -442,6 +466,7 @@ public sealed partial class MainPage : ContentPage
     {
         int src = Math.Max(0, _source.SelectedIndex);
         _templateBox.IsVisible = src == 1;
+        UpdateNoiseHint();
         _imageBox.IsVisible = src == 2;
         _initBox.IsVisible = src != 0;
         _cnBox.IsVisible = src == 1 || src == 2;
@@ -653,6 +678,22 @@ public sealed partial class MainPage : ContentPage
         string? uri = t != null ? InitUri(t) ?? t.Preview : null;
         _templateImg.Source = uri != null ? ImageSource.FromStream(() => AndroidStore.Open(uri)) : null;
         UpdateSizeText();
+        UpdateNoiseHint();
+    }
+
+    private void StoreNoise()
+    {
+        S.InitNoise = Math.Round(_noiseBg.Value * 20) / 20; S.InitNoiseGrain = (int)Math.Round(_noiseBgGrain.Value);
+        S.InitNoiseFloor = Math.Round(_noiseFloor.Value * 20) / 20; S.InitNoiseFloorGrain = (int)Math.Round(_noiseFloorGrain.Value);
+        S.InitNoiseMono = _noiseMono.IsToggled;
+    }
+
+    private void UpdateNoiseHint()
+    {
+        var t = CurrentTemplate();
+        _noiseHint.Text = _source.SelectedIndex != 1 ? "Rauschen gibt es nur bei Posen-Vorlagen (dort bleibt die Figur frei)."
+            : t != null && !t.Files.ContainsKey(TabletTemplate.MaskFile) ? "Diese Vorlage ist älter und hat keine Figurmaske – für Rauschen in Pose Studio neu mit „Tablet“ exportieren."
+            : "Grobe Körnung (16–32 px) mit etwa 0.3 bringt mehr Hintergrund; feines Rauschen wird gern zum Muster.";
     }
 
     private async Task PickFolderAsync()
@@ -783,7 +824,19 @@ public sealed partial class MainPage : ContentPage
             if (src == 1)
             {
                 var t = CurrentTemplate() ?? throw new InvalidOperationException("Keine Posen-Vorlage gewählt.");
-                if (s.UseInitImage) init = Ui.DataUrl(AndroidStore.Read(InitUri(t) ?? throw new InvalidOperationException("Die Vorlage enthält kein Init Image.")));
+                if (s.UseInitImage)
+                {
+                    byte[] img = AndroidStore.Read(InitUri(t) ?? throw new InvalidOperationException("Die Vorlage enthält kein Init Image."));
+                    var ns = s.InitNoiseSettings();
+                    if (ns.Active && t.Files.GetValueOrDefault(TabletTemplate.MaskFile) is { } maskUri)
+                    {
+                        double hz = 0.5;
+                        try { if (t.Files.GetValueOrDefault(TabletTemplate.InfoFile) is { } iu) hz = System.Text.Json.JsonSerializer.Deserialize<TabletTemplate.Info>(AndroidStore.Read(iu))?.Horizon ?? 0.5; } catch { }
+                        byte[] mask = AndroidStore.Read(maskUri);
+                        img = await Task.Run(() => AndroidStore.AddNoise(img, mask, hz, ns));
+                    }
+                    init = Ui.DataUrl(img);
+                }
                 if (s.UseControlNet && s.ControlFromImage)
                 {
                     // Bild-Art: gewählte Darstellung der Vorlage (z. B. Strichzeichnung) als Steuerbild, SwarmUI-Preprocessor macht daraus Linien/Tiefe …
@@ -822,6 +875,8 @@ public sealed partial class MainPage : ContentPage
                 what = $"{w}×{h}";
             }
             if (s.UseInitImage) what += $", Creativity {Ui.F(s.Creativity)}";
+            if (s.UseInitImage && src == 1 && s.InitNoiseSettings().Active && CurrentTemplate()?.Files.ContainsKey(TabletTemplate.MaskFile) == true)
+                what += $", Rauschen {Ui.F(s.InitNoise)}/{Ui.F(s.FloorNoise)}";
             if (s.UseControlNet) what += s.ControlPreprocessor != null
                 ? $", {SwarmSettings.ImageControlKinds[Math.Clamp(src == 1 ? s.TemplateControlKind : s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Name.Split(' ')[0]} {Ui.F(s.ControlStrength)}"
                 : $", ControlNet {Ui.F(s.ControlStrength)}";

@@ -16,6 +16,17 @@ public static class TabletTemplate
     /// <summary>ControlNet-Bild für anima_regional.</summary>
     public const string RegionsFile = "regionen.png";
 
+    /// <summary>Figurmaske (Graustufen: weiß = Figur mit Haaren und Objekten) – das Tablet lässt dort beim Rauschen frei.</summary>
+    public const string MaskFile = "maske.png";
+    /// <summary>Angaben zur Vorlage (Horizont als Anteil der Bildhöhe).</summary>
+    public const string InfoFile = "vorlage.json";
+
+    public sealed class Info
+    {
+        /// <summary>Horizontlinie als Anteil der Bildhöhe von oben (kann außerhalb 0…1 liegen).</summary>
+        public double Horizon { get; set; } = 0.5;
+    }
+
     /// <summary>Vorschaubild der Vorlage (bevorzugt Cel-Shading).</summary>
     public static string PreviewFile(ICollection<string> present) =>
         new[] { "cel.jpg", "normal.jpg", "flach.jpg", "strich.jpg", PoseFile }.FirstOrDefault(present.Contains) ?? "";

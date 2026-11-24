@@ -85,13 +85,22 @@ public sealed class SwarmSettings
     /// <summary>Szene als Init Image mitschicken (aus = nur Prompt, Pose ggf. über ControlNet).</summary>
     public bool UseInitImage { get; set; } = true;
     public double Creativity { get; set; } = 0.6;
-    /// <summary>Zufälliges Farbrauschen über dem Hintergrund des Init Image (Deckkraft 0…1): gibt SwarmUI dort mehr Spielraum.</summary>
+    /// <summary>Rauschen über dem Hintergrund (oberhalb des Horizonts) des Init Image, Deckkraft 0…1: gibt SwarmUI dort mehr Spielraum.</summary>
     public double InitNoise { get; set; }
-    /// <summary>Rauschen auch über 3D-Boden und Kulisse – nur die Figuren (mit Haaren und Objekten) bleiben frei.</summary>
+    /// <summary>Körnung des Hintergrund-Rauschens in Pixeln (grob wirkt besser als Pixelrauschen).</summary>
+    public int InitNoiseGrain { get; set; } = 16;
+    /// <summary>Rauschen auf dem Boden (unterhalb des Horizonts), Deckkraft 0…1; -1 = noch nicht gesetzt (aus 0.22.34/35 übernommen).</summary>
+    public double InitNoiseFloor { get; set; } = -1;
+    public int InitNoiseFloorGrain { get; set; } = 24;
+    /// <summary>Bis 0.22.35: Rauschen auch über Boden und Kulisse (wird beim ersten Lesen in InitNoiseFloor übernommen).</summary>
     public bool InitNoiseAll { get; set; }
     /// <summary>Schwarz-Weiß- statt Farbrauschen (der Farbton des Hintergrunds bleibt klarer erhalten).</summary>
     public bool InitNoiseMono { get; set; }
     public int SideLength { get; set; } = 1280;
+
+    /// <summary>Boden-Deckkraft mit Übernahme der alten Einstellung (bis 0.22.35 gab es nur „auch über Boden“).</summary>
+    public double FloorNoise => InitNoiseFloor >= 0 ? InitNoiseFloor : InitNoiseAll ? InitNoise : 0;
+    public NoiseSettings InitNoiseSettings() => new(InitNoise, InitNoiseGrain, FloorNoise, InitNoiseFloorGrain, InitNoiseMono);
     public int Count { get; set; } = 2;
     public long Seed { get; set; } = -1;
     public int Steps { get; set; }

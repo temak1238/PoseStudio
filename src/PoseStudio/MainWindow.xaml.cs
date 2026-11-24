@@ -964,7 +964,17 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         {
             Directory.CreateDirectory(dir);
             for (int look = 0; look < PoseStudio.Swarm.TabletTemplate.InitFiles.Length; look++)
-                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look, _swarmSettings.InitNoise, _swarmSettings.InitNoiseAll, _swarmSettings.InitNoiseMono), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
+                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
+            // Rauschen macht das Tablet selbst (einstellbar) – dafür Figurmaske und Horizont mitgeben
+            {
+                var mask = FigureMask(w, h, _light);
+                var gray = BitmapSource.Create(w, h, 96, 96, PixelFormats.Gray8, null, mask, w);
+                var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(gray));
+                using (var fs = File.Create(Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.MaskFile))) enc.Save(fs);
+                RebuildFloor();
+                File.WriteAllText(Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InfoFile),
+                    System.Text.Json.JsonSerializer.Serialize(new PoseStudio.Swarm.TabletTemplate.Info { Horizon = SceneFactory.HorizonRow(_cam, h) / h }));
+            }
             SceneFactory.SavePng(scene.RenderControl(w, h, false), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.PoseFile));
             SceneFactory.SavePng(scene.RenderControl(w, h, true), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.RegionsFile));
             return dir;
@@ -978,7 +988,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     }
 
     /// <summary>Szene wie beim Export rendern (ohne Transparenz), wahlweise in einer anderen Darstellung.</summary>
-    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look, double noise, bool noiseAll, bool noiseMono)
+    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look, PoseStudio.Swarm.NoiseSettings? noise)
     {
         var light = _light.Clone();
         if (look >= 0) { light.Toon = look > 0; light.ToonStyle = Math.Max(0, look - 1); }
@@ -987,17 +997,22 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             Background = _background, FloorBase = _background,
             Floor = FloorExportCheck.IsChecked == true, Shadow = ShadowExportCheck.IsChecked == true,
             BackgroundImage = _bgImage, BackgroundStretch = CurrentStretch,
-            Light = light, Set = _set, ShadowResolution = 2048, BackgroundNoise = noiseAll ? 0 : noise, BackgroundNoiseMono = noiseMono
+            Light = light, Set = _set, ShadowResolution = 2048
         };
         try
         {
             var img = SceneFactory.Render(_figures, _cam, opts, w, h);
-            if (!noiseAll || noise <= 0) return img;
-            // Maske: nur Figuren (mit Haaren und Objekten) vor transparentem Hintergrund, ohne Boden, Schatten und Kulisse
-            var maskOpts = new SceneOptions { Background = Colors.Transparent, Transparent = true, Floor = false, Shadow = false, Light = light, ShadowResolution = 512 };
-            return SceneFactory.ApplyNoise(img, SceneFactory.Render(_figures, _cam, maskOpts, w, h), noise, noiseMono);
+            if (noise is not { Active: true }) return img;
+            return SceneFactory.ApplyNoise(img, FigureMask(w, h, light), SceneFactory.HorizonRow(_cam, h), noise);
         }
         finally { RebuildFloor(); } // Vorschau wieder in der eigenen Darstellung
+    }
+
+    /// <summary>Maske der Figuren (mit Haaren und Objekten) ohne Boden, Schatten und Kulisse – 1 Byte Deckung je Pixel.</summary>
+    private byte[] FigureMask(int w, int h, LightSettings light)
+    {
+        var maskOpts = new SceneOptions { Background = Colors.Transparent, Transparent = true, Floor = false, Shadow = false, Light = light, ShadowResolution = 512 };
+        return SceneFactory.AlphaMask(SceneFactory.Render(_figures, _cam, maskOpts, w, h));
     }
 
     BitmapSource PoseStudio.Swarm.ISwarmScene.RenderControl(int w, int h, bool regions) =>
@@ -1587,59 +1602,50 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             string? tab = ExportTabletTemplate(tdir, "20260101_120000");
             sb.AppendLine($"Tablet-Vorlage: {(tab == null ? "FEHLER" : Path.GetFileName(tab) + " → " + string.Join(", ", Directory.GetFiles(tab).Select(f => $"{Path.GetFileName(f)} {new FileInfo(f).Length / 1024} KB")))}");
             {
-                // Hintergrundrauschen: Ecke (Hintergrund) streut nur mit Rauschen, Bild zum Ansehen in %TEMP%\PoseStudioNoise
+                // Init-Rauschen: Hintergrund oben, Boden unten getrennt; Figur frei; Bilder zum Ansehen in %TEMP%\PoseStudioNoise
                 var sc = (PoseStudio.Swarm.ISwarmScene)this;
-                double Spread(BitmapSource b)
+                double Spread(BitmapSource b, int x0, int y0)
                 {
                     var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
-                    var px = new byte[40 * 40 * 4]; c.CopyPixels(new Int32Rect(0, 0, 40, 40), px, 160, 0);
+                    var px = new byte[40 * 40 * 4]; c.CopyPixels(new Int32Rect(x0, y0, 40, 40), px, 160, 0);
                     double m = 0, v = 0; int n = px.Length / 4;
                     for (int i = 0; i < px.Length; i += 4) m += px[i + 1];
                     m /= n;
                     for (int i = 0; i < px.Length; i += 4) v += (px[i + 1] - m) * (px[i + 1] - m);
                     return Math.Sqrt(v / n);
                 }
-                var plain = sc.RenderInit(640, 360, -1, 0); var noisy = sc.RenderInit(640, 360, -1, 0.5);
-                var oldFloor = FloorExportCheck.IsChecked; FloorExportCheck.IsChecked = true;
-                var floorPlain = sc.RenderInit(640, 360, -1, 0);
-                var floorAll = sc.RenderInit(640, 360, -1, 0.5, true);
-                FloorExportCheck.IsChecked = oldFloor;
-                double Center(BitmapSource a, BitmapSource b)   // mittlere Abweichung in der Bildmitte (Figur) – soll ~0 sein
+                double Center(BitmapSource a, BitmapSource b)
                 {
                     var ca = new FormatConvertedBitmap(a, PixelFormats.Bgra32, null, 0); var cb = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
                     var r = new Int32Rect(310, 150, 20, 20); var pa = new byte[1600]; var pb = new byte[1600];
                     ca.CopyPixels(r, pa, 80, 0); cb.CopyPixels(r, pb, 80, 0);
                     double d = 0; for (int i = 0; i < 1600; i++) d += Math.Abs(pa[i] - pb[i]); return d / 1600;
                 }
-                double Bottom(BitmapSource b)   // Streuung unten links (Boden)
+                int Colorful(BitmapSource b)
                 {
-                    var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0);
-                    var p = new byte[1600 * 4]; c.CopyPixels(new Int32Rect(0, 320, 40, 40), p, 160, 0);
-                    double m = 0, v = 0; for (int i = 1; i < p.Length; i += 4) m += p[i]; m /= 1600;
-                    for (int i = 1; i < p.Length; i += 4) v += (p[i] - m) * (p[i] - m); return Math.Sqrt(v / 1600);
+                    var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0); var p = new byte[1600 * 4];
+                    c.CopyPixels(new Int32Rect(0, 0, 40, 40), p, 160, 0);
+                    int n = 0; for (int i = 0; i < p.Length; i += 4) if (Math.Abs(p[i] - p[i + 1]) > 3 || Math.Abs(p[i + 1] - p[i + 2]) > 3) n++;
+                    return n;
                 }
+                var oldFloor = FloorExportCheck.IsChecked; FloorExportCheck.IsChecked = true;
+                var plain = sc.RenderInit(640, 360, -1);
+                var onlyBg = sc.RenderInit(640, 360, -1, new PoseStudio.Swarm.NoiseSettings(0.5, 1, 0, 24, false));
+                var onlyFloor = sc.RenderInit(640, 360, -1, new PoseStudio.Swarm.NoiseSettings(0, 16, 0.5, 1, false));
+                var both = sc.RenderInit(640, 360, -1, new PoseStudio.Swarm.NoiseSettings(0.4, 16, 0.4, 32, false));
+                var mono = sc.RenderInit(640, 360, -1, new PoseStudio.Swarm.NoiseSettings(0.5, 1, 0.5, 1, true));
+                FloorExportCheck.IsChecked = oldFloor;
                 string nd = Path.Combine(Path.GetTempPath(), "PoseStudioNoise"); Directory.CreateDirectory(nd);
-                SceneFactory.SaveJpeg(noisy, Path.Combine(nd, "init-rauschen-50.jpg"), 92);
-                SceneFactory.SaveJpeg(floorAll, Path.Combine(nd, "init-rauschen-boden.jpg"), 92);
-                {
-                    // Schwarz-Weiß: in der Ecke R=G=B bei grauem Hintergrund; beide Wege (nur Hintergrund / auch Boden)
-                    var monoBg = sc.RenderInit(640, 360, -1, 0.5, false, true);
-                    var monoAll = sc.RenderInit(640, 360, -1, 0.5, true, true);
-                    SceneFactory.SaveJpeg(monoBg, Path.Combine(nd, "init-rauschen-sw.jpg"), 92);
-                    int Colorful(BitmapSource b)
-                    {
-                        var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0); var p = new byte[1600 * 4];
-                        c.CopyPixels(new Int32Rect(0, 0, 40, 40), p, 160, 0);
-                        int n = 0; for (int i = 0; i < p.Length; i += 4) if (Math.Abs(p[i] - p[i + 1]) > 3 || Math.Abs(p[i + 1] - p[i + 2]) > 3) n++;
-                        return n;
-                    }
-                    int cb = Colorful(noisy), mb = Colorful(monoBg), ma = Colorful(monoAll);
-                    sb.AppendLine($"Rauschen Schwarz-Weiß: bunte Pixel farbig {cb}, s/w {mb}, s/w mit Boden {ma}, Streuung {Spread(monoBg):0.0}{(cb > 500 && mb < 20 && ma < 20 && Spread(monoBg) > 20 ? "" : " FEHLER")}");
-                }
-                double fb0 = Bottom(floorPlain), fb1 = Bottom(floorAll), fc = Center(floorPlain, floorAll);
-                sb.AppendLine($"Rauschen auch über Boden: Boden ohne {fb0:0.0}, mit {fb1:0.0}, Figurmitte Abweichung {fc:0.0}{(fb1 > fb0 + 15 && fc < 3 ? "" : " FEHLER")}");
-                double s0 = Spread(plain), s1 = Spread(noisy);
-                sb.AppendLine($"Hintergrundrauschen: Streuung ohne {s0:0.0}, mit 0.5 {s1:0.0}{(s0 < 2 && s1 > 20 ? "" : " FEHLER")}");
+                SceneFactory.SaveJpeg(both, Path.Combine(nd, "init-rauschen-getrennt.jpg"), 92);
+                SceneFactory.SaveJpeg(mono, Path.Combine(nd, "init-rauschen-sw.jpg"), 92);
+                double hz = SceneFactory.HorizonRow(_cam, 360);
+                double top0 = Spread(plain, 0, 0), topBg = Spread(onlyBg, 0, 0), topFl = Spread(onlyFloor, 0, 0);
+                double bot0 = Spread(plain, 0, 318), botBg = Spread(onlyBg, 0, 318), botFl = Spread(onlyFloor, 0, 318);
+                bool okSplit = topBg > top0 + 20 && topFl < top0 + 3 && botFl > bot0 + 20 && botBg < bot0 + 3;
+                double fc = Math.Max(Center(plain, onlyBg), Center(plain, both));
+                int cb = Colorful(onlyBg), cm = Colorful(mono);
+                sb.AppendLine($"Init-Rauschen: Horizont Zeile {hz:0}, oben ohne/Hgr/Boden {top0:0.0}/{topBg:0.0}/{topFl:0.0}, unten {bot0:0.0}/{botBg:0.0}/{botFl:0.0}, Figur {fc:0.0}, bunt {cb} s/w {cm}"
+                    + (okSplit && fc < 3 && hz > 0 && hz < 318 && cb > 500 && cm < 20 ? "" : " FEHLER"));
             }
             PoseStudio.Swarm.SwarmWindow.OutputOverride = null; Directory.Delete(tdir, true);
         }
