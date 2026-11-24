@@ -172,6 +172,15 @@ public partial class SwarmWindow : Window
         InitializeComponent();
         ApplyGroupStyle();
         PromptBox.GotKeyboardFocus += (_, _) => _promptCaretKnown = true;
+        // Init-Image- und ControlNet-Einstellungen nur zeigen, wenn sie aktiv sind
+        void ShowDetails(object? s = null, RoutedEventArgs? e = null)
+        {
+            InitDetails.Visibility = InitCheck.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            CnDetails.Visibility = CnCheck.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+        InitCheck.Checked += ShowDetails; InitCheck.Unchecked += ShowDetails;
+        CnCheck.Checked += ShowDetails; CnCheck.Unchecked += ShowDetails;
+        ShowDetails();
         Theme.Changed += ApplyGroupStyle;
         Closed += (_, _) => Theme.Changed -= ApplyGroupStyle;
         // nie größer als der Bildschirm (sonst liegt „Generieren“ außerhalb)

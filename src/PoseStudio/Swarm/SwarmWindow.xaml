@@ -164,6 +164,7 @@
                     <GroupBox Header="Init Image (aktuelle Szene)">
                         <StackPanel>
                             <CheckBox x:Name="InitCheck" Content="Szene als Init Image mitschicken" Margin="0,0,0,3" ToolTip="Aus: nur Prompt (und ControlNet, falls aktiv) – die Pose kommt dann allein über ControlNet, Stil und Kleidung sind frei." />
+                            <StackPanel x:Name="InitDetails">
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Darstellung" Style="{StaticResource Lbl}" />
                                 <ComboBox x:Name="LookCombo" />
@@ -173,6 +174,7 @@
                                 <TextBlock DockPanel.Dock="Right" Width="36" Text="{Binding Value, ElementName=CreativitySlider, StringFormat=0.00}" TextAlignment="Right" />
                                 <Slider x:Name="CreativitySlider" Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True" />
                             </DockPanel>
+                            </StackPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Seitenlänge" Style="{StaticResource Lbl}" />
                                 <TextBlock x:Name="SizeText" DockPanel.Dock="Right" Width="110" Foreground="{DynamicResource MutedText}" VerticalAlignment="Center" Margin="6,0,0,0" />
@@ -217,6 +219,7 @@
                     <Expander Header="ControlNet (optional)" Margin="0,4">
                         <StackPanel Margin="6,2">
                             <CheckBox x:Name="CnCheck" Content="ControlNet mitschicken" />
+                            <StackPanel x:Name="CnDetails">
                             <DockPanel Margin="0,2">
                                 <TextBlock Text="Bild" Style="{StaticResource Lbl}" />
                                 <ComboBox x:Name="CnKindCombo" />
@@ -244,6 +247,7 @@
                             </DockPanel>
                             <TextBlock Foreground="{DynamicResource MutedText}" TextWrapping="Wrap"
                                        Text="anima_3dpose: Bild „3D-Pose“, Stärke um 1. Pose Studio schaltet den Preprocessor von SwarmUI ab (sonst würde das Posenbild in ein OpenPose-Skelett umgewandelt). Mit ControlNet kann Creativity höher sein (z. B. 0.8–1.0)." />
+                            </StackPanel>
                         </StackPanel>
                     </Expander>
 
