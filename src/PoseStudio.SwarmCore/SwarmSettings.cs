@@ -89,6 +89,8 @@ public sealed class SwarmSettings
     public double InitNoise { get; set; }
     /// <summary>Rauschen auch über 3D-Boden und Kulisse – nur die Figuren (mit Haaren und Objekten) bleiben frei.</summary>
     public bool InitNoiseAll { get; set; }
+    /// <summary>Schwarz-Weiß- statt Farbrauschen (der Farbton des Hintergrunds bleibt klarer erhalten).</summary>
+    public bool InitNoiseMono { get; set; }
     public int SideLength { get; set; } = 1280;
     public int Count { get; set; } = 2;
     public long Seed { get; set; } = -1;

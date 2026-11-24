@@ -181,6 +181,8 @@
                             </DockPanel>
                             <CheckBox x:Name="NoiseAllCheck" Content="Rauschen auch über Boden und Kulisse" Margin="0,1,0,2"
                                       ToolTip="Dann bleiben nur die Figuren mit Haaren und Objekten frei – Boden, Schatten, Wände und Gelände bekommen ebenfalls Rauschen." />
+                            <CheckBox x:Name="NoiseMonoCheck" Content="Schwarz-Weiß-Rauschen" Margin="0,0,0,2"
+                                      ToolTip="Aus: buntes Rauschen (mehr Farbvielfalt). An: nur Helligkeit, der Farbton von Hintergrund und Boden bleibt klarer erhalten." />
                             </StackPanel>
                             <DockPanel Margin="0,1">
                                 <TextBlock Text="Seitenlänge" Style="{StaticResource Lbl}" />

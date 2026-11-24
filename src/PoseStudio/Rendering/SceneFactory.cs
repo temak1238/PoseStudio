@@ -26,6 +26,8 @@ public sealed class SceneOptions
     public Stretch BackgroundStretch { get; set; } = Stretch.UniformToFill;
     /// <summary>Deckkraft (0…1) eines zufälligen Farbrauschens über Hintergrundfarbe/-bild, unter Figuren und 3D-Boden.</summary>
     public double BackgroundNoise { get; set; }
+    /// <summary>Schwarz-Weiß- statt Farbrauschen.</summary>
+    public bool BackgroundNoiseMono { get; set; }
 }
 
 public static class SceneFactory
@@ -128,7 +130,7 @@ public static class SceneFactory
 
         Brush back = new SolidColorBrush(o.Background);
         if (set != null && !o.Transparent && SetBuilder.BackgroundBrush(set, cam) is { } sky) back = sky;
-        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height, o.Transparent ? 0 : o.BackgroundNoise);
+        return RenderScene(scene, cam, back, o.BackgroundImage, o.BackgroundStretch, width, height, o.Transparent ? 0 : o.BackgroundNoise, o.BackgroundNoiseMono);
     }
 
     // ================================================================= ControlNet
@@ -163,7 +165,7 @@ public static class SceneFactory
         return RenderScene(scene, cam, Brushes.Black, null, Stretch.None, width, height);
     }
 
-    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height, double noise = 0)
+    private static BitmapSource RenderScene(Model3DGroup scene, OrbitCamera cam, Brush back, ImageSource? image, Stretch stretch, int width, int height, double noise = 0, bool noiseMono = false)
     {
         int ss = Math.Max(width, height) <= 4000 ? 2 : 1;
         int rw = width * ss, rh = height * ss;
@@ -174,7 +176,7 @@ public static class SceneFactory
             root.Children.Add(new Image { Source = image, Stretch = stretch, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         if (noise > 0)
         {
-            var img = new Image { Source = NoiseBitmap(width, height), Stretch = Stretch.Fill, Opacity = Math.Clamp(noise, 0, 1) };
+            var img = new Image { Source = NoiseBitmap(width, height, noiseMono), Stretch = Stretch.Fill, Opacity = Math.Clamp(noise, 0, 1) };
             RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);   // Körnung = 1 Pixel im fertigen Bild
             root.Children.Add(img);
         }
@@ -196,13 +198,10 @@ public static class SceneFactory
         small.Freeze();
         return small;
     }
-    /// <summary>Buntes Rauschen, jeder Kanal gleichverteilt zufällig.</summary>
-    public static BitmapSource NoiseBitmap(int width, int height, int? seed = null)
+    /// <summary>Rauschen, gleichverteilt zufällig: bunt (jeder Kanal einzeln) oder Schwarz-Weiß (ein Wert für alle Kanäle).</summary>
+    public static BitmapSource NoiseBitmap(int width, int height, bool mono = false, int? seed = null)
     {
-        var rnd = seed is int s ? new Random(s) : Random.Shared;
-        var px = new byte[width * height * 4];
-        rnd.NextBytes(px);
-        for (int i = 3; i < px.Length; i += 4) px[i] = 255;
+        var px = NoiseBytes(width * height * 4, mono, seed is int s ? new Random(s) : Random.Shared);
         var bmp = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, px, width * 4);
         bmp.Freeze();
         return bmp;
@@ -210,15 +209,26 @@ public static class SceneFactory
 
     /// <summary>Rauschen überall außer auf den Figuren: <paramref name="figureMask"/> ist die Szene mit transparentem Hintergrund,
     /// ihr Alpha schützt Figuren, Haare und Objekte (auch die weichen Kanten).</summary>
-    public static BitmapSource ApplyNoise(BitmapSource image, BitmapSource figureMask, double opacity)
+    private static byte[] NoiseBytes(int length, bool mono, Random rnd)
+    {
+        var px = new byte[length];
+        rnd.NextBytes(px);
+        for (int i = 0; i < px.Length; i += 4)
+        {
+            if (mono) px[i + 1] = px[i + 2] = px[i];
+            px[i + 3] = 255;
+        }
+        return px;
+    }
+
+    public static BitmapSource ApplyNoise(BitmapSource image, BitmapSource figureMask, double opacity, bool mono = false)
     {
         int w = image.PixelWidth, h = image.PixelHeight, stride = w * 4;
         var px = new byte[stride * h];
         new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0).CopyPixels(px, stride, 0);
         var mask = new byte[stride * h];
         new FormatConvertedBitmap(figureMask, PixelFormats.Pbgra32, null, 0).CopyPixels(mask, stride, 0);
-        var noise = new byte[stride * h];
-        Random.Shared.NextBytes(noise);
+        var noise = NoiseBytes(stride * h, mono, Random.Shared);
         double op = Math.Clamp(opacity, 0, 1);
         for (int i = 0; i < px.Length; i += 4)
         {

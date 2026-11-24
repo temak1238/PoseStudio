@@ -964,7 +964,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         {
             Directory.CreateDirectory(dir);
             for (int look = 0; look < PoseStudio.Swarm.TabletTemplate.InitFiles.Length; look++)
-                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look, _swarmSettings.InitNoise, _swarmSettings.InitNoiseAll), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
+                SceneFactory.SaveJpeg(scene.RenderInit(w, h, look, _swarmSettings.InitNoise, _swarmSettings.InitNoiseAll, _swarmSettings.InitNoiseMono), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.InitFiles[look]), 92);
             SceneFactory.SavePng(scene.RenderControl(w, h, false), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.PoseFile));
             SceneFactory.SavePng(scene.RenderControl(w, h, true), Path.Combine(dir, PoseStudio.Swarm.TabletTemplate.RegionsFile));
             return dir;
@@ -978,7 +978,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
     }
 
     /// <summary>Szene wie beim Export rendern (ohne Transparenz), wahlweise in einer anderen Darstellung.</summary>
-    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look, double noise, bool noiseAll)
+    BitmapSource PoseStudio.Swarm.ISwarmScene.RenderInit(int w, int h, int look, double noise, bool noiseAll, bool noiseMono)
     {
         var light = _light.Clone();
         if (look >= 0) { light.Toon = look > 0; light.ToonStyle = Math.Max(0, look - 1); }
@@ -987,7 +987,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             Background = _background, FloorBase = _background,
             Floor = FloorExportCheck.IsChecked == true, Shadow = ShadowExportCheck.IsChecked == true,
             BackgroundImage = _bgImage, BackgroundStretch = CurrentStretch,
-            Light = light, Set = _set, ShadowResolution = 2048, BackgroundNoise = noiseAll ? 0 : noise
+            Light = light, Set = _set, ShadowResolution = 2048, BackgroundNoise = noiseAll ? 0 : noise, BackgroundNoiseMono = noiseMono
         };
         try
         {
@@ -995,7 +995,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
             if (!noiseAll || noise <= 0) return img;
             // Maske: nur Figuren (mit Haaren und Objekten) vor transparentem Hintergrund, ohne Boden, Schatten und Kulisse
             var maskOpts = new SceneOptions { Background = Colors.Transparent, Transparent = true, Floor = false, Shadow = false, Light = light, ShadowResolution = 512 };
-            return SceneFactory.ApplyNoise(img, SceneFactory.Render(_figures, _cam, maskOpts, w, h), noise);
+            return SceneFactory.ApplyNoise(img, SceneFactory.Render(_figures, _cam, maskOpts, w, h), noise, noiseMono);
         }
         finally { RebuildFloor(); } // Vorschau wieder in der eigenen Darstellung
     }
@@ -1621,6 +1621,21 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
                 string nd = Path.Combine(Path.GetTempPath(), "PoseStudioNoise"); Directory.CreateDirectory(nd);
                 SceneFactory.SaveJpeg(noisy, Path.Combine(nd, "init-rauschen-50.jpg"), 92);
                 SceneFactory.SaveJpeg(floorAll, Path.Combine(nd, "init-rauschen-boden.jpg"), 92);
+                {
+                    // Schwarz-Weiß: in der Ecke R=G=B bei grauem Hintergrund; beide Wege (nur Hintergrund / auch Boden)
+                    var monoBg = sc.RenderInit(640, 360, -1, 0.5, false, true);
+                    var monoAll = sc.RenderInit(640, 360, -1, 0.5, true, true);
+                    SceneFactory.SaveJpeg(monoBg, Path.Combine(nd, "init-rauschen-sw.jpg"), 92);
+                    int Colorful(BitmapSource b)
+                    {
+                        var c = new FormatConvertedBitmap(b, PixelFormats.Bgra32, null, 0); var p = new byte[1600 * 4];
+                        c.CopyPixels(new Int32Rect(0, 0, 40, 40), p, 160, 0);
+                        int n = 0; for (int i = 0; i < p.Length; i += 4) if (Math.Abs(p[i] - p[i + 1]) > 3 || Math.Abs(p[i + 1] - p[i + 2]) > 3) n++;
+                        return n;
+                    }
+                    int cb = Colorful(noisy), mb = Colorful(monoBg), ma = Colorful(monoAll);
+                    sb.AppendLine($"Rauschen Schwarz-Weiß: bunte Pixel farbig {cb}, s/w {mb}, s/w mit Boden {ma}, Streuung {Spread(monoBg):0.0}{(cb > 500 && mb < 20 && ma < 20 && Spread(monoBg) > 20 ? "" : " FEHLER")}");
+                }
                 double fb0 = Bottom(floorPlain), fb1 = Bottom(floorAll), fc = Center(floorPlain, floorAll);
                 sb.AppendLine($"Rauschen auch über Boden: Boden ohne {fb0:0.0}, mit {fb1:0.0}, Figurmitte Abweichung {fc:0.0}{(fb1 > fb0 + 15 && fc < 3 ? "" : " FEHLER")}");
                 double s0 = Spread(plain), s1 = Spread(noisy);
