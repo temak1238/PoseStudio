@@ -93,12 +93,16 @@ public partial class SwarmWindow
                 var w = new TextBox { Text = l.Weight.ToString("0.##", CultureInfo.InvariantCulture), Width = 38, Margin = new Thickness(4, 0, 0, 0), ToolTip = "Gewicht" };
                 w.TextChanged += (_, _) => l.Weight = PD(w.Text, l.Weight);
                 var tr = new CheckBox { Content = "Trigger", IsChecked = l.Trigger ?? true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0),
-                    ToolTip = "Trigger-Wörter dieser LoRA automatisch in den Bereichs-Prompt" + (string.IsNullOrWhiteSpace(info?.Trigger) ? "" : Environment.NewLine + info!.Trigger) };
+                    ToolTip = "Gewählte Trigger-Wörter dieser LoRA an den Bereichs-Prompt anhängen (Auswahl über „Tags…“)" };
                 tr.Checked += (_, _) => l.Trigger = true; tr.Unchecked += (_, _) => l.Trigger = false;
+                var tags = new Button { Content = "Tags…", Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(3, 0, 0, 0) };
+                void TagTip() => tags.ToolTip = "Trigger-Wörter auswählen: " + ((_s.TagChoice(l.Name)?.All() is { Count: > 0 } a) ? string.Join(", ", a) : "keine gewählt");
+                TagTip();
+                tags.Click += (_, _) => OpenTagWindow(l.Name, TagTip);
                 var x = new Button { Content = "✕", Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(3, 0, 0, 0) };
                 x.Click += (_, _) => { r.Loras.Remove(l); Fill(); };
                 var chip = new Border { Padding = new Thickness(5, 2, 3, 2), Margin = new Thickness(0, 0, 4, 3), CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1),
-                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, w, tr, x } } };
+                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, w, tr, tags, x } } };
                 chip.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
                 wrap.Children.Add(chip);
             }
@@ -227,7 +231,7 @@ public partial class SwarmWindow
             SegmentAddCombo.SelectedItem = "Augen"; SegmentAdd_Click(this, new RoutedEventArgs());
             SegmentAddCombo.SelectedItem = "Füße"; SegmentAdd_Click(this, new RoutedEventArgs());
             _s.Segments[1].Enabled = false;
-            var p = _s.BuildParams("data:x", 512, 512, null, new Dictionary<string, string?>());
+            var p = _s.BuildParams("data:x", 512, 512, null);
             log.Add($"Gesendet: „{p["prompt"]}“");
             _s.Segments[3].Name = "Mein Fuß"; _s.CustomSegments.Clear(); _s.CustomSegments.Add(_s.Segments[3].Clone());
             FillSegmentAddCombo();
@@ -237,7 +241,7 @@ public partial class SwarmWindow
             string expect = "1girl, smile <segment:yolo-face_yolov8m.pt,0.5,0.3> detailed face, blush <segment:yolo-anzhc-eyes-seg-hd.pt,0.4,0.25> detailed eyes, beautiful eyes, detailed pupils <segment:feet,0.45,0.5> detailed feet, five toes";
             // LoRA nur für den Gesichts-Refiner, mit Trigger-Wort; danach wieder zerlegen
             _s.Segments[0].Loras.Add(new SwarmLora { Name = "Detail/eyes_v2", Weight = 0.7 });
-            string withLora = SegmentRefiners.Compose("1girl", _s.Segments.Take(1), new Dictionary<string, string?> { ["Detail/eyes_v2"] = "sparkling eyes" });
+            string withLora = SegmentRefiners.Compose("1girl", _s.Segments.Take(1), l => l.Name == "Detail/eyes_v2" ? new[] { "sparkling eyes" } : Array.Empty<string>());
             var (m2, l2) = SegmentRefiners.Split(withLora);
             log.Add($"Refiner-LoRA: „{withLora}“ → zurück {l2[0].Loras.Count} LoRA {l2[0].Loras[0].Name}@{l2[0].Loras[0].Weight}, Prompt „{l2[0].Prompt}“");
             bool loraOk = withLora == "1girl <segment:yolo-face_yolov8m.pt,0.5,0.3> <lora:Detail/eyes_v2:0.7> detailed face, blush, sparkling eyes"
@@ -248,12 +252,19 @@ public partial class SwarmWindow
                     Loras = { new SwarmLora { Name = "A" }, new SwarmLora { Name = "B", Trigger = true } } };
                 tt.Segments.Add(new SegmentRefiner { Target = "face", Loras = { new SwarmLora { Name = "C", Trigger = false } } });
                 tt.MigrateTriggers();
-                var trig = new Dictionary<string, string?> { ["A"] = "trig_a", ["B"] = "trig_b", ["C"] = "trig_c" };
-                string tp = tt.BuildParams("data:x", 512, 512, null, trig)["prompt"]!.ToString();
+                tt.TagChoice("A", true).Tags.Add("trig_a"); tt.TagChoice("b", true).Tags.AddRange(new[] { "trig_b", "1girl" }); tt.TagChoice("C", true).Own = "trig_c, trig_c2";
+                string tp = tt.BuildParams("data:x", 512, 512, null)["prompt"]!.ToString();
                 tt.Loras[0].Trigger = true; tt.Segments[0].Loras[0].Trigger = true;
-                string tp2 = tt.BuildParams("data:x", 512, 512, null, trig)["prompt"]!.ToString();
+                string tp2 = tt.BuildParams("data:x", 512, 512, null)["prompt"]!.ToString();
+                // Zerlegen der Metadaten: Tags vs. Beschreibungen, ohne Doppelte
+                var (pt, pd) = LoraTags.Parse("violet cinematography, 1boy, 1girl, 1boy, two individuals are depicted in this scene. the composition features depth, smile" + Environment.NewLine + "bandages");
+                var prof = new SwarmSettings(); prof.ApplyProfile(tt);   // Profil laden behält die eigene Auswahl
                 bool trOk = tt.AutoTrigger && !tp.Contains("trig_a") && tp.Contains("trig_b") && !tp.Contains("trig_c")
-                            && tp2.Contains("trig_a") && tp2.Contains("trig_c") && new SwarmLora().UsesTrigger(tt.AutoTrigger);
+                            && tp.Split("1girl").Length == 2   // schon im Prompt → nicht doppelt
+                            && tp2.Contains("trig_a") && tp2.Contains("trig_c, trig_c2") && new SwarmLora().UsesTrigger(tt.AutoTrigger)
+                            && string.Join("|", pt) == "violet cinematography|1boy|1girl|smile|bandages" && pd.Count == 1
+                            && prof.LoraTagChoices.Count == 0 && tt.CloneProfile().LoraTagChoices.Count == 0;
+                log.Add($"Tags zerlegt: {string.Join(" | ", pt)} / Beschreibung: {pd.FirstOrDefault()}");
                 log.Add($"Trigger je LoRA: „{tp}“ / „{tp2}“{(trOk ? "" : " FEHLER")}");
             }
             // Übernahme aus einem SwarmUI-Bild: LoRA mit Bereich (lorasectionconfinement ≠ -1) gehört zum Refiner, nicht zu den normalen LoRAs
@@ -276,7 +287,7 @@ public partial class SwarmWindow
                                          Style = "@abe tsukasa", Prompt = "sitting, forest" };
             cs.Segments.Add(SegmentRefiners.FromPreset(SegmentRefiners.Presets[0], new[] { "face_yolov8m.pt" }));
             cs.Segments.Add(SegmentRefiners.FromPreset(SegmentRefiners.Presets[1], new[] { "face_yolov8m.pt" }));
-            string cp = cs.BuildParams("data:x", 512, 512, null, new Dictionary<string, string?>())["prompt"]!.ToString();
+            string cp = cs.BuildParams("data:x", 512, 512, null)["prompt"]!.ToString();
             string cpExpect = "frieren, sousou no frieren, white hair, twintails, green eyes, white capelet, earrings, @abe tsukasa, sitting, forest "
                             + "<segment:yolo-face_yolov8m.pt,0.45,0.25> frieren, sousou no frieren, white hair, twintails, green eyes, earrings, detailed face, beautiful detailed eyes "
                             + "<segment:hands,0.45,0.5> detailed hands, perfect hands, five fingers";

@@ -506,18 +506,32 @@ public sealed partial class MainPage : ContentPage
     private SwarmModel? FindModel(string id) => _models.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase) || x.Name.Equals(id, StringComparison.OrdinalIgnoreCase)
                                                                              || Path.GetFileNameWithoutExtension(x.Name).Equals(id, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Schalter „Trigger“ je LoRA: deren Trigger-Wörter automatisch in den Prompt.</summary>
-    private View TriggerToggle(SwarmLora l)
+    /// <summary>Schalter „Trigger“ je LoRA: gewählte Trigger-Wörter anhängen (aus = nichts, die Auswahl bleibt).</summary>
+    private View TriggerToggle(SwarmLora l, Action refresh)
     {
-        var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
-        bool has = info == null || !string.IsNullOrWhiteSpace(info.Trigger);   // ohne Verbindung unbekannt
         var sw = new Switch { IsToggled = l.Trigger ?? true, VerticalOptions = LayoutOptions.Center };
-        sw.Toggled += (_, e) => { l.Trigger = e.Value; SaveSoon(); };
+        sw.Toggled += (_, e) => { l.Trigger = e.Value; SaveSoon(); refresh(); };
         return new VerticalStackLayout
         {
             VerticalOptions = LayoutOptions.Center, Spacing = 0,
-            Children = { new Label { Text = has ? "Trigger" : "(kein Trigger)", FontSize = 10, TextColor = Ui.Muted, HorizontalOptions = LayoutOptions.Center }, sw }
+            Children = { new Label { Text = "Trigger", FontSize = 10, TextColor = Ui.Muted, HorizontalOptions = LayoutOptions.Center }, sw }
         };
+    }
+
+    /// <summary>Kurzanzeige der gewählten Trigger-Wörter; antippen öffnet die Auswahl.</summary>
+    private View TagSummary(SwarmLora l, Action refresh)
+    {
+        var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
+        var all = S.TagChoice(l.Name)?.All() ?? new();
+        string text = l.Trigger == false ? "Trigger aus"
+                    : all.Count > 0 ? "+ " + string.Join(", ", all)
+                    : info != null && string.IsNullOrWhiteSpace(info.Trigger) ? "keine Trigger-Wörter in den Metadaten – eigene eintragen"
+                    : "keine Tags gewählt – antippen zum Auswählen";
+        var lbl = new Label { Text = text + "  ✎", FontSize = 12, TextColor = l.Trigger != false && all.Count > 0 ? Ui.Accent : Ui.Muted, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => { await LoraTagsPage.ShowAsync(Navigation, S, l.Name, info); SaveSoon(); refresh(); };
+        lbl.GestureRecognizers.Add(tap);
+        return lbl;
     }
 
     private void ShowLoras()
@@ -528,14 +542,16 @@ public sealed partial class MainPage : ContentPage
         {
             var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
             var img = new Image { WidthRequest = 44, HeightRequest = 44, Aspect = Aspect.AspectFill, Source = Ui.Web(info?.PreviewUrl), BackgroundColor = Ui.PanelLight };
-            var name = new Label { Text = info?.Short ?? l.Name, TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2, VerticalOptions = LayoutOptions.Center };
+            var name = new VerticalStackLayout { VerticalOptions = LayoutOptions.Center, Spacing = 1, Children = {
+                new Label { Text = info?.Short ?? l.Name, TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 1 },
+                TagSummary(l, ShowLoras) } };
             var val = new Label { Text = Ui.F(l.Weight), TextColor = Colors.White, WidthRequest = 40, VerticalOptions = LayoutOptions.Center };
             var slider = new Slider { Minimum = -1, Maximum = 2, Value = l.Weight, WidthRequest = 150, VerticalOptions = LayoutOptions.Center };
             slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); };
             var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
             del.Clicked += (_, _) => { S.Loras.Remove(l); ShowLoras(); };
             var g = new Grid { ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
-            g.Add(img, 0); g.Add(name, 1); g.Add(slider, 2); g.Add(val, 3); g.Add(TriggerToggle(l), 4); g.Add(del, 5);
+            g.Add(img, 0); g.Add(name, 1); g.Add(slider, 2); g.Add(val, 3); g.Add(TriggerToggle(l, ShowLoras), 4); g.Add(del, 5);
             _loraRows.Children.Add(g);
         }
     }
@@ -811,9 +827,6 @@ public sealed partial class MainPage : ContentPage
 
     // ------------------------------------------------------------------ Generieren
 
-    private Dictionary<string, string?> LoraTriggers() =>
-        _loras.GroupBy(l => l.Id, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Trigger, StringComparer.OrdinalIgnoreCase);
-
     private async Task<bool> EnsureClientAsync()
     {
         if (_client == null || !_client.BaseUrl.Equals(new SwarmClient(S.Url).BaseUrl, StringComparison.OrdinalIgnoreCase) || _models.Count == 0) await ConnectAsync();
@@ -892,7 +905,7 @@ public sealed partial class MainPage : ContentPage
             if (s.UseControlNet) what += s.ControlPreprocessor != null
                 ? $", {SwarmSettings.ImageControlKinds[Math.Clamp(src == 1 ? s.TemplateControlKind : s.ImageControlKind, 0, SwarmSettings.ImageControlKinds.Length - 1)].Name.Split(' ')[0]} {Ui.F(s.ControlStrength)}"
                 : $", ControlNet {Ui.F(s.ControlStrength)}";
-            var p = s.BuildParams(init, w, h, cn, LoraTriggers());
+            var p = s.BuildParams(init, w, h, cn);
             await RunAsync(p, s.Count, what);
         }
         catch (Exception ex) { _status.Text = "Fehler: " + ex.Message; }

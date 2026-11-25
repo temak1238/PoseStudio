@@ -193,7 +193,7 @@ public partial class SwarmWindow : Window
         LookCombo.ItemsSource = LookNames;
         SideCombo.ItemsSource = new[] { "1024", "1152", "1280", "1408", "1536" };
         CnKindCombo.ItemsSource = new[] { "3D-Pose (anima_3dpose)", "Regionen (anima_regional)" }.Concat(SwarmSettings.ImageControlKinds.Select(k => "Bild: " + k.Name)).ToList();
-        LoraSelected.ItemsSource = _selectedLoras;
+        _selectedLoras.CollectionChanged += (_, _) => BuildLoraRows();
         ResultList.ItemsSource = _results;
         LoadResults();
         _s.TakeSegmentsFromPrompt();   // alte Prompts mit <segment:…> in Refiner-Zeilen umwandeln
@@ -386,6 +386,7 @@ public partial class SwarmWindow : Window
             var values = await _client.ListParamValuesAsync(new[] { "sampler", "scheduler", "refinerupscalemethod", "refinermethod", "vae", "yolomodelinternal" });
             _yolos = values.GetValueOrDefault("yolomodelinternal") ?? new();
             BuildSegmentRows();
+            BuildLoraRows();   // Kurzanzeige braucht die Metadaten
             ServerText.Text = $"Verbunden mit SwarmUI {ver}: {_models.Count} Modelle, {_loras.Count} LoRAs.";
             KeepText(SamplerCombo, values.GetValueOrDefault("sampler"));
             KeepText(SchedulerCombo, values.GetValueOrDefault("scheduler"));
@@ -690,7 +691,7 @@ public partial class SwarmWindow : Window
         _s.ControlPreprocessor = cnBytes != null || cnScene ? kind.Preprocessor : null;
         try
         {
-            var p = _s.BuildParams(init, w, h, cn, LoraTriggers());
+            var p = _s.BuildParams(init, w, h, cn);
             string cnText = !_s.UseControlNet ? "" : cnBytes != null || cnScene ? $", {kind.Name.Split(' ')[0]} aus {(cnScene ? "Szene" : Path.GetFileName(cnPath))} {F(_s.ControlStrength)}" : $", ControlNet {F(_s.ControlStrength)}";
             return (p, $"{w}×{h}, " + (_s.UseInitImage ? $"Creativity {F(_s.Creativity)}" + (_s.InitNoiseSettings().Active ? $", Rauschen {F(_s.InitNoise)}/{F(_s.FloorNoise)}" : "") : "ohne Init Image") + cnText);
         }

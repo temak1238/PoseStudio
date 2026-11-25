@@ -1226,7 +1226,7 @@ public partial class App : Application
             SceneFactory.SavePng(bmp, Path.Combine(folder, "init.png"));
             var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(new System.Windows.Media.Imaging.FormatConvertedBitmap(bmp, System.Windows.Media.PixelFormats.Bgr24, null, 0)));
             using var ms = new MemoryStream(); enc.Save(ms);
-            var p = s.BuildParams("data:image/png;base64," + Convert.ToBase64String(ms.ToArray()), w, h, null, loras.ToDictionary(l => l.Id, l => l.Trigger));
+            var p = s.BuildParams("data:image/png;base64," + Convert.ToBase64String(ms.ToArray()), w, h, null);
             L($"Auftrag: {w}x{h}, Schlüssel: {string.Join(", ", p.Select(x => x.Key))}");
             p["seed"] = (long)Random.Shared.Next(1, int.MaxValue); long sent = p["seed"]!.GetValue<long>();
             var sw = System.Diagnostics.Stopwatch.StartNew(); int prog = 0;

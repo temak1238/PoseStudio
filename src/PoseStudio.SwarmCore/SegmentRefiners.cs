@@ -91,8 +91,7 @@ public static class SegmentRefiners
     private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>Prompt mit angehängten Refinern: „Haupt &lt;segment:ziel,kreativität,schwelle&gt; refiner-prompt …“.</summary>
-    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null, string? character = null,
-                                 bool legacyTrigger = true)
+    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, Func<SwarmLora, IEnumerable<string>>? triggers = null, string? character = null)
     {
         var sb = new StringBuilder(prompt.TrimEnd());
         foreach (var r in refiners ?? Enumerable.Empty<SegmentRefiner>())
@@ -107,8 +106,7 @@ public static class SegmentRefiners
             {
                 if (string.IsNullOrWhiteSpace(l.Name)) continue;
                 sb.Append(" <lora:").Append(l.Name.Trim()).Append(':').Append(l.Weight.ToString("0.###", CultureInfo.InvariantCulture)).Append('>');
-                if (triggers != null && l.UsesTrigger(legacyTrigger) && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !rp.Contains(t!, StringComparison.OrdinalIgnoreCase))
-                    rp = rp.TrimEnd().TrimEnd(',') + (rp == "" ? "" : ", ") + t;
+                if (triggers != null) rp = LoraTags.Append(rp, triggers(l));
             }
             if (rp != "") sb.Append(' ').Append(rp);
         }

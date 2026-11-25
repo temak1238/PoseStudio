@@ -101,20 +101,8 @@
 
                     <GroupBox Header="LoRAs">
                         <StackPanel>
-                            <ItemsControl x:Name="LoraSelected">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <DockPanel Margin="0,1">
-                                            <Button DockPanel.Dock="Right" Content="X" Width="22" FontWeight="Bold" Margin="4,0,0,0" Click="RemoveLora_Click" Tag="{Binding}" ToolTip="Entfernen" />
-                                            <TextBox DockPanel.Dock="Right" Width="44" Text="{Binding Weight, UpdateSourceTrigger=LostFocus, StringFormat=0.##}" ToolTip="Gewicht" />
-                                            <CheckBox DockPanel.Dock="Right" Content="Trigger" IsChecked="{Binding Trigger}" IsThreeState="False" VerticalAlignment="Center" Margin="6,0,2,0"
-                                                      ToolTip="Trigger-Wörter dieser LoRA automatisch in den Prompt" />
-                                            <Slider DockPanel.Dock="Right" Width="90" Minimum="-1" Maximum="2" SmallChange="0.05" LargeChange="0.1" Value="{Binding Weight}" Margin="4,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <StackPanel x:Name="LoraRows" />
+                            <TextBlock x:Name="LoraTriggerPreview" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,4" Foreground="{DynamicResource LinkText}" Visibility="Collapsed" />
                             <StackPanel Orientation="Horizontal">
                                 <ToggleButton x:Name="LoraPickToggle" Content="LoRA hinzufügen…" Click="LoraPick_Click" />
                                 <Button Content="Neu einlesen" Margin="6,0,0,0" Click="Rescan_Click" ToolTip="SwarmUI liest die Modell- und LoRA-Ordner neu ein (z. B. nach neu hinzugefügten Dateien), danach werden die Listen neu geladen." />

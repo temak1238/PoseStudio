@@ -192,6 +192,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sw.ShowSegmentsForShot();   // Refiner-Bereich mit Beispielzeilen sichtbar machen (nur im Speicher, wird nicht gespeichert)
         await Task.Delay(1500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-refiner.png"));
+        sw.ShowLorasForShot();   // LoRAs mit Tag-Auswahl (nur im Speicher)
+        await Task.Delay(1500);
+        SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-loras.png"));
     }
 
     internal static void SaveWindowShot(Window w, string path)
@@ -1652,7 +1655,7 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         foreach (var useInit in new[] { true, false })
         {
             var ts = new PoseStudio.Swarm.SwarmSettings { UseInitImage = useInit, UseControlNet = true, ControlModel = "anima_3dpose_6200" };
-            var tp = ts.BuildParams("data:init", 1024, 576, "data:cn", new Dictionary<string, string?>());
+            var tp = ts.BuildParams("data:init", 1024, 576, "data:cn");
             sb.AppendLine($"Init Image {(useInit ? "an" : "aus")}: initimage {tp.ContainsKey("initimage")}, creativity {tp.ContainsKey("initimagecreativity")}, ControlNet {tp.ContainsKey("controlnetimageinput")}, Preprocessor {tp["controlnetpreprocessor"]}");
         }
         {

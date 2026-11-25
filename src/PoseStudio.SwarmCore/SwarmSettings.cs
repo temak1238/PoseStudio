@@ -30,6 +30,27 @@ public sealed class SwarmSettings
 
     /// <summary>Alte Profile: den gemeinsamen Haken auf jede LoRA übertragen (auch Refiner-LoRAs und gespeicherte Profile);
     /// danach gilt AutoTrigger = an, d. h. neu hinzugefügte LoRAs bekommen ihre Trigger-Wörter, bis man den Haken abwählt.</summary>
+    /// <summary>Gewählte Trigger-Wörter je LoRA-Name (gilt überall, nicht Teil eines Profils).</summary>
+    public Dictionary<string, LoraTagChoice> LoraTagChoices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Auswahl für eine LoRA (Groß-/Kleinschreibung egal); create = anlegen, wenn noch keine da ist.</summary>
+    public LoraTagChoice? TagChoice(string lora, bool create = false)
+    {
+        if (LoraTagChoices.TryGetValue(lora, out var c)) return c;
+        var key = LoraTagChoices.Keys.FirstOrDefault(k => k.Equals(lora, StringComparison.OrdinalIgnoreCase));
+        if (key != null) return LoraTagChoices[key];
+        if (!create) return null;
+        return LoraTagChoices[lora] = new LoraTagChoice();
+    }
+
+    /// <summary>Was für diese LoRA an den Prompt angehängt wird (leer, wenn „Trigger“ aus oder nichts gewählt).</summary>
+    public List<string> TriggerTags(SwarmLora l) =>
+        l.UsesTrigger(AutoTrigger) ? TagChoice(l.Name)?.All() ?? new() : new();
+
+    /// <summary>Alle Trigger-Wörter der normalen LoRAs, die an den Haupt-Prompt gehen.</summary>
+    public List<string> MainTriggerTags() =>
+        Loras.SelectMany(TriggerTags).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     public void MigrateTriggers()
     {
         foreach (var l in Loras.Concat(Segments.SelectMany(r => r.Loras)).Concat(CustomSegments.SelectMany(r => r.Loras)))
@@ -208,6 +229,7 @@ public sealed class SwarmSettings
         c.Segments = Segments.Select(r => r.Clone()).ToList();
         c.CustomSegments = CustomSegments.Select(r => r.Clone()).ToList();
         c.Profiles = new();
+        c.LoraTagChoices = new(StringComparer.OrdinalIgnoreCase);   // gehört nicht zum Profil
         c.VaeByFamily = new(VaeByFamily);
         c.ControlModelByFamily = new(ControlModelByFamily);
         c.ImageControlModelByFamily = new(ImageControlModelByFamily);
@@ -217,10 +239,10 @@ public sealed class SwarmSettings
     /// <summary>Profil anwenden (Server-Adresse und Profilliste bleiben).</summary>
     public void ApplyProfile(SwarmSettings p)
     {
-        var url = Url; var profiles = Profiles; var place = WindowPlacement; var dex = AnimaDexUrl; var dexTags = AnimaDexWithTags; var custom = CustomSegments;
+        var url = Url; var profiles = Profiles; var place = WindowPlacement; var dex = AnimaDexUrl; var dexTags = AnimaDexWithTags; var custom = CustomSegments; var tagChoices = LoraTagChoices;
         foreach (var prop in typeof(SwarmSettings).GetProperties().Where(x => x.CanWrite))
             prop.SetValue(this, prop.GetValue(p.CloneProfile()));
-        Url = url; Profiles = profiles; WindowPlacement = place; AnimaDexUrl = dex; AnimaDexWithTags = dexTags; CustomSegments = custom;
+        Url = url; Profiles = profiles; WindowPlacement = place; AnimaDexUrl = dex; AnimaDexWithTags = dexTags; CustomSegments = custom; LoraTagChoices = tagChoices;
         TakeSegmentsFromPrompt();
     }
 
@@ -314,14 +336,11 @@ public sealed class SwarmSettings
     }
 
     /// <summary>Parameter für einen Generierungs-Auftrag.</summary>
-    public JsonObject BuildParams(string initDataUrl, int w, int h, string? controlDataUrl, IReadOnlyDictionary<string, string?> triggers)
+    public JsonObject BuildParams(string initDataUrl, int w, int h, string? controlDataUrl)
     {
         var p = Base?.DeepClone() as JsonObject ?? new JsonObject();
-        string prompt = Prompt;
-        foreach (var l in Loras)
-            if (l.UsesTrigger(AutoTrigger) && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
-                    prompt = prompt.TrimEnd().TrimEnd(',') + ", " + t;
-        p["prompt"] = SegmentRefiners.Compose(HeadAndPrompt(prompt), Segments, triggers, RefinerCharacter(), AutoTrigger);
+        string prompt = LoraTags.Append(Prompt, MainTriggerTags());
+        p["prompt"] = SegmentRefiners.Compose(HeadAndPrompt(prompt), Segments, TriggerTags, RefinerCharacter());
         p["negativeprompt"] = Negative;
         if (!string.IsNullOrWhiteSpace(Model)) p["model"] = Model;
         p["images"] = Math.Clamp(Count, 1, 16);

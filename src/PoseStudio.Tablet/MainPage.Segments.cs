@@ -166,13 +166,15 @@ public sealed partial class MainPage
         foreach (var l in r.Loras.ToList())
         {
             var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
-            var name = new Label { Text = "LoRA: " + (info?.Short ?? l.Name), TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation, VerticalOptions = LayoutOptions.Center };
+            var name = new VerticalStackLayout { VerticalOptions = LayoutOptions.Center, Spacing = 1, Children = {
+                new Label { Text = "LoRA: " + (info?.Short ?? l.Name), TextColor = Colors.White, FontSize = 13, LineBreakMode = LineBreakMode.TailTruncation },
+                TagSummary(l, ShowSegments) } };
             var val = new Label { Text = Ui.F(l.Weight), TextColor = Colors.White, WidthRequest = 40, VerticalOptions = LayoutOptions.Center };
             var slider = new Slider { Minimum = -1, Maximum = 2, Value = l.Weight, WidthRequest = 150, VerticalOptions = LayoutOptions.Center };
             slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); SaveSoon(); };
             var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
             del.Clicked += (_, _) => { r.Loras.Remove(l); ShowSegments(); };
-            var trig = TriggerToggle(l);
+            var trig = TriggerToggle(l, ShowSegments);
             var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
             g.Add(name, 0); g.Add(slider, 1); g.Add(val, 2); g.Add(trig, 3); g.Add(del, 4);
             box.Add(g);
