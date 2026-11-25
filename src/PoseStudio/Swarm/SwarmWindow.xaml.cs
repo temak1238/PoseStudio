@@ -225,13 +225,13 @@ public partial class SwarmWindow : Window
     private void ShowSettings()
     {
         _suppress = true;
+        _s.MigrateTriggers();   // alter gemeinsamer Trigger-Haken → je LoRA
         UrlBox.Text = _s.Url;
         PromptBox.Text = _s.Prompt;
         CharacterBox.Text = _s.Character;
         StyleBox.Text = _s.Style;
         BuildSegmentRows();
         NegativeBox.Text = _s.Negative;
-        AutoTriggerCheck.IsChecked = _s.AutoTrigger;
         PromptsOnlyCheck.IsChecked = _s.HistoryPromptsOnly;
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);
         InitCheck.IsChecked = _s.UseInitImage;
@@ -259,7 +259,7 @@ public partial class SwarmWindow : Window
         RefUpscaleMethodCombo.Text = _s.RefinerUpscaleMethod; RefMethodCombo.Text = _s.RefinerMethod;
         RefStepsBox.Text = _s.RefinerSteps.ToString(CultureInfo.InvariantCulture); RefCfgBox.Text = F(_s.RefinerCfg);
         _selectedLoras.Clear();
-        foreach (var l in _s.Loras) _selectedLoras.Add(new SwarmLora { Name = l.Name, Weight = l.Weight });
+        foreach (var l in _s.Loras) _selectedLoras.Add(l.Clone());
         _suppress = false;
         ShowModel();
         UpdateSizeText();
@@ -277,7 +277,6 @@ public partial class SwarmWindow : Window
         if (_s.CharacterTrigger != "" && !_s.Character.Contains(_s.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) _s.CharacterTrigger = "";   // von Hand ein anderer Charakter
         if (_s.TakeSegmentsFromPrompt(true)) { PromptBox.Text = _s.Prompt; BuildSegmentRows(); }   // eingefügte <segment:…> werden zu Refinern
         _s.Negative = NegativeBox.Text;
-        _s.AutoTrigger = AutoTriggerCheck.IsChecked == true;
         _s.HistoryPromptsOnly = PromptsOnlyCheck.IsChecked == true;
         _s.Look = LookCombo.SelectedIndex - 1;
         _s.UseInitImage = InitCheck.IsChecked == true;
@@ -304,7 +303,7 @@ public partial class SwarmWindow : Window
         _s.RefineKeepBackground = RefKeepBgCheck.IsChecked == true;
         _s.RefinerUpscaleMethod = RefUpscaleMethodCombo.Text.Trim(); _s.RefinerMethod = RefMethodCombo.Text.Trim();
         _s.RefinerSteps = Math.Max(0, (int)PD(RefStepsBox.Text, 0)); _s.RefinerCfg = Math.Max(0, PD(RefCfgBox.Text, 0));
-        _s.Loras = _selectedLoras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
+        _s.Loras = _selectedLoras.Select(l => l.Clone()).ToList();
     }
 
     private void UpdateSizeText()
@@ -459,7 +458,7 @@ public partial class SwarmWindow : Window
     {
         if (LoraList.SelectedItem is not ThumbItem t) return;
         if (!_selectedLoras.Any(l => l.Name.Equals(t.Key, StringComparison.OrdinalIgnoreCase)))
-            _selectedLoras.Add(new SwarmLora { Name = t.Key, Weight = 0.8 });
+            _selectedLoras.Add(new SwarmLora { Name = t.Key, Weight = 0.8, Trigger = true });
         LoraList.SelectedItem = null;
     }
 

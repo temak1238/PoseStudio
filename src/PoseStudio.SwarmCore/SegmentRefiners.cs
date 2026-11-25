@@ -26,7 +26,7 @@ public sealed class SegmentRefiner
     public SegmentRefiner Clone()
     {
         var c = (SegmentRefiner)MemberwiseClone();
-        c.Loras = Loras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
+        c.Loras = Loras.Select(l => l.Clone()).ToList();
         return c;
     }
     public bool IsYolo => SegmentRefiners.IsYolo(Target);
@@ -91,7 +91,8 @@ public static class SegmentRefiners
     private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>Prompt mit angehängten Refinern: „Haupt &lt;segment:ziel,kreativität,schwelle&gt; refiner-prompt …“.</summary>
-    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null, string? character = null)
+    public static string Compose(string prompt, IEnumerable<SegmentRefiner>? refiners, IReadOnlyDictionary<string, string?>? triggers = null, string? character = null,
+                                 bool legacyTrigger = true)
     {
         var sb = new StringBuilder(prompt.TrimEnd());
         foreach (var r in refiners ?? Enumerable.Empty<SegmentRefiner>())
@@ -106,7 +107,7 @@ public static class SegmentRefiners
             {
                 if (string.IsNullOrWhiteSpace(l.Name)) continue;
                 sb.Append(" <lora:").Append(l.Name.Trim()).Append(':').Append(l.Weight.ToString("0.###", CultureInfo.InvariantCulture)).Append('>');
-                if (triggers != null && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !rp.Contains(t!, StringComparison.OrdinalIgnoreCase))
+                if (triggers != null && l.UsesTrigger(legacyTrigger) && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !rp.Contains(t!, StringComparison.OrdinalIgnoreCase))
                     rp = rp.TrimEnd().TrimEnd(',') + (rp == "" ? "" : ", ") + t;
             }
             if (rp != "") sb.Append(' ').Append(rp);

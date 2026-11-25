@@ -172,8 +172,9 @@ public sealed partial class MainPage
             slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); SaveSoon(); };
             var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
             del.Clicked += (_, _) => { r.Loras.Remove(l); ShowSegments(); };
-            var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
-            g.Add(name, 0); g.Add(slider, 1); g.Add(val, 2); g.Add(del, 3);
+            var trig = TriggerToggle(l);
+            var g = new Grid { ColumnDefinitions = { new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
+            g.Add(name, 0); g.Add(slider, 1); g.Add(val, 2); g.Add(trig, 3); g.Add(del, 4);
             box.Add(g);
         }
         var add = new Button { Text = "+ LoRA nur für diesen Bereich", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, HorizontalOptions = LayoutOptions.Start, Padding = new Thickness(10, 0) };
@@ -198,7 +199,7 @@ public sealed partial class MainPage
             await TilePickerPage.ShowAsync(Navigation, new TilePickerPage("LoRAs für " + r.Name, tiles, t => ((SwarmModel)t.Tag).Folder, multi: true, onPick: t =>
             {
                 var m = (SwarmModel)t.Tag;
-                if (!r.Loras.Any(x => x.Name.Equals(m.Id, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = m.Id, Weight = 0.8 });
+                if (!r.Loras.Any(x => x.Name.Equals(m.Id, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = m.Id, Weight = 0.8, Trigger = true });
             }));
             ShowSegments();
         }

@@ -92,10 +92,13 @@ public partial class SwarmWindow
                 var name = new TextBlock { Text = info?.Short ?? l.Name, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 170, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = l.Name };
                 var w = new TextBox { Text = l.Weight.ToString("0.##", CultureInfo.InvariantCulture), Width = 38, Margin = new Thickness(4, 0, 0, 0), ToolTip = "Gewicht" };
                 w.TextChanged += (_, _) => l.Weight = PD(w.Text, l.Weight);
+                var tr = new CheckBox { Content = "Trigger", IsChecked = l.Trigger ?? true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 0, 0),
+                    ToolTip = "Trigger-Wörter dieser LoRA automatisch in den Bereichs-Prompt" + (string.IsNullOrWhiteSpace(info?.Trigger) ? "" : Environment.NewLine + info!.Trigger) };
+                tr.Checked += (_, _) => l.Trigger = true; tr.Unchecked += (_, _) => l.Trigger = false;
                 var x = new Button { Content = "✕", Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(3, 0, 0, 0) };
                 x.Click += (_, _) => { r.Loras.Remove(l); Fill(); };
                 var chip = new Border { Padding = new Thickness(5, 2, 3, 2), Margin = new Thickness(0, 0, 4, 3), CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1),
-                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, w, x } } };
+                    Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { name, w, tr, x } } };
                 chip.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
                 wrap.Children.Add(chip);
             }
@@ -107,7 +110,7 @@ public partial class SwarmWindow
             {
                 string n = (pick.SelectedItem as string ?? pick.Text).Trim();
                 if (n == "") { SegmentHint.Text = _loras.Count == 0 ? "Noch keine Verbindung zu SwarmUI – LoRA-Namen eintippen oder erst verbinden." : "Erst eine LoRA auswählen."; return; }
-                if (!r.Loras.Any(x => x.Name.Equals(n, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = n, Weight = 0.8 });
+                if (!r.Loras.Any(x => x.Name.Equals(n, StringComparison.OrdinalIgnoreCase))) r.Loras.Add(new SwarmLora { Name = n, Weight = 0.8, Trigger = true });
                 Fill();
             };
             wrap.Children.Add(pick); wrap.Children.Add(add);
@@ -239,6 +242,20 @@ public partial class SwarmWindow
             log.Add($"Refiner-LoRA: „{withLora}“ → zurück {l2[0].Loras.Count} LoRA {l2[0].Loras[0].Name}@{l2[0].Loras[0].Weight}, Prompt „{l2[0].Prompt}“");
             bool loraOk = withLora == "1girl <segment:yolo-face_yolov8m.pt,0.5,0.3> <lora:Detail/eyes_v2:0.7> detailed face, blush, sparkling eyes"
                           && l2[0].Loras[0].Name == "Detail/eyes_v2" && l2[0].Loras[0].Weight == 0.7 && l2[0].Prompt == "detailed face, blush, sparkling eyes" && m2 == "1girl";
+            {
+                // Trigger je LoRA: nur LoRAs mit Haken bekommen ihre Trigger-Wörter; alter gemeinsamer Haken wird übernommen
+                var tt = new SwarmSettings { Prompt = "1girl", AutoTrigger = false,
+                    Loras = { new SwarmLora { Name = "A" }, new SwarmLora { Name = "B", Trigger = true } } };
+                tt.Segments.Add(new SegmentRefiner { Target = "face", Loras = { new SwarmLora { Name = "C", Trigger = false } } });
+                tt.MigrateTriggers();
+                var trig = new Dictionary<string, string?> { ["A"] = "trig_a", ["B"] = "trig_b", ["C"] = "trig_c" };
+                string tp = tt.BuildParams("data:x", 512, 512, null, trig)["prompt"]!.ToString();
+                tt.Loras[0].Trigger = true; tt.Segments[0].Loras[0].Trigger = true;
+                string tp2 = tt.BuildParams("data:x", 512, 512, null, trig)["prompt"]!.ToString();
+                bool trOk = tt.AutoTrigger && !tp.Contains("trig_a") && tp.Contains("trig_b") && !tp.Contains("trig_c")
+                            && tp2.Contains("trig_a") && tp2.Contains("trig_c") && new SwarmLora().UsesTrigger(tt.AutoTrigger);
+                log.Add($"Trigger je LoRA: „{tp}“ / „{tp2}“{(trOk ? "" : " FEHLER")}");
+            }
             // Übernahme aus einem SwarmUI-Bild: LoRA mit Bereich (lorasectionconfinement ≠ -1) gehört zum Refiner, nicht zu den normalen LoRAs
             var imp = new SwarmSettings();
             imp.ImportFrom((System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(

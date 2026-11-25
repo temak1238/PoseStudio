@@ -7,6 +7,10 @@ public sealed class SwarmLora
 {
     public string Name { get; set; } = "";
     public double Weight { get; set; } = 0.8;
+    /// <summary>Trigger-Wörter dieser LoRA automatisch in den Prompt. null = alte Einstellung (gemeinsamer Haken AutoTrigger).</summary>
+    public bool? Trigger { get; set; }
+    public SwarmLora Clone() => new() { Name = Name, Weight = Weight, Trigger = Trigger };
+    public bool UsesTrigger(bool legacy) => Trigger ?? legacy;
 }
 
 /// <summary>Einstellungen des SwarmUI-Fensters (zugleich Inhalt eines Profils).</summary>
@@ -21,7 +25,18 @@ public sealed class SwarmSettings
     public JsonObject? Base { get; set; }
     public string Model { get; set; } = "";
     public List<SwarmLora> Loras { get; set; } = new();
+    /// <summary>Früher gemeinsamer Haken für alle LoRAs; heute nur noch Vorgabe für LoRAs ohne eigene Einstellung (alte Profile).</summary>
     public bool AutoTrigger { get; set; } = true;
+
+    /// <summary>Alte Profile: den gemeinsamen Haken auf jede LoRA übertragen (auch Refiner-LoRAs und gespeicherte Profile);
+    /// danach gilt AutoTrigger = an, d. h. neu hinzugefügte LoRAs bekommen ihre Trigger-Wörter, bis man den Haken abwählt.</summary>
+    public void MigrateTriggers()
+    {
+        foreach (var l in Loras.Concat(Segments.SelectMany(r => r.Loras)).Concat(CustomSegments.SelectMany(r => r.Loras)))
+            l.Trigger ??= AutoTrigger;
+        AutoTrigger = true;
+        foreach (var p in Profiles.Values) p.MigrateTriggers();
+    }
     /// <summary>Historie: nur Prompt und Negativ-Prompt übernehmen.</summary>
     public bool HistoryPromptsOnly { get; set; }
     public string Prompt { get; set; } = "";
@@ -189,7 +204,7 @@ public sealed class SwarmSettings
     {
         var c = (SwarmSettings)MemberwiseClone();
         c.Base = Base?.DeepClone() as JsonObject;
-        c.Loras = Loras.Select(l => new SwarmLora { Name = l.Name, Weight = l.Weight }).ToList();
+        c.Loras = Loras.Select(l => l.Clone()).ToList();
         c.Segments = Segments.Select(r => r.Clone()).ToList();
         c.CustomSegments = CustomSegments.Select(r => r.Clone()).ToList();
         c.Profiles = new();
@@ -303,11 +318,10 @@ public sealed class SwarmSettings
     {
         var p = Base?.DeepClone() as JsonObject ?? new JsonObject();
         string prompt = Prompt;
-        if (AutoTrigger)
-            foreach (var l in Loras)
-                if (triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
+        foreach (var l in Loras)
+            if (l.UsesTrigger(AutoTrigger) && triggers.TryGetValue(l.Name, out var t) && !string.IsNullOrWhiteSpace(t) && !prompt.Contains(t!, StringComparison.OrdinalIgnoreCase))
                     prompt = prompt.TrimEnd().TrimEnd(',') + ", " + t;
-        p["prompt"] = SegmentRefiners.Compose(HeadAndPrompt(prompt), Segments, AutoTrigger ? triggers : null, RefinerCharacter());
+        p["prompt"] = SegmentRefiners.Compose(HeadAndPrompt(prompt), Segments, triggers, RefinerCharacter(), AutoTrigger);
         p["negativeprompt"] = Negative;
         if (!string.IsNullOrWhiteSpace(Model)) p["model"] = Model;
         p["images"] = Math.Clamp(Count, 1, 16);

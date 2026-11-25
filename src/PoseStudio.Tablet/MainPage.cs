@@ -25,7 +25,6 @@ public sealed partial class MainPage : ContentPage
     private readonly Image _modelImg = new() { WidthRequest = 72, HeightRequest = 72, Aspect = Aspect.AspectFill, BackgroundColor = Ui.PanelLight };
     private readonly Label _modelName = new() { TextColor = Colors.White, VerticalOptions = LayoutOptions.Center, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 };
     private readonly VerticalStackLayout _loraRows = new() { Spacing = 4 };
-    private readonly Switch _autoTrigger = new();
     private readonly Entry _character = new() { Placeholder = "Charakter (z. B. aus AnimaDex)" }, _style = new() { Placeholder = "Stil / Künstler (@name)" };
     private readonly Editor _prompt = new() { HeightRequest = 180, Placeholder = "Prompt (Szene, Pose, Kleidung …)" };
     private readonly Editor _negative = new() { HeightRequest = 90, Placeholder = "Negativ-Prompt" };
@@ -223,7 +222,7 @@ public sealed partial class MainPage : ContentPage
                     Row("SwarmUI", _url, connect), _server,
                     Row("Profil", _profile), Cols(saveProfile, delProfile, Btn("Aus Historie …", PickHistoryAsync)), _baseText),
                 Section("Modell", modelTile, Btn("Modell wählen …", PickModelAsync)),
-                Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync), Row("Trigger-Wörter automatisch", _autoTrigger)),
+                Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync)),
                 Section("Prompt",
                     Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { _character.Text = ""; S.CharacterTrigger = ""; return Task.CompletedTask; }))),
                     Row("Stil / Künstler", _style, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, true)), Btn("✕", () => { _style.Text = ""; return Task.CompletedTask; }))),
@@ -333,13 +332,13 @@ public sealed partial class MainPage : ContentPage
     private void ShowSettings()
     {
         _suppress = true;
+        S.MigrateTriggers();   // alter gemeinsamer Trigger-Schalter → je LoRA
         _url.Text = S.Url;
         _prompt.Text = S.Prompt;
         _character.Text = S.Character;
         _style.Text = S.Style;
         _negative.Text = S.Negative;
         ShowSegments();
-        _autoTrigger.IsToggled = S.AutoTrigger;
         _source.SelectedIndex = Math.Clamp(_t.Source, 0, 2);
         _look.SelectedIndex = Math.Clamp(S.Look < 0 ? 1 : S.Look, 0, TabletTemplate.LookNames.Length - 1);
         _useInit.IsToggled = S.UseInitImage;
@@ -382,7 +381,6 @@ public sealed partial class MainPage : ContentPage
         if (S.CharacterTrigger != "" && !S.Character.Contains(S.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) S.CharacterTrigger = "";   // von Hand ein anderer Charakter
         if (S.TakeSegmentsFromPrompt(true)) { _prompt.Text = S.Prompt; ShowSegments(); }   // eingefügte <segment:…> werden zu Refinern
         S.Negative = _negative.Text ?? "";
-        S.AutoTrigger = _autoTrigger.IsToggled;
         _t.Source = Math.Max(0, _source.SelectedIndex);
         S.Look = Math.Max(0, _look.SelectedIndex);
         S.UseInitImage = _useInit.IsToggled;
@@ -508,6 +506,20 @@ public sealed partial class MainPage : ContentPage
     private SwarmModel? FindModel(string id) => _models.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase) || x.Name.Equals(id, StringComparison.OrdinalIgnoreCase)
                                                                              || Path.GetFileNameWithoutExtension(x.Name).Equals(id, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Schalter „Trigger“ je LoRA: deren Trigger-Wörter automatisch in den Prompt.</summary>
+    private View TriggerToggle(SwarmLora l)
+    {
+        var info = _loras.FirstOrDefault(x => x.Id.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
+        bool has = info == null || !string.IsNullOrWhiteSpace(info.Trigger);   // ohne Verbindung unbekannt
+        var sw = new Switch { IsToggled = l.Trigger ?? true, VerticalOptions = LayoutOptions.Center };
+        sw.Toggled += (_, e) => { l.Trigger = e.Value; SaveSoon(); };
+        return new VerticalStackLayout
+        {
+            VerticalOptions = LayoutOptions.Center, Spacing = 0,
+            Children = { new Label { Text = has ? "Trigger" : "(kein Trigger)", FontSize = 10, TextColor = Ui.Muted, HorizontalOptions = LayoutOptions.Center }, sw }
+        };
+    }
+
     private void ShowLoras()
     {
         _loraRows.Children.Clear();
@@ -522,8 +534,8 @@ public sealed partial class MainPage : ContentPage
             slider.ValueChanged += (_, e) => { l.Weight = Math.Round(e.NewValue * 20) / 20; val.Text = Ui.F(l.Weight); };
             var del = new Button { Text = "✕", BackgroundColor = Ui.PanelLight, TextColor = Colors.White, WidthRequest = 44, Padding = 0 };
             del.Clicked += (_, _) => { S.Loras.Remove(l); ShowLoras(); };
-            var g = new Grid { ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
-            g.Add(img, 0); g.Add(name, 1); g.Add(slider, 2); g.Add(val, 3); g.Add(del, 4);
+            var g = new Grid { ColumnDefinitions = { new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto), new(GridLength.Auto) }, ColumnSpacing = 6 };
+            g.Add(img, 0); g.Add(name, 1); g.Add(slider, 2); g.Add(val, 3); g.Add(TriggerToggle(l), 4); g.Add(del, 5);
             _loraRows.Children.Add(g);
         }
     }
@@ -628,7 +640,7 @@ public sealed partial class MainPage : ContentPage
         await TilePickerPage.ShowAsync(Navigation, new TilePickerPage("LoRAs", tiles, t => ((SwarmModel)t.Tag).Folder, multi: true, onPick: t =>
         {
             var l = (SwarmModel)t.Tag;
-            if (!S.Loras.Any(x => x.Name.Equals(l.Id, StringComparison.OrdinalIgnoreCase))) S.Loras.Add(new SwarmLora { Name = l.Id, Weight = 0.8 });
+            if (!S.Loras.Any(x => x.Name.Equals(l.Id, StringComparison.OrdinalIgnoreCase))) S.Loras.Add(new SwarmLora { Name = l.Id, Weight = 0.8, Trigger = true });
         }));
         ShowLoras();
     }
