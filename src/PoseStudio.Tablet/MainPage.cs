@@ -102,7 +102,12 @@ public sealed partial class MainPage : ContentPage
         _settingsView = new RefreshView { RefreshColor = Ui.Accent, Content = new ScrollView { Content = BuildSettings(), Padding = new Thickness(10, 10, 6, 10) } };
         _settingsView.Refreshing += async (_, _) => { try { await RefreshServerAsync(); } finally { _settingsView.IsRefreshing = false; } };
         _resultsView = BuildResults();
-        Content = _root;
+        // Tag-Vorschläge ganz unten: die Seite weicht der Tastatur aus (SoftInput), so sitzt die Zeile direkt über der Tastatur
+        SafeAreaEdges = SafeAreaEdges.All;
+        _suggest.Attach(_prompt).Attach(_negative);
+        var page = new Grid { RowDefinitions = { new(GridLength.Star), new(GridLength.Auto) } };
+        page.Add(_root, 0, 0); page.Add(_suggest, 0, 1);
+        Content = page;
         ShowSettings();
         RefreshProfiles();
         LoadResults();
@@ -227,7 +232,7 @@ public sealed partial class MainPage : ContentPage
                     Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { S.Character = ""; S.CharacterTrigger = ""; S.CharacterTags = new(); _character.Text = ""; ShowCharacterChips(); return Task.CompletedTask; }))),
                     _charChips,
                     Row("Stil / Künstler", _style, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, true)), Btn("✕", () => { _style.Text = ""; return Task.CompletedTask; }))),
-                    _prompt, PromptSuggest, _negative, NegativeSuggest, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync), TagSuggestRow()),
+                    _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync), TagSuggestRow()),
                 BuildSegmentSection(),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
                 Section("Generierung",

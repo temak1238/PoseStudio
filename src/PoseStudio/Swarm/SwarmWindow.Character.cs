@@ -8,7 +8,7 @@ namespace PoseStudio.Swarm;
 /// <summary>Charakter-Chips unter dem Charakterfeld: Name und Serie fest, Aussehen-Tags aus AnimaDex an- und abwählbar.</summary>
 public partial class SwarmWindow
 {
-    private bool _charChipsBusy;
+    private bool _charChipsBusy, _charOpen;
     private TagSuggestBar? _promptSuggest, _negativeSuggest;
 
     /// <summary>Tag-Vorschläge unter Prompt und Negativ-Prompt einrichten (einmal).</summary>
@@ -34,6 +34,16 @@ public partial class SwarmWindow
         bool show = _s.CharacterTags.Count > 0 || _s.CharacterTrigger != "";
         p.Visibility = show && chips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (!show) return;
+        // eingeklappt nur eine Zeile (wie bei den LoRAs), Klick klappt die Chips auf
+        var sum = new TextBlock { Text = CharacterChips.Summary(_s.Character, _s.CharacterTrigger, _s.CharacterTags) + (_charOpen ? "  ▲" : "  ▼"),
+                                  FontSize = 11, TextWrapping = TextWrapping.Wrap, Cursor = System.Windows.Input.Cursors.Hand, Margin = new Thickness(0, 0, 0, 3),
+                                  ToolTip = _charOpen ? "Zuklappen" : "Klicken: Aussehen-Tags auswählen" };
+        sum.SetResourceReference(TextBlock.ForegroundProperty, chips.Any(c => c.On && !c.Fixed) ? "LinkText" : "MutedText");
+        sum.MouseLeftButtonUp += (_, _) => { _charOpen = !_charOpen; BuildCharacterChips(); };
+        p.Children.Add(sum);
+        if (!_charOpen) return;
+        var wrap = new WrapPanel();
+        p.Children.Add(wrap);
         foreach (var (tag, on, fix) in chips)
         {
             var chip = new ToggleButton { Content = tag, IsChecked = on, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11 };
@@ -56,20 +66,20 @@ public partial class SwarmWindow
                     BuildCharacterChips();
                 };
             }
-            p.Children.Add(chip);
+            wrap.Children.Add(chip);
         }
         int off = chips.Count(c => !c.On && !c.Fixed);
         if (off > 0 && chips.Any(c => c.On && !c.Fixed))
         {
             var none = new Button { Content = "Nur Name", Margin = new Thickness(6, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11, ToolTip = "Alle Aussehen-Tags weglassen" };
             none.Click += (_, _) => SetAllCharacterTags(false);
-            p.Children.Add(none);
+            wrap.Children.Add(none);
         }
         if (off > 0)
         {
             var all = new Button { Content = "Alle", Margin = new Thickness(chips.Any(c => c.On && !c.Fixed) ? 0 : 6, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11, ToolTip = "Alle Aussehen-Tags übernehmen" };
             all.Click += (_, _) => SetAllCharacterTags(true);
-            p.Children.Add(all);
+            wrap.Children.Add(all);
         }
     }
 
@@ -116,6 +126,7 @@ public partial class SwarmWindow
         _s.CharacterTags = new() { "white hair", "long hair", "twintails", "green eyes", "pointy ears", "elf", "earrings", "white capelet", "jewelry", "thick eyebrows" };
         _s.Character = "frieren, sousou no frieren, white hair, twintails, green eyes, pointy ears";
         CharacterBox.Text = _s.Character;
+        _charOpen = true;
         BuildCharacterChips();
         CharacterChipsPanel.BringIntoView();
     }

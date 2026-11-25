@@ -86,13 +86,13 @@ public partial class SwarmWindow
         var groups = new List<(string Title, List<string> Tags)> { ("", allTags) };
         if (db != null)
         {
-            var (g, junk) = db.Group(allTags);
+            var (g, junk) = db.Group(allTags, descs.Count);
             var keep = junk.Where(j => choice.Tags.Contains(j, StringComparer.OrdinalIgnoreCase)).ToList();
             junk = junk.Except(keep, StringComparer.OrdinalIgnoreCase).ToList();
             if (keep.Count > 0) g.Insert(0, ("Gewählt", keep));
             groups = g;
             allTags = groups.SelectMany(x => x.Tags).ToList();
-            if (junk.Count > 0) descs = descs.Append("Weitere Wörter ohne Danbooru-Tag: " + string.Join(" · ", junk)).ToList();
+            if (junk.Count > 0) descs = descs.Append("Reste ohne Buchstaben: " + string.Join(" · ", junk)).ToList();
         }
 
         var panel = new StackPanel { Margin = new Thickness(8, 4, 0, 6) };

@@ -31,13 +31,13 @@ public sealed class LoraTagsPage : ContentPage
         _groups = new() { ("", _tags) };
         if (_db != null)
         {
-            var (grp, junk) = _db.Group(_tags);
+            var (grp, junk) = _db.Group(_tags, descs.Count);
             var keep = junk.Where(j => _choice.Tags.Contains(j, StringComparer.OrdinalIgnoreCase)).ToList();
             junk = junk.Except(keep, StringComparer.OrdinalIgnoreCase).ToList();
             if (keep.Count > 0) grp.Insert(0, ("Gewählt", keep));
             _groups = grp;
             _tags = _groups.SelectMany(x => x.Tags).ToList();
-            if (junk.Count > 0) descs = descs.Append("Weitere Wörter ohne Danbooru-Tag: " + string.Join(" · ", junk)).ToList();
+            if (junk.Count > 0) descs = descs.Append("Reste ohne Buchstaben: " + string.Join(" · ", junk)).ToList();
         }
         _showAll = _tags.Count <= ChipsFirst + 10;
         _own.Text = _choice.Own;

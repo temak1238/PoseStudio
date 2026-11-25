@@ -187,21 +187,22 @@ public sealed class BooruTags
     };
 
     /// <summary>LoRA-Tags ordnen: eigene Wörter der LoRA (unbekannt – meist die eigentlichen Trigger) zuerst, dann nach Danbooru-Kategorie.
-    /// Unbekannte Satzreste („while the other“, „(s)“) landen getrennt in Junk. Bei langen Listen (Bildbeschreibungen als Trigger)
-    /// gelten nur unbekannte Wörter ganz vorne als eigene Wörter der LoRA – der Rest sind Bruchstücke der Beschreibungen.</summary>
-    public (List<(string Title, List<string> Tags)> Groups, List<string> Junk) Group(IEnumerable<string> tags)
+    /// Besteht die Trigger-Angabe auch aus Bildbeschreibungen (descriptions ab 5), kommen unbekannte Satzstücke („while the other“,
+    /// ab 5 Wörtern oder mit Füllwörtern) als eigene Gruppe ans Ende – wählbar bleiben sie, denn auch „belle in blue dress“ kann ein
+    /// Outfit-Trigger sein. Nur Stücke ohne Buchstaben („2)“, „= =“) landen in Junk.</summary>
+    public (List<(string Title, List<string> Tags)> Groups, List<string> Junk) Group(IEnumerable<string> tags, int descriptions = 0)
     {
-        var own = new List<string>(); var junk = new List<string>();
+        var own = new List<string>(); var frag = new List<string>(); var junk = new List<string>();
         var byCat = new Dictionary<int, List<string>>();
-        var list = tags.ToList();
-        bool captions = list.Count >= 30;
-        for (int i = 0; i < list.Count; i++)
+        bool captions = descriptions >= 5;
+        foreach (var t in tags)
         {
-            string t = list[i];
-            var b = t.Count(char.IsLetter) < 2 ? null : Find(t);   // „s“, „x“: Reste, auch wenn es den Tag gibt
+            var b = Find(t);
             if (b == null)
             {
-                if (IsJunk(t) || (captions && i >= 3)) junk.Add(t); else own.Add(t);
+                if (!t.Any(char.IsLetter)) junk.Add(t);
+                else if (captions && IsFragment(t)) frag.Add(t);
+                else own.Add(t);
                 continue;
             }
             int cat = b.Category is BooruTag.Character or BooruTag.Copyright or BooruTag.Meta ? b.Category : BooruTag.General;
@@ -212,14 +213,14 @@ public sealed class BooruTags
         if (own.Count > 0) groups.Add(("Eigene Wörter der LoRA", own));
         foreach (var (cat, title) in new[] { (BooruTag.Character, "Charakter"), (BooruTag.Copyright, "Serie"), (BooruTag.General, "Danbooru-Tags"), (BooruTag.Meta, "Meta") })
             if (byCat.TryGetValue(cat, out var l)) groups.Add((title, l));
+        if (frag.Count > 0) groups.Add(("Satzstücke aus den Bildbeschreibungen", frag));
         return (groups, junk);
     }
 
-    private static bool IsJunk(string t)
+    private static bool IsFragment(string t)
     {
-        if (t.Count(char.IsLetter) < 2) return true;
         var w = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return w.Length > 1 && (StopWords.Contains(w[0]) || StopWords.Contains(w[^1]));
+        return w.Length >= 5 || (w.Length > 1 && w.Any(StopWords.Contains));
     }
 
     /// <summary>Kurzinfo für einen Tag (Tooltip): „Allgemein · 1,2 Mio Bilder“ oder null.</summary>

@@ -127,7 +127,7 @@
                                 <TextBox x:Name="CharacterBox" TextWrapping="Wrap" VerticalContentAlignment="Center" TextChanged="CharacterBox_TextChanged" LostFocus="CharacterBox_LostFocus"
                                          ToolTip="Steht beim Senden vor dem Prompt. Refiner mit Haken „Charakter“ bekommen Name, Serie und die Kopf-Tags (Haare, Augen …)." />
                             </DockPanel>
-                            <WrapPanel x:Name="CharacterChipsPanel" Margin="62,0,0,4" Visibility="Collapsed" />
+                            <StackPanel x:Name="CharacterChipsPanel" Margin="62,0,0,4" Visibility="Collapsed" />
                             <DockPanel Margin="0,0,0,3">
                                 <Button DockPanel.Dock="Right" Content="✕" Margin="4,0,0,0" Padding="6,0" Click="StyleClear_Click" ToolTip="Stil leeren" />
                                 <Button DockPanel.Dock="Right" Content="Künstler / Stil …" Width="104" Margin="4,0,0,0" Click="AnimaDexArtists_Click" ToolTip="Künstler-Tag („@name“) aus AnimaDex suchen – ersetzt den Stil" />

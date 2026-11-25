@@ -114,6 +114,33 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length >= 3 && e.Args[0] == "--lora-tags")   // Bericht: wie die Tags jeder LoRA gruppiert werden (nur lesen)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Dispatcher.InvokeAsync(async () =>
+            {
+                var sb = new System.Text.StringBuilder();
+                try
+                {
+                    using var c = new Swarm.SwarmClient(e.Args[1]);
+                    await c.ConnectAsync();
+                    var db = Swarm.BooruTags.Default!;
+                    foreach (var m in (await c.ListModelsAsync("LoRA")).OrderBy(m => m.Name))
+                    {
+                        var (tags, descs) = Swarm.LoraTags.Parse(m.Trigger);
+                        var (g, junk) = db.Group(tags, descs.Count);
+                        sb.AppendLine($"## {m.Name} ({tags.Count} Tags, {descs.Count} Beschr.)");
+                        foreach (var (t, l) in g) sb.AppendLine($"  {t}: {string.Join(" | ", l.Take(12))}{(l.Count > 12 ? $" … (+{l.Count - 12})" : "")}");
+                        if (junk.Count > 0) sb.AppendLine($"  RESTE: {string.Join(" | ", junk.Take(15))}{(junk.Count > 15 ? $" … (+{junk.Count - 15})" : "")}");
+                    }
+                }
+                catch (Exception ex) { sb.AppendLine("FEHLER " + ex); }
+                File.WriteAllText(e.Args[2], sb.ToString());
+                Shutdown();
+            });
+            return;
+        }
+
         if (e.Args.Length >= 3 && e.Args[0] == "--swarm-test")
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

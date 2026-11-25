@@ -299,13 +299,16 @@ public partial class SwarmWindow
                     var a3 = db.SuggestAt("1girl <lora:blo", 15);
                     var a4 = db.SuggestAt("1girl, blonde ha", 16);
                     var a5 = db.SuggestAt("1girl, blo, smile", 10);
-                    var (gr, junk) = db.Group(new[] { "violet cinematography", "1girl", "while the other", "(s)", "frieren", "sousou no frieren" });
+                    var gin = new[] { "violet cinematography", "1girl", "while the other", "2)", "frieren", "sousou no frieren", "belle in blue dress", "frierencloak" };
+                    var (gr, junk) = db.Group(gin, 10);    // Trigger-Angabe mit Bildbeschreibungen: Satzstücke raus
+                    var (gr0, junk0) = db.Group(gin, 0);   // ohne Beschreibungen: nur „2)“ raus, Outfit-Trigger bleiben
                     string grs = string.Join(" / ", gr.Select(g => g.Title + ": " + string.Join(", ", g.Tags)));
                     bool bok = db.All.Count > 50000 && sg.Any(x => x.Tag.Name == "blonde hair") && db.Find("blond")?.Name == "blonde hair"
                               && t1 == "1girl, " + x1Name(a1) + ", " && c1 == t1.Length
                               && a2 is { Whole: false } && a3 == null && a4 is { } x4 && x4.Items[0].Tag.Name == "blonde hair" && x4.Start == 7
                               && a5 is { } x5 && BooruTags.Apply("1girl, blo, smile", x5.Start, 10, x5.Items[0].Tag, x5.Whole).Text == "1girl, " + x5.Items[0].Tag.Name + ", smile"
-                              && junk.Count == 2 && gr.Count == 4 && gr[0].Tags.Single() == "violet cinematography" && gr[1].Title == "Charakter"
+                              && junk.Single() == "2)" && gr.Count == 5 && string.Join("|", gr[0].Tags) == "violet cinematography|frierencloak" && gr[1].Title == "Charakter"
+                              && string.Join("|", gr[4].Tags) == "while the other|belle in blue dress" && junk0.Single() == "2)" && gr0[0].Tags.Count == 4
                               && db.Find("ram (re:zero)")?.Category == BooruTag.Character && db.Find(@"ram \(re:zero\)") != null;
                     log.Add($"Booru-Tags: {db.All.Count} geladen in {loadMs} ms, „blo“ → {string.Join(", ", sg.Take(4).Select(x => x.Tag.Name))} ({sugMs} ms), „{t1}“, Gruppen {grs}, Reste {string.Join("|", junk)}{(bok ? "" : " FEHLER")}");
                 }
