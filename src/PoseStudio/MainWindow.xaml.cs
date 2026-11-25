@@ -192,6 +192,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sw.ShowSegmentsForShot();   // Refiner-Bereich mit Beispielzeilen sichtbar machen (nur im Speicher, wird nicht gespeichert)
         await Task.Delay(1500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-refiner.png"));
+        sw.ShowCharacterForShot();   // Charakter-Chips (nur im Speicher)
+        await Task.Delay(1500);
+        SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-character.png"));
         sw.ShowLorasForShot();   // LoRAs mit Tag-Auswahl (nur im Speicher)
         await Task.Delay(1500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-loras.png"));

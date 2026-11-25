@@ -267,6 +267,21 @@ public partial class SwarmWindow
                 log.Add($"Tags zerlegt: {string.Join(" | ", pt)} / Beschreibung: {pd.FirstOrDefault()}");
                 log.Add($"Trigger je LoRA: „{tp}“ / „{tp2}“{(trOk ? "" : " FEHLER")}");
             }
+            {   // Charakter-Chips: Name/Serie fest, Tags an/ab, Reihenfolge bleibt, abgewählte bleiben im Angebot, anderer Charakter vergisst das Angebot
+                var cc = new SwarmSettings { CharacterTrigger = "frieren, sousou no frieren", CharacterTags = new() { "white hair", "twintails", "green eyes", "earrings" },
+                                             Character = "frieren, sousou no frieren, white hair, twintails, green eyes, earrings" };
+                cc.ToggleCharacterTag("twintails"); cc.ToggleCharacterTag("earrings");
+                string c1 = cc.Character;
+                cc.ToggleCharacterTag("twintails");
+                string c2 = cc.Character;
+                var chips = CharacterChips.List(cc.Character, cc.CharacterTrigger, cc.CharacterTags);
+                var prof = cc.CloneProfile(); prof.CharacterTags.Add("x");
+                cc.Character = "rem, re:zero"; cc.CharacterEdited();
+                bool ccOk = c1 == "frieren, sousou no frieren, white hair, green eyes" && c2 == "frieren, sousou no frieren, white hair, twintails, green eyes"
+                            && chips.Count == 6 && chips[0].Fixed && chips[1].Fixed && !chips[5].On && chips[5].Tag == "earrings"
+                            && cc.CharacterTrigger == "" && cc.CharacterTags.Count == 0 && prof.CharacterTags.Count == 5;
+                log.Add($"Charakter-Chips: „{c1}“ → „{c2}“{(ccOk ? "" : " FEHLER")}");
+            }
             // Übernahme aus einem SwarmUI-Bild: LoRA mit Bereich (lorasectionconfinement ≠ -1) gehört zum Refiner, nicht zu den normalen LoRAs
             var imp = new SwarmSettings();
             imp.ImportFrom((System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(

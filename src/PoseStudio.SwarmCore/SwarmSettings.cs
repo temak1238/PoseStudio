@@ -66,6 +66,18 @@ public sealed class SwarmSettings
     public string Character { get; set; } = "";
     /// <summary>Name + Serie des Charakters (AnimaDex-Trigger) – geht immer an Refiner mit „Charakter“, auch ohne Aussehen-Tags.</summary>
     public string CharacterTrigger { get; set; } = "";
+    /// <summary>Aussehen-Tags, die AnimaDex zum Charakter angeboten hat (als Chips an- und abwählbar, auch die nicht übernommenen).</summary>
+    public List<string> CharacterTags { get; set; } = new();
+
+    /// <summary>Charakter von Hand geändert: anderer Charakter → Trigger und Tag-Angebot vergessen.</summary>
+    public void CharacterEdited()
+    {
+        if (CharacterTrigger != "" && !Character.Contains(CharacterTrigger, StringComparison.OrdinalIgnoreCase)) CharacterTrigger = "";
+        if (CharacterTrigger == "" && !CharacterTags.Any(t => LoraTags.Contains(Character, t))) CharacterTags = new();
+    }
+
+    /// <summary>Charakter-Tag an- oder abwählen (ändert den Charaktertext).</summary>
+    public void ToggleCharacterTag(string tag) => Character = CharacterChips.Toggle(Character, CharacterTrigger, CharacterTags, tag);
     /// <summary>Künstler/Stil (z. B. „@künstler“); steht beim Senden nach dem Charakter, vor dem Prompt.</summary>
     public string Style { get; set; } = "";
 
@@ -106,7 +118,7 @@ public sealed class SwarmSettings
     /// (sie stecken dann im Prompt). In Refiner-Prompts den mitgeschickten Charakter wieder als Haken „Charakter“ erkennen.</summary>
     public void TakeHeadFromPrompt()
     {
-        if (StripHead(Prompt, CleanPart(Character), out var r1)) Prompt = r1; else { Character = ""; CharacterTrigger = ""; }
+        if (StripHead(Prompt, CleanPart(Character), out var r1)) Prompt = r1; else { Character = ""; CharacterTrigger = ""; CharacterTags = new(); }
         if (StripHead(Prompt, CleanPart(Style), out var r2)) Prompt = r2; else Style = "";
         string rc = RefinerCharacter();
         foreach (var seg in Segments)
@@ -229,6 +241,7 @@ public sealed class SwarmSettings
         c.Segments = Segments.Select(r => r.Clone()).ToList();
         c.CustomSegments = CustomSegments.Select(r => r.Clone()).ToList();
         c.Profiles = new();
+        c.CharacterTags = new(CharacterTags);
         c.LoraTagChoices = new(StringComparer.OrdinalIgnoreCase);   // gehört nicht zum Profil
         c.VaeByFamily = new(VaeByFamily);
         c.ControlModelByFamily = new(ControlModelByFamily);

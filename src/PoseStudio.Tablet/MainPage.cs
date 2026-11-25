@@ -224,7 +224,8 @@ public sealed partial class MainPage : ContentPage
                 Section("Modell", modelTile, Btn("Modell wählen …", PickModelAsync)),
                 Section("LoRAs", _loraRows, Btn("LoRA hinzufügen …", PickLorasAsync)),
                 Section("Prompt",
-                    Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { _character.Text = ""; S.CharacterTrigger = ""; return Task.CompletedTask; }))),
+                    Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { S.Character = ""; S.CharacterTrigger = ""; S.CharacterTags = new(); _character.Text = ""; ShowCharacterChips(); return Task.CompletedTask; }))),
+                    _charChips,
                     Row("Stil / Künstler", _style, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, true)), Btn("✕", () => { _style.Text = ""; return Task.CompletedTask; }))),
                     _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
                 BuildSegmentSection(),
@@ -336,6 +337,7 @@ public sealed partial class MainPage : ContentPage
         _url.Text = S.Url;
         _prompt.Text = S.Prompt;
         _character.Text = S.Character;
+        ShowCharacterChips();
         _style.Text = S.Style;
         _negative.Text = S.Negative;
         ShowSegments();
@@ -378,7 +380,7 @@ public sealed partial class MainPage : ContentPage
         S.Prompt = _prompt.Text ?? "";
         S.Character = _character.Text ?? "";
         S.Style = _style.Text ?? "";
-        if (S.CharacterTrigger != "" && !S.Character.Contains(S.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) S.CharacterTrigger = "";   // von Hand ein anderer Charakter
+        S.CharacterEdited();   // von Hand ein anderer Charakter?
         if (S.TakeSegmentsFromPrompt(true)) { _prompt.Text = S.Prompt; ShowSegments(); }   // eingefügte <segment:…> werden zu Refinern
         S.Negative = _negative.Text ?? "";
         _t.Source = Math.Max(0, _source.SelectedIndex);
@@ -1320,7 +1322,7 @@ public sealed partial class MainPage : ContentPage
     private void ApplyAnimaDex(AnimaDexEntry entry, string text)
     {
         if (entry.IsArtist) { _style.Text = text; S.Style = text; }
-        else { _character.Text = text; S.Character = text; S.CharacterTrigger = entry.PromptText(false); }
+        else { S.CharacterTags = entry.Tags.Select(AnimaDexClient.EscapeParens).ToList(); S.CharacterTrigger = entry.PromptText(false); S.Character = text; _character.Text = text; ShowCharacterChips(); }
         _t.Save();
     }
 

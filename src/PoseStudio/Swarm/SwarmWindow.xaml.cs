@@ -146,10 +146,10 @@ public partial class SwarmWindow : Window
     private void ApplyAnimaDex(AnimaDexEntry entry, string text)
     {
         if (entry.IsArtist) { StyleBox.Text = text; _s.Style = text; }
-        else { CharacterBox.Text = text; _s.Character = text; _s.CharacterTrigger = entry.PromptText(false); }
+        else { _s.CharacterTags = entry.Tags.Select(AnimaDexClient.EscapeParens).ToList(); _s.CharacterTrigger = entry.PromptText(false); _s.Character = text; CharacterBox.Text = text; BuildCharacterChips(); }
     }
 
-    private void CharacterClear_Click(object sender, RoutedEventArgs e) { CharacterBox.Text = ""; _s.Character = ""; _s.CharacterTrigger = ""; }
+    private void CharacterClear_Click(object sender, RoutedEventArgs e) { _s.Character = ""; _s.CharacterTrigger = ""; _s.CharacterTags = new(); CharacterBox.Text = ""; BuildCharacterChips(); }
     private void StyleClear_Click(object sender, RoutedEventArgs e) { StyleBox.Text = ""; _s.Style = ""; }
 
     /// <summary>Text an der Cursorstelle des Prompts einfügen (ohne Cursor bzw. Cursor am Ende/im Refine-Teil: am Anfang), mit Kommas abgetrennt.</summary>
@@ -231,6 +231,7 @@ public partial class SwarmWindow : Window
         CharacterBox.Text = _s.Character;
         StyleBox.Text = _s.Style;
         BuildSegmentRows();
+        BuildCharacterChips();
         NegativeBox.Text = _s.Negative;
         PromptsOnlyCheck.IsChecked = _s.HistoryPromptsOnly;
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);
@@ -274,7 +275,7 @@ public partial class SwarmWindow : Window
         _s.Prompt = PromptBox.Text;
         _s.Character = CharacterBox.Text;
         _s.Style = StyleBox.Text;
-        if (_s.CharacterTrigger != "" && !_s.Character.Contains(_s.CharacterTrigger, StringComparison.OrdinalIgnoreCase)) _s.CharacterTrigger = "";   // von Hand ein anderer Charakter
+        _s.CharacterEdited();   // von Hand ein anderer Charakter?
         if (_s.TakeSegmentsFromPrompt(true)) { PromptBox.Text = _s.Prompt; BuildSegmentRows(); }   // eingefügte <segment:…> werden zu Refinern
         _s.Negative = NegativeBox.Text;
         _s.HistoryPromptsOnly = PromptsOnlyCheck.IsChecked == true;
