@@ -232,6 +232,7 @@ public partial class SwarmWindow : Window
         StyleBox.Text = _s.Style;
         BuildSegmentRows();
         BuildCharacterChips();
+        SetupTagSuggest();
         NegativeBox.Text = _s.Negative;
         PromptsOnlyCheck.IsChecked = _s.HistoryPromptsOnly;
         LookCombo.SelectedIndex = Math.Clamp(_s.Look + 1, 0, LookNames.Length - 1);

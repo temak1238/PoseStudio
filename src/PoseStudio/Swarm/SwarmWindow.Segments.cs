@@ -282,6 +282,35 @@ public partial class SwarmWindow
                             && cc.CharacterTrigger == "" && cc.CharacterTags.Count == 0 && prof.CharacterTags.Count == 5;
                 log.Add($"Charakter-Chips: „{c1}“ → „{c2}“{(ccOk ? "" : " FEHLER")}");
             }
+            {   // Danbooru-Tag-Liste: Laden, Vorschläge, Alias, Einsetzen, natürliche Sprache, <lora:…>, LoRA-Tags ordnen
+                var sw0 = System.Diagnostics.Stopwatch.StartNew();
+                var db = BooruTags.Default;
+                long loadMs = sw0.ElapsedMilliseconds;
+                if (db == null) log.Add("Booru-Tags: Liste fehlt FEHLER");
+                else
+                {
+                    sw0.Restart();
+                    var sg = db.Suggest("blo");
+                    long sugMs = sw0.ElapsedMilliseconds;
+                    var a1 = db.SuggestAt("1girl, blo", 10);
+                    var (t1, c1) = a1 is { } x1 ? BooruTags.Apply("1girl, blo", x1.Start, 10, x1.Items[0].Tag, x1.Whole) : ("", 0);
+                    string nl = "a girl with long hair and blo";
+                    var a2 = db.SuggestAt(nl, nl.Length);
+                    var a3 = db.SuggestAt("1girl <lora:blo", 15);
+                    var a4 = db.SuggestAt("1girl, blonde ha", 16);
+                    var a5 = db.SuggestAt("1girl, blo, smile", 10);
+                    var (gr, junk) = db.Group(new[] { "violet cinematography", "1girl", "while the other", "(s)", "frieren", "sousou no frieren" });
+                    string grs = string.Join(" / ", gr.Select(g => g.Title + ": " + string.Join(", ", g.Tags)));
+                    bool bok = db.All.Count > 50000 && sg.Any(x => x.Tag.Name == "blonde hair") && db.Find("blond")?.Name == "blonde hair"
+                              && t1 == "1girl, " + x1Name(a1) + ", " && c1 == t1.Length
+                              && a2 is { Whole: false } && a3 == null && a4 is { } x4 && x4.Items[0].Tag.Name == "blonde hair" && x4.Start == 7
+                              && a5 is { } x5 && BooruTags.Apply("1girl, blo, smile", x5.Start, 10, x5.Items[0].Tag, x5.Whole).Text == "1girl, " + x5.Items[0].Tag.Name + ", smile"
+                              && junk.Count == 2 && gr.Count == 4 && gr[0].Tags.Single() == "violet cinematography" && gr[1].Title == "Charakter"
+                              && db.Find("ram (re:zero)")?.Category == BooruTag.Character && db.Find(@"ram \(re:zero\)") != null;
+                    log.Add($"Booru-Tags: {db.All.Count} geladen in {loadMs} ms, „blo“ → {string.Join(", ", sg.Take(4).Select(x => x.Tag.Name))} ({sugMs} ms), „{t1}“, Gruppen {grs}, Reste {string.Join("|", junk)}{(bok ? "" : " FEHLER")}");
+                }
+                static string x1Name((int Start, bool Whole, List<BooruSuggestion> Items)? a) => a?.Items[0].Tag.Name ?? "?";
+            }
             // Übernahme aus einem SwarmUI-Bild: LoRA mit Bereich (lorasectionconfinement ≠ -1) gehört zum Refiner, nicht zu den normalen LoRAs
             var imp = new SwarmSettings();
             imp.ImportFrom((System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(

@@ -4,4 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>PoseStudio.Swarm</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Danbooru-Tag-Liste, erzeugt mit tools/booru/Build-TagList.ps1 -->
+    <EmbeddedResource Include="Data\danbooru-tags.tsv.gz" LogicalName="danbooru-tags.tsv.gz" Condition="Exists('Data\danbooru-tags.tsv.gz')" />
+  </ItemGroup>
 </Project>

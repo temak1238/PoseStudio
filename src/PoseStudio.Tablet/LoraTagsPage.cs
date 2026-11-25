@@ -11,7 +11,9 @@ public sealed class LoraTagsPage : ContentPage
     private readonly TaskCompletionSource _done = new();
     private readonly LoraTagChoice _choice;
     private readonly List<string> _tags;
-    private readonly FlexLayout _chips = new() { Wrap = FlexWrap.Wrap, JustifyContent = FlexJustify.Start, AlignItems = FlexAlignItems.Start };
+    private readonly List<(string Title, List<string> Tags)> _groups;
+    private readonly BooruTags? _db = BooruTags.Default;
+    private readonly VerticalStackLayout _chips = new() { Spacing = 2 };
     private readonly Entry _search = new() { Placeholder = "Tags suchen …", ClearButtonVisibility = ClearButtonVisibility.WhileEditing, BackgroundColor = Ui.Panel, TextColor = Colors.White };
     private readonly Entry _own = new() { Placeholder = "z. B. golden jewelry, veil", BackgroundColor = Ui.Panel, TextColor = Colors.White };
     private readonly Label _summary = new() { TextColor = Ui.Accent, FontSize = 13 };
@@ -25,6 +27,18 @@ public sealed class LoraTagsPage : ContentPage
         var (tags, descs) = LoraTags.Parse(info?.Trigger);
         _choice = s.TagChoice(lora, true)!;
         _tags = _choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        // mit der Danbooru-Liste ordnen: eigene Wörter der LoRA zuerst, dann nach Kategorie; Satzreste zu den Beschreibungen
+        _groups = new() { ("", _tags) };
+        if (_db != null)
+        {
+            var (grp, junk) = _db.Group(_tags);
+            var keep = junk.Where(j => _choice.Tags.Contains(j, StringComparer.OrdinalIgnoreCase)).ToList();
+            junk = junk.Except(keep, StringComparer.OrdinalIgnoreCase).ToList();
+            if (keep.Count > 0) grp.Insert(0, ("Gewählt", keep));
+            _groups = grp;
+            _tags = _groups.SelectMany(x => x.Tags).ToList();
+            if (junk.Count > 0) descs = descs.Append("Weitere Wörter ohne Danbooru-Tag: " + string.Join(" · ", junk)).ToList();
+        }
         _showAll = _tags.Count <= ChipsFirst + 10;
         _own.Text = _choice.Own;
         _own.TextChanged += (_, _) => { _choice.Own = (_own.Text ?? "").Trim(); ShowSummary(); };
@@ -86,29 +100,39 @@ public sealed class LoraTagsPage : ContentPage
     {
         _chips.Children.Clear();
         string q = (_search.Text ?? "").Trim();
-        var shown = _tags.Where(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-        int max = _showAll || q != "" ? shown.Count : ChipsFirst;
-        foreach (var t in shown.Take(max))
+        int total = _tags.Count(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase));
+        int max = _showAll || q != "" ? total : ChipsFirst, done = 0;
+        FlexLayout? row = null;
+        foreach (var (title, gtags) in _groups)
         {
-            bool on = _choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
-            var chip = new Button { Text = t, FontSize = 13, CornerRadius = 16, Padding = new Thickness(12, 0), HeightRequest = 34, Margin = new Thickness(0, 0, 6, 6),
-                                    BackgroundColor = on ? ChipOn : Ui.PanelLight, TextColor = Colors.White, BorderColor = on ? Ui.Accent : Ui.PanelLight, BorderWidth = 1 };
-            chip.Clicked += (_, _) =>
+            var shown = gtags.Where(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(Math.Max(0, max - done)).ToList();
+            if (shown.Count == 0) continue;
+            if (title != "" && _groups.Count > 1) _chips.Children.Add(new Label { Text = title, TextColor = Ui.Muted, FontSize = 12, Margin = new Thickness(0, 4, 0, 2) });
+            row = new FlexLayout { Wrap = FlexWrap.Wrap, JustifyContent = FlexJustify.Start, AlignItems = FlexAlignItems.Start };
+            _chips.Children.Add(row);
+            done += shown.Count;
+            foreach (var t in shown)
             {
-                if (_choice.Tags.RemoveAll(x => x.Equals(t, StringComparison.OrdinalIgnoreCase)) == 0) _choice.Tags.Add(t);
-                _choice.Tags = _choice.Tags.OrderBy(x => { int i = _tags.FindIndex(y => y.Equals(x, StringComparison.OrdinalIgnoreCase)); return i < 0 ? int.MaxValue : i; }).ToList();
-                bool now = _choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
-                chip.BackgroundColor = now ? ChipOn : Ui.PanelLight; chip.BorderColor = now ? Ui.Accent : Ui.PanelLight;
-                ShowSummary();
-            };
-            _chips.Children.Add(chip);
+                bool on = _choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
+                var chip = new Button { Text = t, FontSize = 13, CornerRadius = 16, Padding = new Thickness(12, 0), HeightRequest = 34, Margin = new Thickness(0, 0, 6, 6),
+                                        BackgroundColor = on ? ChipOn : Ui.PanelLight, TextColor = Colors.White, BorderColor = on ? Ui.Accent : Ui.PanelLight, BorderWidth = 1 };
+                chip.Clicked += (_, _) =>
+                {
+                    if (_choice.Tags.RemoveAll(x => x.Equals(t, StringComparison.OrdinalIgnoreCase)) == 0) _choice.Tags.Add(t);
+                    _choice.Tags = _choice.Tags.OrderBy(x => { int i = _tags.FindIndex(y => y.Equals(x, StringComparison.OrdinalIgnoreCase)); return i < 0 ? int.MaxValue : i; }).ToList();
+                    bool now = _choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
+                    chip.BackgroundColor = now ? ChipOn : Ui.PanelLight; chip.BorderColor = now ? Ui.Accent : Ui.PanelLight;
+                    ShowSummary();
+                };
+                row.Children.Add(chip);
+            }
         }
-        if (shown.Count > max)
+        if (total > max && row != null)
         {
-            var more = new Button { Text = $"+ {shown.Count - max} weitere …", FontSize = 13, CornerRadius = 16, Padding = new Thickness(12, 0), HeightRequest = 34,
+            var more = new Button { Text = $"+ {total - max} weitere …", FontSize = 13, CornerRadius = 16, Padding = new Thickness(12, 0), HeightRequest = 34,
                                     BackgroundColor = Colors.Transparent, TextColor = Ui.Muted, BorderColor = Ui.Muted, BorderWidth = 1 };
             more.Clicked += (_, _) => { _showAll = true; FillChips(); };
-            _chips.Children.Add(more);
+            row.Children.Add(more);
         }
         ShowSummary();
     }

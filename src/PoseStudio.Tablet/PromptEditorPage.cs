@@ -6,7 +6,7 @@ public sealed class PromptEditorPage : ContentPage
     private readonly TaskCompletionSource<(string Prompt, string Negative)?> _done = new();
     private readonly Editor _prompt, _negative;
 
-    public PromptEditorPage(string prompt, string negative)
+    public PromptEditorPage(string prompt, string negative, Func<bool> suggest)
     {
         BackgroundColor = Ui.Page;
         _prompt = new Editor { Text = prompt, Placeholder = "Prompt", FontSize = 16, BackgroundColor = Ui.Panel, TextColor = Colors.White };
@@ -28,7 +28,10 @@ public sealed class PromptEditorPage : ContentPage
             Padding = 12, RowSpacing = 6,
             RowDefinitions = { new(GridLength.Auto), new(new GridLength(3, GridUnitType.Star)), new(GridLength.Auto), new(new GridLength(1, GridUnitType.Star)), new(GridLength.Auto) }
         };
-        g.Add(L("Prompt"), 0, 0); g.Add(_prompt, 0, 1); g.Add(L("Negativ-Prompt"), 0, 2); g.Add(_negative, 0, 3); g.Add(bar, 0, 4);
+        // Vorschläge oben über dem jeweiligen Feld, damit die Bildschirmtastatur sie nicht verdeckt
+        var head1 = new VerticalStackLayout { Spacing = 4, Children = { L("Prompt"), new TagSuggestBar(_prompt, suggest) } };
+        var head2 = new VerticalStackLayout { Spacing = 4, Children = { L("Negativ-Prompt"), new TagSuggestBar(_negative, suggest) } };
+        g.Add(head1, 0, 0); g.Add(_prompt, 0, 1); g.Add(head2, 0, 2); g.Add(_negative, 0, 3); g.Add(bar, 0, 4);
         Content = g;
         Loaded += (_, _) => _prompt.Focus();
     }
@@ -43,9 +46,9 @@ public sealed class PromptEditorPage : ContentPage
     /// <summary>Zurück-Taste übernimmt (wie bei einem Textfeld erwartet) – Abbrechen nur über den Knopf.</summary>
     protected override bool OnBackButtonPressed() { _ = CloseAsync((_prompt.Text ?? "", _negative.Text ?? "")); return true; }
 
-    public static async Task<(string Prompt, string Negative)?> ShowAsync(INavigation nav, string prompt, string negative)
+    public static async Task<(string Prompt, string Negative)?> ShowAsync(INavigation nav, string prompt, string negative, Func<bool> suggest)
     {
-        var p = new PromptEditorPage(prompt, negative);
+        var p = new PromptEditorPage(prompt, negative, suggest);
         await nav.PushModalAsync(p);
         return await p._done.Task;
     }

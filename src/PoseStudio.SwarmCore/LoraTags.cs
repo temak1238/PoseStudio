@@ -41,6 +41,8 @@ public static class LoraTags
             foreach (var raw in line.Split(','))
             {
                 string part = raw.Trim().Trim('.').Trim();
+                // „(blue eyes)“ → „blue eyes“ (Klammern = Gewichtung, in Metadaten meist nur Beiwerk); „\(“ bleibt
+                if (part.Length > 2 && part[0] == '(' && part[^1] == ')' && part[^2] != '\\' && part.IndexOf('(', 1) < 0) part = part[1..^1].Trim();
                 if (part == "") continue;
                 bool isDesc = Words(part) >= MaxTagWords || part.Contains(". ") || part.Contains(": ");
                 if (isDesc)

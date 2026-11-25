@@ -195,6 +195,9 @@ public partial class MainWindow : Window, PoseStudio.Swarm.ISwarmScene
         sw.ShowCharacterForShot();   // Charakter-Chips (nur im Speicher)
         await Task.Delay(1500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-character.png"));
+        sw.ShowSuggestForShot();   // Tag-Vorschläge unter dem Prompt (nur im Speicher)
+        await Task.Delay(1500);
+        SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-suggest.png"));
         sw.ShowLorasForShot();   // LoRAs mit Tag-Auswahl (nur im Speicher)
         await Task.Delay(1500);
         SaveWindowShot(sw, Path.Combine(dir, tag + "-swarm-loras.png"));

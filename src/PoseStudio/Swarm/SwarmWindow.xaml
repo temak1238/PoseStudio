@@ -134,10 +134,16 @@
                                 <TextBlock Text="Stil" Width="62" VerticalAlignment="Center" />
                                 <TextBox x:Name="StyleBox" TextWrapping="Wrap" VerticalContentAlignment="Center" ToolTip="Künstler/Stil, steht beim Senden nach dem Charakter und vor dem Prompt." />
                             </DockPanel>
-                            <TextBlock Text="Prompt (Szene, Pose, Kleidung …)" Margin="0,2,0,1" />
+                            <DockPanel Margin="0,2,0,1">
+                                <CheckBox x:Name="TagSuggestCheck" DockPanel.Dock="Right" Content="Tag-Vorschläge" FontSize="11" VerticalAlignment="Center" Click="TagSuggestCheck_Click"
+                                          ToolTip="Beim Tippen passende Danbooru-Tags anbieten (Klick übernimmt, Tab = erster, Esc blendet aus). Natürliche Sprache geht weiter wie gewohnt." />
+                                <TextBlock Text="Prompt (Szene, Pose, Kleidung …)" />
+                            </DockPanel>
                             <TextBox x:Name="PromptBox" AcceptsReturn="True" TextWrapping="Wrap" Height="110" VerticalScrollBarVisibility="Auto" />
+                            <WrapPanel x:Name="PromptSuggest" Margin="0,3,0,0" />
                             <TextBlock Text="Negativ-Prompt" Margin="0,4,0,1" />
                             <TextBox x:Name="NegativeBox" AcceptsReturn="True" TextWrapping="Wrap" Height="70" VerticalScrollBarVisibility="Auto" />
+                            <WrapPanel x:Name="NegativeSuggest" Margin="0,3,0,0" />
                         </StackPanel>
                     </GroupBox>
 

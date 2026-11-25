@@ -227,7 +227,7 @@ public sealed partial class MainPage : ContentPage
                     Row("Charakter", _character, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, false)), Btn("✕", () => { S.Character = ""; S.CharacterTrigger = ""; S.CharacterTags = new(); _character.Text = ""; ShowCharacterChips(); return Task.CompletedTask; }))),
                     _charChips,
                     Row("Stil / Künstler", _style, Cols(Btn("Suchen …", () => AnimaDexPage.ShowAsync(Navigation, S, ApplyAnimaDex, true)), Btn("✕", () => { _style.Text = ""; return Task.CompletedTask; }))),
-                    _prompt, _negative, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync)),
+                    _prompt, PromptSuggest, _negative, NegativeSuggest, Btn("⤢ Groß bearbeiten", EditPromptLargeAsync), TagSuggestRow()),
                 BuildSegmentSection(),
                 Section("Vorlage", Row("Quelle", _source), _templateBox, _imageBox, _initBox, _cnBox, _aspectBox),
                 Section("Generierung",
@@ -562,7 +562,7 @@ public sealed partial class MainPage : ContentPage
 
     private async Task EditPromptLargeAsync()
     {
-        if (await PromptEditorPage.ShowAsync(Navigation, _prompt.Text ?? "", _negative.Text ?? "") is { } r)
+        if (await PromptEditorPage.ShowAsync(Navigation, _prompt.Text ?? "", _negative.Text ?? "", () => S.TagSuggest) is { } r)
         {
             _prompt.Text = r.Prompt; _negative.Text = r.Negative;
             ReadUi(); _t.Save();

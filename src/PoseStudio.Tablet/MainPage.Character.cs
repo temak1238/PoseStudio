@@ -18,6 +18,18 @@ public sealed partial class MainPage
         return b;
     }
 
+    private TagSuggestBar? _promptSuggest, _negativeSuggest;
+    private TagSuggestBar PromptSuggest => _promptSuggest ??= new TagSuggestBar(_prompt, () => S.TagSuggest);
+    private TagSuggestBar NegativeSuggest => _negativeSuggest ??= new TagSuggestBar(_negative, () => S.TagSuggest);
+
+    /// <summary>Schalter „Tag-Vorschläge“ (gilt für alle Profile).</summary>
+    private View TagSuggestRow()
+    {
+        var sw = new Switch { IsToggled = S.TagSuggest, OnColor = Ui.Accent, VerticalOptions = LayoutOptions.Center };
+        sw.Toggled += (_, e) => { S.TagSuggest = e.Value; if (!e.Value) { PromptSuggest.Hide(); NegativeSuggest.Hide(); } SaveSoon(); };
+        return new HorizontalStackLayout { Spacing = 8, Children = { sw, new Label { Text = "Tag-Vorschläge beim Tippen (Danbooru)", TextColor = Ui.Muted, FontSize = 13, VerticalOptions = LayoutOptions.Center } } };
+    }
+
     private void ShowCharacterChips()
     {
         if (!_charChipsHooked)

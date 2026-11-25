@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 
 namespace PoseStudio.Swarm;
 
@@ -8,6 +9,21 @@ namespace PoseStudio.Swarm;
 public partial class SwarmWindow
 {
     private bool _charChipsBusy;
+    private TagSuggestBar? _promptSuggest, _negativeSuggest;
+
+    /// <summary>Tag-Vorschläge unter Prompt und Negativ-Prompt einrichten (einmal).</summary>
+    private void SetupTagSuggest()
+    {
+        _promptSuggest ??= new TagSuggestBar(PromptBox, PromptSuggest, () => _s.TagSuggest);
+        _negativeSuggest ??= new TagSuggestBar(NegativeBox, NegativeSuggest, () => _s.TagSuggest);
+        TagSuggestCheck.IsChecked = _s.TagSuggest;
+    }
+
+    private void TagSuggestCheck_Click(object sender, RoutedEventArgs e)
+    {
+        _s.TagSuggest = TagSuggestCheck.IsChecked == true;
+        if (!_s.TagSuggest) { _promptSuggest?.Hide(); _negativeSuggest?.Hide(); }
+    }
 
     private void BuildCharacterChips()
     {
@@ -81,6 +97,16 @@ public partial class SwarmWindow
         _s.Character = CharacterBox.Text;
         _s.CharacterEdited();
         BuildCharacterChips();
+    }
+
+    /// <summary>Für Bildschirmfotos: angefangener Tag im Prompt, damit die Vorschlagsleiste erscheint (nur im Speicher).</summary>
+    internal void ShowSuggestForShot()
+    {
+        PromptBox.Text = "1girl, solo, smile, blo";
+        PromptBox.Focus();
+        Keyboard.Focus(PromptBox);
+        PromptBox.CaretIndex = PromptBox.Text.Length;
+        PromptBox.BringIntoView();
     }
 
     /// <summary>Für Bildschirmfotos: Beispiel-Charakter mit teils gewählten Tags.</summary>

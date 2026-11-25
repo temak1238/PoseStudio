@@ -81,6 +81,19 @@ public partial class SwarmWindow
         var choice = _s.TagChoice(lora, true)!;
         // gewählte Tags, die (nicht mehr) in den Metadaten stehen, trotzdem zeigen
         var allTags = choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        // mit der Danbooru-Liste ordnen: eigene Wörter der LoRA zuerst, dann nach Kategorie; Satzreste zu den Beschreibungen
+        var db = BooruTags.Default;
+        var groups = new List<(string Title, List<string> Tags)> { ("", allTags) };
+        if (db != null)
+        {
+            var (g, junk) = db.Group(allTags);
+            var keep = junk.Where(j => choice.Tags.Contains(j, StringComparer.OrdinalIgnoreCase)).ToList();
+            junk = junk.Except(keep, StringComparer.OrdinalIgnoreCase).ToList();
+            if (keep.Count > 0) g.Insert(0, ("Gewählt", keep));
+            groups = g;
+            allTags = groups.SelectMany(x => x.Tags).ToList();
+            if (junk.Count > 0) descs = descs.Append("Weitere Wörter ohne Danbooru-Tag: " + string.Join(" · ", junk)).ToList();
+        }
 
         var panel = new StackPanel { Margin = new Thickness(8, 4, 0, 6) };
         var border = new Border { BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(8, 0, 0, 0), Child = panel, Margin = new Thickness(0, 2, 0, 4) };
@@ -100,33 +113,49 @@ public partial class SwarmWindow
         else
             panel.Children.Add(Hint($"Tags ({allTags.Count}) – anklicken zum An- und Abwählen"));
 
-        var wrap = new WrapPanel();
+        var wrap = new StackPanel();
         TextBox? search = null;
         bool showAll = allTags.Count <= ChipsFirst + 10;
         void FillChips()
         {
             wrap.Children.Clear();
             string q = search?.Text.Trim() ?? "";
-            var shown = allTags.Where(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-            int max = showAll || q != "" ? shown.Count : ChipsFirst;
-            foreach (var t in shown.Take(max))
+            int total = allTags.Count(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase));
+            int max = showAll || q != "" ? total : ChipsFirst, done = 0;
+            WrapPanel? row = null;
+            foreach (var (title, gtags) in groups)
             {
-                bool on = choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
-                var chip = new ToggleButton { Content = t, IsChecked = on, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11 };
-                chip.Click += (_, _) =>
+                var shownG = gtags.Where(t => q == "" || t.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(Math.Max(0, max - done)).ToList();
+                if (shownG.Count == 0) continue;
+                if (title != "" && groups.Count > 1)
                 {
-                    if (chip.IsChecked == true) { if (!choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)) choice.Tags.Add(t); }
-                    else choice.Tags.RemoveAll(x => x.Equals(t, StringComparison.OrdinalIgnoreCase));
-                    SortChoice(choice, allTags);
-                    changed();
-                };
-                wrap.Children.Add(chip);
+                    var h = Hint(title);
+                    h.Margin = new Thickness(0, row == null ? 0 : 2, 0, 2);
+                    wrap.Children.Add(h);
+                }
+                row = new WrapPanel();
+                wrap.Children.Add(row);
+                done += shownG.Count;
+                foreach (var t in shownG)
+                {
+                    bool on = choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase);
+                    var chip = new ToggleButton { Content = t, IsChecked = on, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11,
+                                                  ToolTip = db?.Info(t) ?? (db != null ? "Kein Danbooru-Tag – vermutlich ein eigenes Trigger-Wort der LoRA" : null) };
+                    chip.Click += (_, _) =>
+                    {
+                        if (chip.IsChecked == true) { if (!choice.Tags.Contains(t, StringComparer.OrdinalIgnoreCase)) choice.Tags.Add(t); }
+                        else choice.Tags.RemoveAll(x => x.Equals(t, StringComparison.OrdinalIgnoreCase));
+                        SortChoice(choice, allTags);
+                        changed();
+                    };
+                    row.Children.Add(chip);
+                }
             }
-            if (shown.Count > max)
+            if (total > max && row != null)
             {
-                var more = new Button { Content = $"+ {shown.Count - max} weitere …", Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11 };
+                var more = new Button { Content = $"+ {total - max} weitere …", Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 1, 8, 2), FontSize = 11 };
                 more.Click += (_, _) => { showAll = true; FillChips(); };
-                wrap.Children.Add(more);
+                row.Children.Add(more);
             }
         }
         if (allTags.Count > 30)
