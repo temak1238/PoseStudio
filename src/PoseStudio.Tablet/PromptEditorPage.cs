@@ -28,8 +28,7 @@ public sealed class PromptEditorPage : ContentPage
             Padding = 12, RowSpacing = 6,
             RowDefinitions = { new(GridLength.Auto), new(new GridLength(3, GridUnitType.Star)), new(GridLength.Auto), new(new GridLength(1, GridUnitType.Star)), new(GridLength.Auto) }
         };
-        // Tag-Vorschläge ganz unten: die Seite weicht der Tastatur aus, so sitzt die Zeile direkt über der Tastatur
-        SafeAreaEdges = SafeAreaEdges.All;
+        // Tag-Vorschläge ganz unten; bei offener Tastatur schiebt sich die Zeile selbst darüber
         var suggestBar = new TagSuggestBar(suggest).Attach(_prompt).Attach(_negative);
         g.RowDefinitions.Add(new(GridLength.Auto));
         g.Add(L("Prompt"), 0, 0); g.Add(_prompt, 0, 1); g.Add(L("Negativ-Prompt"), 0, 2); g.Add(_negative, 0, 3); g.Add(bar, 0, 4); g.Add(suggestBar, 0, 5);

@@ -26,7 +26,8 @@ public sealed class LoraTagsPage : ContentPage
         BackgroundColor = Ui.Page;
         var (tags, descs) = LoraTags.Parse(info?.Trigger);
         _choice = s.TagChoice(lora, true)!;
-        _tags = _choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        _tags = _choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase) && !descs.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        var pickable = descs.ToList();   // Beschreibungen: manche LoRAs sind mit genau so einem Satz trainiert – als Ganzes wählbar
         // mit der Danbooru-Liste ordnen: eigene Wörter der LoRA zuerst, dann nach Kategorie; Satzreste zu den Beschreibungen
         _groups = new() { ("", _tags) };
         if (_db != null)
@@ -64,9 +65,25 @@ public sealed class LoraTagsPage : ContentPage
         stack.Add(_chips);
         if (descs.Count > 0)
         {
-            var list = new VerticalStackLayout { Spacing = 6, IsVisible = false };
-            foreach (var d in descs) list.Add(new Label { Text = d, TextColor = Ui.Muted, FontSize = 12, BackgroundColor = Ui.Panel, Padding = new Thickness(8, 4) });
-            var toggle = new Button { Text = $"▸ Beschreibungen ({descs.Count}) – werden nie automatisch angehängt", BackgroundColor = Colors.Transparent, TextColor = Ui.Muted,
+            bool open = descs.Any(d => _choice.Tags.Contains(d, StringComparer.OrdinalIgnoreCase)) || (_tags.Count == 0 && descs.Count <= 3);
+            var list = new VerticalStackLayout { Spacing = 6, IsVisible = open };
+            foreach (var d in descs)
+            {
+                var lbl = new Label { Text = d, TextColor = Colors.White, FontSize = 13, Padding = new Thickness(10, 6) };
+                if (!pickable.Contains(d)) { lbl.TextColor = Ui.Muted; lbl.BackgroundColor = Ui.Panel; list.Add(lbl); continue; }
+                string dd = d;
+                void Paint() { bool on = _choice.Tags.Contains(dd, StringComparer.OrdinalIgnoreCase); lbl.BackgroundColor = on ? ChipOn : Ui.PanelLight; lbl.Text = (on ? "✓ " : "") + dd; }
+                var tap = new TapGestureRecognizer();
+                tap.Tapped += (_, _) =>
+                {
+                    if (_choice.Tags.RemoveAll(x => x.Equals(dd, StringComparison.OrdinalIgnoreCase)) == 0) _choice.Tags.Add(dd);
+                    Paint(); ShowSummary();
+                };
+                lbl.GestureRecognizers.Add(tap);
+                Paint();
+                list.Add(lbl);
+            }
+            var toggle = new Button { Text = $"{(open ? "▾" : "▸")} Beschreibungen ({descs.Count}) – antippen, um eine als Ganzes mitzugeben", BackgroundColor = Colors.Transparent, TextColor = Ui.Muted,
                                       FontSize = 13, HorizontalOptions = LayoutOptions.Start, Padding = 0 };
             toggle.Clicked += (_, _) =>
             {

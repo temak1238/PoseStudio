@@ -38,7 +38,7 @@ public static class LoraTags
         foreach (var line in (phrase ?? "").Split('\n', '\r'))
         {
             string? desc = null;   // zusammenhängende Satzstücke wieder zu einer Beschreibung verbinden
-            foreach (var raw in line.Split(','))
+            foreach (var raw in Pieces(line))
             {
                 string part = raw.Trim().Trim('.').Trim();
                 // „(blue eyes)“ → „blue eyes“ (Klammern = Gewichtung, in Metadaten meist nur Beiwerk); „\(“ bleibt
@@ -56,6 +56,49 @@ public static class LoraTags
             if (desc != null) AddDesc(descs, desc);
         }
         return (tags, descs);
+    }
+
+    /// <summary>Stücke einer Zeile: normalerweise kommagetrennt. Manche LoRAs listen ihre Trigger aber ohne Kommas:
+    /// mit Tabs bzw. breiten Lücken („m44aaffAgentRionAida   brown_eyes brown_hair   glasses hairband“) oder nur mit Leerzeichen
+    /// („m44aaffaikatrans dark-skinned_female green eyes long hair 1980s_(style)“). Dann an den Lücken trennen und Wortgruppen mit
+    /// der Danbooru-Liste wieder zu Tags zusammensetzen („green eyes“, „long hair“).</summary>
+    private static IEnumerable<string> Pieces(string line)
+    {
+        if (line.Contains(',')) return line.Split(',');
+        bool gaps = System.Text.RegularExpressions.Regex.IsMatch(line, @"\t| {2,}");
+        var tokens = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        bool tagLike = tokens.Count(t => t.Contains('_')) >= 2 && !line.Contains(". ");   // Danbooru-Schreibweise → Tag-Liste, kein Satz
+        if (!gaps && !tagLike) return new[] { line };
+        if (!gaps) return Cover(tokens, false)!;
+        var res = new List<string>();
+        foreach (var p in System.Text.RegularExpressions.Regex.Split(line, @"\t+| {2,}"))
+        {
+            var w = p.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (w.Length > 1 && w.All(x => x.Contains('_'))) res.AddRange(w);
+            else if (w.Length > 1 && Cover(w, true) is { } c) res.AddRange(c);   // „glasses hairband“ → glasses, hairband
+            else res.Add(p);
+        }
+        return res;
+    }
+
+    /// <summary>Wörter von links nach rechts zu möglichst langen bekannten Tags zusammenfassen (bis 4 Wörter).
+    /// full = nur, wenn dabei jedes Stück ein bekannter Tag ist (sonst null); sonst bleiben unbekannte Wörter einzeln.</summary>
+    private static List<string>? Cover(string[] words, bool full)
+    {
+        var db = BooruTags.Default;
+        var res = new List<string>();
+        for (int i = 0; i < words.Length;)
+        {
+            int take = 1;
+            if (db != null)
+                for (int n = Math.Min(4, words.Length - i); n >= 1; n--)
+                    if (db.Find(string.Join(" ", words, i, n)) != null) { take = n; break; }
+            string piece = string.Join(" ", words, i, take);
+            if (full && (db == null || db.Find(piece) == null)) return null;
+            res.Add(piece);
+            i += take;
+        }
+        return res;
     }
 
     private static void AddDesc(List<string> descs, string d)

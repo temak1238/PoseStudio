@@ -3,7 +3,7 @@ using PoseStudio.Swarm;
 namespace PoseStudio.Tablet;
 
 /// <summary>Tag-Vorschläge wie die Wortvorschläge einer Handy-Tastatur: eine Zeile ganz unten auf der Seite – bei offener Tastatur
-/// sitzt sie direkt darüber (Fenster wird verkleinert statt verschoben). Gilt für mehrere Textfelder; es zählt das, in dem gerade
+/// schiebt sie sich selbst direkt darüber (Android verkleinert die Seite nicht, die Tastatur liegt darüber). Gilt für mehrere Textfelder; es zählt das, in dem gerade
 /// getippt wird. Antippen ersetzt das angefangene Wort; nicht antippen = es passiert nichts.</summary>
 public sealed class TagSuggestBar : ContentView
 {
@@ -20,6 +20,47 @@ public sealed class TagSuggestBar : ContentView
         Content = new ScrollView { Orientation = ScrollOrientation.Horizontal, HorizontalScrollBarVisibility = ScrollBarVisibility.Never, Content = _row };
         IsVisible = false;
         BooruTags.Preload();
+        HandlerChanged += (_, _) => HookKeyboard();
+    }
+
+    private bool _hooked;
+
+    /// <summary>Bei jeder Layout-Änderung des Fensters (Tastatur auf/zu, Seite verschoben) die Zeile neu über die Tastatur setzen.</summary>
+    private void HookKeyboard()
+    {
+        if (_hooked || Platform.CurrentActivity?.Window?.DecorView is not { } decor || decor.ViewTreeObserver is not { } vto) return;
+        _hooked = true;
+        vto.GlobalLayout += (_, _) => Reposition();
+    }
+
+    /// <summary>Wo beginnt die Tastatur (Bildschirm-Pixel)? Liegt die Zeile darunter, um den Unterschied nach oben schieben.</summary>
+    private void Reposition()
+    {
+        try
+        {
+            if (Handler?.PlatformView is not Android.Views.View v || Platform.CurrentActivity?.Window?.DecorView is not { } decor) return;
+            int ime = 0;
+            var ins = AndroidX.Core.View.ViewCompat.GetRootWindowInsets(decor);
+            if (ins != null) ime = ins.GetInsets(AndroidX.Core.View.WindowInsetsCompat.Type.Ime()).Bottom;
+            if (ime <= 0)
+            {   // Rückfallebene: sichtbarer Fensterbereich
+                var r = new Android.Graphics.Rect();
+                decor.GetWindowVisibleDisplayFrame(r);
+                int gap = decor.RootView!.Height - r.Bottom;
+                if (gap > decor.RootView.Height / 5) ime = gap;
+            }
+            float shift = 0;
+            if (ime > 0 && IsVisible)
+            {
+                var loc = new int[2];
+                v.GetLocationOnScreen(loc);
+                float bottom = loc[1] - v.TranslationY + v.Height;   // Unterkante ohne Verschiebung
+                float kbTop = decor.RootView!.Height - ime;
+                shift = Math.Min(0, kbTop - bottom);
+            }
+            if (Math.Abs(v.TranslationY - shift) > 1) v.TranslationY = shift;
+        }
+        catch { /* nur Komfort – nie abstürzen */ }
     }
 
     /// <summary>Textfeld anmelden.</summary>
@@ -63,6 +104,8 @@ public sealed class TagSuggestBar : ContentView
             _row.Children.Add(b);
         }
         IsVisible = true;
+        Dispatcher.Dispatch(Reposition);
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(350), Reposition);   // Tastatur fährt evtl. noch hoch
     }
 
     private void Accept(BooruTag tag)

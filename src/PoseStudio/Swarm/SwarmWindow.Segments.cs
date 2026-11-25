@@ -303,6 +303,16 @@ public partial class SwarmWindow
                     var (gr, junk) = db.Group(gin, 10);    // Trigger-Angabe mit Bildbeschreibungen: Satzstücke raus
                     var (gr0, junk0) = db.Group(gin, 0);   // ohne Beschreibungen: nur „2)“ raus, Outfit-Trigger bleiben
                     string grs = string.Join(" / ", gr.Select(g => g.Title + ": " + string.Join(", ", g.Tags)));
+                    // Metadaten ohne Kommas, mit breiten Lücken getrennt
+                    var (wt, wd) = LoraTags.Parse("m44aaffAgentRionAida   brown_eyes brown_hair   glasses hairband  1990 style");
+                    string wts = string.Join("|", wt);
+                    var (spt, sd) = LoraTags.Parse("m44aaffaikatrans dark-skinned_female green eyes long hair blue hair lips red lipstick 1980s_(style)");
+                    var (nt, nd) = LoraTags.Parse("an anime image of shogun raiden");
+                    wts += " / " + string.Join("|", spt);
+                    bool wsOk = wts.StartsWith("m44aaffAgentRionAida|brown_eyes|brown_hair|glasses|hairband|1990 style / ") && wd.Count == 0
+                                && string.Join("|", spt) == "m44aaffaikatrans|dark-skinned_female|green eyes|long hair|blue hair|lips|red lipstick|1980s_(style)" && sd.Count == 0
+                                && nt.Count == 0 && nd.Count == 1;
+                    log.Add($"Lücken-Trigger: {wts}{(wsOk ? "" : " FEHLER")}");
                     bool bok = db.All.Count > 50000 && sg.Any(x => x.Tag.Name == "blonde hair") && db.Find("blond")?.Name == "blonde hair"
                               && t1 == "1girl, " + x1Name(a1) + ", " && c1 == t1.Length
                               && a2 is { Whole: false } && a3 == null && a4 is { } x4 && x4.Items[0].Tag.Name == "blonde hair" && x4.Start == 7

@@ -80,7 +80,8 @@ public partial class SwarmWindow
         var (tags, descs) = LoraTags.Parse(info?.Trigger);
         var choice = _s.TagChoice(lora, true)!;
         // gewählte Tags, die (nicht mehr) in den Metadaten stehen, trotzdem zeigen
-        var allTags = choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        var allTags = choice.Tags.Where(t => !tags.Contains(t, StringComparer.OrdinalIgnoreCase) && !descs.Contains(t, StringComparer.OrdinalIgnoreCase)).Concat(tags).ToList();
+        var pickable = descs.ToList();   // Beschreibungen: manche LoRAs sind mit genau so einem Satz trainiert – als Ganzes wählbar
         // mit der Danbooru-Liste ordnen: eigene Wörter der LoRA zuerst, dann nach Kategorie; Satzreste zu den Beschreibungen
         var db = BooruTags.Default;
         var groups = new List<(string Title, List<string> Tags)> { ("", allTags) };
@@ -172,11 +173,23 @@ public partial class SwarmWindow
             var list = new StackPanel();
             foreach (var d in descs)
             {
-                var tb = new TextBlock { Text = d, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+                var tb = new TextBlock { Text = d, FontSize = 11, TextWrapping = TextWrapping.Wrap };
                 tb.SetResourceReference(TextBlock.ForegroundProperty, "MutedText");
-                list.Children.Add(tb);
+                if (!pickable.Contains(d)) { tb.Margin = new Thickness(0, 0, 0, 4); list.Children.Add(tb); continue; }
+                var cb = new CheckBox { Content = tb, IsChecked = choice.Tags.Contains(d, StringComparer.OrdinalIgnoreCase), Margin = new Thickness(0, 0, 0, 4),
+                                        ToolTip = "Anhaken: diese Beschreibung als Ganzes mitgeben" };
+                string dd = d;
+                cb.Click += (_, _) =>
+                {
+                    choice.Tags.RemoveAll(x => x.Equals(dd, StringComparison.OrdinalIgnoreCase));
+                    if (cb.IsChecked == true) choice.Tags.Add(dd);
+                    changed();
+                };
+                list.Children.Add(cb);
             }
-            panel.Children.Add(new Expander { Header = $"Beschreibungen ({descs.Count}) – werden nie automatisch angehängt", Content = list, FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
+            int chosen = descs.Count(d => choice.Tags.Contains(d, StringComparer.OrdinalIgnoreCase));
+            panel.Children.Add(new Expander { Header = $"Beschreibungen ({descs.Count}) – anhaken, um eine als Ganzes mitzugeben", Content = list, FontSize = 11, Margin = new Thickness(0, 2, 0, 0),
+                                              IsExpanded = chosen > 0 || (allTags.Count == 0 && descs.Count <= 3) });
         }
 
         panel.Children.Add(Hint("Eigene Trigger-Wörter (kommagetrennt)"));
