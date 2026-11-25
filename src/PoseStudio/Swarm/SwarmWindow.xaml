@@ -47,6 +47,7 @@
                     <GroupBox Header="Server">
                         <StackPanel>
                             <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Neu einlesen" Margin="6,0,0,0" Click="Rescan_Click" ToolTip="SwarmUI liest die Modell- und LoRA-Ordner neu ein (z. B. nach neu hinzugefügten Dateien), danach werden die Listen neu geladen." />
                                 <Button DockPanel.Dock="Right" Content="Verbinden" Margin="6,0,0,0" Click="Connect_Click" />
                                 <TextBox x:Name="UrlBox" />
                             </DockPanel>
@@ -114,7 +115,10 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <ToggleButton x:Name="LoraPickToggle" Content="LoRA hinzufügen…" HorizontalAlignment="Left" Click="LoraPick_Click" />
+                            <StackPanel Orientation="Horizontal">
+                                <ToggleButton x:Name="LoraPickToggle" Content="LoRA hinzufügen…" Click="LoraPick_Click" />
+                                <Button Content="Neu einlesen" Margin="6,0,0,0" Click="Rescan_Click" ToolTip="SwarmUI liest die Modell- und LoRA-Ordner neu ein (z. B. nach neu hinzugefügten Dateien), danach werden die Listen neu geladen." />
+                            </StackPanel>
                             <StackPanel x:Name="LoraPicker" Visibility="Collapsed" Margin="0,4,0,0">
                                 <DockPanel>
                                     <ComboBox x:Name="LoraFolderCombo" DockPanel.Dock="Right" Width="170" Margin="4,0,0,0" SelectionChanged="LoraFilter_Changed" />

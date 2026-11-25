@@ -356,6 +356,19 @@ public partial class SwarmWindow : Window
 
     private async void Connect_Click(object sender, RoutedEventArgs e) => await ConnectAsync();
 
+    /// <summary>SwarmUI die Modell-Ordner neu einlesen lassen (neue LoRAs/Modelle auf der Platte erscheinen sonst erst nach Neustart/Refresh in SwarmUI).</summary>
+    private async void Rescan_Click(object sender, RoutedEventArgs e)
+    {
+        ReadUi();
+        _client ??= new SwarmClient(_s.Url);
+        int before = _loras.Count;
+        ServerText.Text = "SwarmUI liest Modelle und LoRAs neu ein …";
+        try { await _client.TriggerRefreshAsync(); }
+        catch (Exception ex) { ServerText.Text = "Neu einlesen fehlgeschlagen: " + ex.Message; return; }
+        await ConnectAsync();
+        if (before > 0 && _loras.Count != before) ServerText.Text += $" ({_loras.Count - before:+0;-0} LoRAs)";
+    }
+
     private async Task ConnectAsync()
     {
         ReadUi();
